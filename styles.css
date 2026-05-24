@@ -189,10 +189,61 @@
 
 .txs-mobile-panel {
   margin-top: 8px;
-  padding: 8px;
+  padding: 10px 12px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--background-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.txs-mp-title {
+  font-weight: 600;
+  font-size: 1.05em;
+  margin-bottom: 2px;
+}
+
+.txs-mp-date {
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.txs-mp-meta {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  margin-bottom: 4px;
+}
+
+.txs-mp-desc {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.txs-mp-link {
+  display: block;
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.txs-mp-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.txs-list-actions {
+  margin-top: 4px;
+}
+
+.txs-open-note {
+  font-size: 0.85em;
+  color: var(--text-accent);
 }
 
 .txs-view-root {
@@ -217,7 +268,20 @@
 .txs-view-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.txs-view-body .txs-timeline,
+.txs-view-body .txs-timeline-body,
+.txs-view-body .txs-timeline-list {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .txs-timeline-placeholder {

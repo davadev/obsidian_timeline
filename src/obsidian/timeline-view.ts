@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, type App } from "obsidian";
+import { ItemView, Platform, WorkspaceLeaf, type App } from "obsidian";
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import { renderTimeline } from "../renderer";
@@ -118,6 +118,7 @@ export class TimelineView extends ItemView {
         categoryColors: settings.categoryColors,
         initialHidden: settings.hiddenCategories,
         filterKey: `view:${settings.timelineId}`,
+        isMobile: Platform.isMobile,
       });
     } catch (e) {
       container.createDiv({

@@ -19,6 +19,8 @@ export interface RenderArgs {
   initialHidden: string[];
   /** Stable filter-state key (usually opts.source). */
   filterKey: string;
+  /** Caller-supplied mobile flag (use Obsidian's Platform.isMobile). */
+  isMobile: boolean;
 }
 
 export function renderTimeline(args: RenderArgs): void {
@@ -44,6 +46,7 @@ export function renderTimeline(args: RenderArgs): void {
         onOpenEvent: args.onOpenEvent,
         zoom: args.options.zoom,
         orientation: args.options.orientation,
+        isMobile: args.isMobile,
       });
     }
     if (mode === "list" || mode === "hybrid") {
@@ -52,6 +55,7 @@ export function renderTimeline(args: RenderArgs): void {
         events: visibleEvents,
         options: args.options,
         onOpenEvent: args.onOpenEvent,
+        isMobile: args.isMobile,
       });
     }
     if (visibleEvents.length === 0) {

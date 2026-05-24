@@ -7,29 +7,40 @@ export interface ListRenderArgs {
   events: TimelineEvent[];
   options: RenderOptions;
   onOpenEvent: (id: string) => void;
+  /** When true, list-item titles are not auto-navigable — user must tap the
+   * explicit "Open note" affordance. Avoids accidental navigation on mobile. */
+  isMobile?: boolean;
 }
 
 export function renderList(args: ListRenderArgs): HTMLElement {
-  const { container, events, options, onOpenEvent } = args;
+  const { container, events, options, onOpenEvent, isMobile } = args;
   const sorted = sortEvents(events, options.sort);
   const ul = container.createEl("ul", { cls: "txs-timeline-list" });
   for (const ev of sorted) {
     const li = ul.createEl("li");
-    const link = li.createEl("a", { cls: "txs-title", text: ev.text, href: "#" });
-    link.addEventListener("click", (e) => {
-      e.preventDefault();
-      onOpenEvent(ev.id);
-    });
+
+    let titleEl: HTMLElement;
+    if (isMobile) {
+      // Plain text — no auto-navigation. User must tap the explicit Open note.
+      titleEl = li.createEl("span", { cls: "txs-title", text: ev.text });
+    } else {
+      const link = li.createEl("a", { cls: "txs-title", text: ev.text, href: "#" });
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        onOpenEvent(ev.id);
+      });
+      titleEl = link;
+    }
+
     if (showField(options, "date")) {
       const d = li.createSpan({ cls: "txs-date" });
       d.textContent = ev.isPoint
         ? toFrontmatterString(ev.start)
         : `${toFrontmatterString(ev.start)} → ${toFrontmatterString(ev.end)}`;
-      li.insertBefore(d, link);
+      li.insertBefore(d, titleEl);
     }
     if (showField(options, "category") && ev.category) {
-      const c = li.createSpan({ cls: "txs-category", text: ev.category });
-      li.appendChild(c);
+      li.createSpan({ cls: "txs-category", text: ev.category });
     }
     if (showField(options, "description") && ev.description) {
       const d = li.createSpan({ cls: "txs-desc" });
@@ -45,8 +56,21 @@ export function renderList(args: ListRenderArgs): HTMLElement {
     if (showField(options, "links") && ev.hyperlink) {
       const link2 = li.createEl("a", { href: ev.hyperlink, text: ev.hyperlink });
       link2.setAttr("target", "_blank");
+      link2.setAttr("rel", "noopener");
       link2.style.marginLeft = "6px";
     }
+
+    // Explicit Open-note affordance — always shown, primary action on mobile.
+    const actions = li.createDiv({ cls: "txs-list-actions" });
+    const openLink = actions.createEl("a", {
+      cls: "txs-open-note",
+      text: "Open note →",
+      href: "#",
+    });
+    openLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      onOpenEvent(ev.id);
+    });
   }
   return ul;
 }

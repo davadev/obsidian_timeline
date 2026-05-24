@@ -38,6 +38,10 @@ export interface BarRenderArgs {
   onOpenEvent: (id: string) => void;
   zoom: number;
   orientation: Orientation;
+  /** Explicit mobile flag from the caller (Platform.isMobile). Touch-capability
+   * sniffing is unreliable on macOS where Electron reports maxTouchPoints>0
+   * which previously disabled hover tooltips on the desktop. */
+  isMobile: boolean;
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -83,7 +87,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   drawLaneStripes(svg, laneCount, isVertical, width, height);
   drawAxis(svg, viewport, isVertical, width, height);
 
-  const isMobile = isLikelyMobile();
+  const isMobile = args.isMobile;
 
   events.forEach((ev, i) => {
     const lane = lanes[i];
@@ -193,23 +197,41 @@ function showMobilePanel(
 ): void {
   container.querySelectorAll(".txs-mobile-panel").forEach((p) => p.remove());
   const panel = container.createDiv({ cls: "txs-mobile-panel" });
-  panel.createEl("div", { text: ev.text }).style.fontWeight = "600";
+  panel.createEl("div", { cls: "txs-mp-title", text: ev.text });
   panel.createEl("div", {
+    cls: "txs-mp-date",
     text: ev.isPoint
       ? toFrontmatterString(ev.start)
       : `${toFrontmatterString(ev.start)} → ${toFrontmatterString(ev.end)}`,
   });
-  if (ev.category) panel.createEl("div", { text: `Category: ${ev.category}` });
-  if (ev.description) {
-    const d = panel.createEl("div", { text: ev.description });
-    d.style.marginTop = "4px";
-    d.style.color = "var(--text-muted)";
+  if (ev.category) {
+    panel.createEl("div", {
+      cls: "txs-mp-meta",
+      text: `Category: ${ev.category}`,
+    });
   }
-  const openBtn = panel.createEl("button", { text: "Open note" });
-  openBtn.style.marginTop = "6px";
+  if (ev.description) {
+    panel.createEl("div", {
+      cls: "txs-mp-desc",
+      text: ev.description,
+    });
+  }
+  if (ev.hyperlink) {
+    const link = panel.createEl("a", {
+      cls: "txs-mp-link",
+      text: ev.hyperlink,
+      href: ev.hyperlink,
+    });
+    link.setAttr("target", "_blank");
+    link.setAttr("rel", "noopener");
+  }
+  const actions = panel.createDiv({ cls: "txs-mp-actions" });
+  const openBtn = actions.createEl("button", {
+    cls: "mod-cta",
+    text: "Open event note",
+  });
   openBtn.addEventListener("click", () => onOpen(ev.id));
-  const closeBtn = panel.createEl("button", { text: "Close" });
-  closeBtn.style.marginLeft = "6px";
+  const closeBtn = actions.createEl("button", { text: "Close" });
   closeBtn.addEventListener("click", () => panel.remove());
 }
 
@@ -421,10 +443,3 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 1) + "…";
 }
 
-function isLikelyMobile(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    (("ontouchstart" in window) ||
-      (navigator as { maxTouchPoints?: number }).maxTouchPoints! > 1)
-  );
-}

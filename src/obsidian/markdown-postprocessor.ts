@@ -2,6 +2,7 @@ import YAML from "yaml";
 import {
   MarkdownPostProcessorContext,
   MarkdownRenderChild,
+  Platform,
   type App,
 } from "obsidian";
 // YAML only used by parseBlockOptions; render-time YAML reparse for viewport
@@ -138,6 +139,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         categoryColors: settings.categoryColors,
         initialHidden: Array.from(initialHidden),
         filterKey: opts.source || "default",
+        isMobile: Platform.isMobile,
       });
     } catch (e) {
       renderError(el, (e as Error).message);
