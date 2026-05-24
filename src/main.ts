@@ -1,4 +1,4 @@
-import { Notice, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
+import { Notice, Platform, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
 import {
   DEFAULT_SETTINGS,
   EVENT_NOTE_SCHEMA_VERSION,
@@ -8,7 +8,12 @@ import { TimelineXmlSyncSettingTab } from "./settings-tab";
 import { VaultAdapter } from "./obsidian/vault-adapter";
 import { TemplateService } from "./obsidian/template-service";
 import { TimelineCache } from "./obsidian/cache";
-import { effectiveAutoSync } from "./obsidian/device-prefs";
+import { TimelineView, VIEW_TYPE_TIMELINE } from "./obsidian/timeline-view";
+import {
+  effectiveAutoSync,
+  getDeviceSyncMode,
+  setDeviceSyncMode,
+} from "./obsidian/device-prefs";
 import {
   registerCommands,
   regenerateXml,
@@ -61,7 +66,20 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     }
   }
 
-  onunload(): void {}
+  onunload(): void {
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TIMELINE);
+  }
+
+  async activateTimelineView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE);
+    if (existing.length) {
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const leaf = this.app.workspace.getLeaf("tab");
+    await leaf.setViewState({ type: VIEW_TYPE_TIMELINE, active: true });
+    this.app.workspace.revealLeaf(leaf);
+  }
 
   private async fullOnload(): Promise<void> {
     this.vault = new VaultAdapter(this.app);
@@ -104,6 +122,22 @@ export default class TimelineXmlSyncPlugin extends Plugin {
 
     this.addSettingTab(new TimelineXmlSyncSettingTab(this.app, this));
 
+    // Workspace leaf view (like the Graph view) for full-window timeline.
+    const viewArgs = {
+      app: this.app,
+      cache: this.cache,
+      getSettings: () => this.settings,
+    };
+    this.registerView(VIEW_TYPE_TIMELINE, (leaf) => new TimelineView(leaf, viewArgs));
+    this.addRibbonIcon("calendar-range", "Open Timeline view", () => {
+      void this.activateTimelineView();
+    });
+    this.addCommand({
+      id: "txs-open-view",
+      name: "Open Timeline view",
+      callback: () => void this.activateTimelineView(),
+    });
+
     this.rebuildDebouncedSync();
     this.registerEvent(
       this.app.vault.on("create", (f) => this.onVaultEvent("create", f))
@@ -119,11 +153,32 @@ export default class TimelineXmlSyncPlugin extends Plugin {
         this.onVaultEvent("rename", f, oldPath)
       )
     );
+    // Coalesce metadataCache events — Obsidian fires "changed" eagerly during
+    // typing. We collect paths and flush once per 250 ms on the microtask queue.
+    const pendingMetaUpdates = new Set<string>();
+    let metaFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushMeta = () => {
+      metaFlushTimer = null;
+      for (const p of pendingMetaUpdates) this.cache.updateFile(p);
+      pendingMetaUpdates.clear();
+      this.cache.invalidateMdDoc();
+    };
     this.registerEvent(
-      this.app.metadataCache.on("changed", (f) =>
-        this.cache.updateFile(f.path)
-      )
+      this.app.metadataCache.on("changed", (f) => {
+        pendingMetaUpdates.add(f.path);
+        if (!metaFlushTimer) metaFlushTimer = setTimeout(flushMeta, 250);
+      })
     );
+
+    // First-run mobile default: force sync off so phones can install without
+    // accidentally rewriting the XML (which often isn't there or isn't writable).
+    if (Platform.isMobile && getDeviceSyncMode() === "global") {
+      setDeviceSyncMode("off");
+      new Notice(
+        "Timeline XML Sync: auto-sync turned off on this device by default. Re-enable in Settings → Auto-sync on this device.",
+        8000
+      );
+    }
 
     // Pre-warm the id index so the first render is fast.
     this.cache.buildIndex();
@@ -204,8 +259,36 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.persistAll();
     if (this.debouncedSync) this.rebuildDebouncedSync();
-    // Re-prime caches when paths change.
-    if (this.cache) this.cache.resetIndex();
+    // Re-prime caches when paths or scan-source change.
+    if (this.cache) {
+      this.cache.resetIndex();
+      this.cache.invalidateMdDoc();
+    }
+  }
+
+  /**
+   * Wrapper for settings tab to call when changing settings that affect the
+   * on-disk note schema (mirror names, eventNotesDir, etc). Forces a Markdown
+   * → XML sync first (so the old layout is captured), saves the new setting,
+   * then prompts the user to run the wipe-and-reimport command so the notes
+   * match the new schema.
+   */
+  async applySchemaAffectingChange(mutate: () => void): Promise<void> {
+    try {
+      const { regenerateXml } = await import("./obsidian/commands");
+      // Best-effort pre-save sync (silently skipped if there's no XML yet).
+      if (this.settings.sourceXmlPath && this.vault?.exists(this.settings.sourceXmlPath)) {
+        await regenerateXml(this.commandsCtx);
+      }
+    } catch (e) {
+      console.warn("[Timeline XML Sync] pre-change sync skipped:", e);
+    }
+    mutate();
+    await this.saveSettings();
+    new Notice(
+      "Setting changed. Run \"Wipe event notes and reimport from XML\" to refresh notes to the new schema.",
+      9000
+    );
   }
 
   private async persistAll(): Promise<void> {

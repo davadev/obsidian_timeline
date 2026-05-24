@@ -6,7 +6,8 @@ import {
   type Vault,
 } from "obsidian";
 import { parseTimelineXml } from "../timeline/xml-parser";
-import type { TimelineDoc } from "../timeline/model";
+import { parseEventNote } from "../timeline/markdown-parser";
+import type { TimelineCategory, TimelineDoc, TimelineEvent } from "../timeline/model";
 import type { TimelineXmlSyncSettings } from "../settings";
 
 /**
@@ -131,5 +132,67 @@ export class TimelineCache {
     this.indexBuilt = false;
     this.idToPath.clear();
     this.pathToId.clear();
+    this.mdDoc = null;
+    this.mdDocBuiltAt = 0;
   }
+
+  /**
+   * Build a TimelineDoc-like value from Markdown notes in the event dir.
+   * Cached for `MD_DOC_TTL_MS` so a render burst doesn't re-read every file.
+   */
+  private mdDoc: TimelineDoc | null = null;
+  private mdDocBuiltAt = 0;
+
+  async getMdDoc(): Promise<TimelineDoc> {
+    const now = Date.now();
+    if (this.mdDoc && now - this.mdDocBuiltAt < MD_DOC_TTL_MS) return this.mdDoc;
+    const s = this.getSettings();
+    const dir = s.eventNotesDir;
+    const events: TimelineEvent[] = [];
+    const categories = new Map<string, TimelineCategory>();
+    if (dir) {
+      const files = this.vault.getMarkdownFiles().filter(
+        (f) => f.path === dir || f.path.startsWith(dir + "/")
+      );
+      // Yield to the UI every BATCH files so we never block the main thread
+      // for long on iOS / large vaults.
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        try {
+          const raw = await this.vault.cachedRead(f);
+          const p = parseEventNote(raw, { path: f.path, mirrorNames: s.mirrorNames });
+          if (p.note) {
+            events.push(p.note.event);
+            const cat = p.note.event.category;
+            if (cat && !categories.has(cat)) {
+              categories.set(cat, { name: cat, color: s.categoryColors[cat] });
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+        if ((i + 1) % BATCH === 0) await yieldToUi();
+      }
+    }
+    this.mdDoc = {
+      version: "md",
+      timetype: "gregoriantime",
+      categories: Array.from(categories.values()),
+      events,
+    };
+    this.mdDocBuiltAt = now;
+    return this.mdDoc;
+  }
+
+  invalidateMdDoc(): void {
+    this.mdDoc = null;
+    this.mdDocBuiltAt = 0;
+  }
+}
+
+const MD_DOC_TTL_MS = 30_000;
+const BATCH = 25;
+
+function yieldToUi(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
 }

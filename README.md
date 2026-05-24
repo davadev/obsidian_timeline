@@ -8,6 +8,16 @@ Mobile-safe — uses only the Obsidian Vault API and browser DOM/SVG. No `fs`, `
 
 ---
 
+## About Timeline Project
+
+The companion desktop application this plugin syncs with is **Timeline Project** — a free open-source timeline editor written in Python/wxWidgets.
+
+- Homepage / download: <http://thetimelineproj.sourceforge.net/>
+- Source code: <https://sourceforge.net/projects/thetimelineproj/>
+- Documentation: <https://thetimelineproj.sourceforge.net/docs/contents.html>
+
+Tested target: **Timeline 2.11** (`<version>2.11.0</version>`, `<timetype>gregoriantime</timetype>`).
+
 ## Features
 
 - Imports a `.timeline` XML save file into one Markdown note per event.

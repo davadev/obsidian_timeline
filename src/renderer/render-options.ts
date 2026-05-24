@@ -25,6 +25,10 @@ export interface RenderOptions {
   zoom: number;
   /** Axis orientation. Vertical reads top→bottom, lanes are columns. */
   orientation: Orientation;
+  /** Years to pad on each side of a zero-span viewport (single-point event note). */
+  pointPaddingYears?: number;
+  /** Show the in-rendered filter chip bar above the timeline. */
+  showFilterUI: boolean;
 }
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
@@ -35,4 +39,5 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   show: ["title", "date", "category", "description"],
   zoom: 1,
   orientation: "horizontal",
+  showFilterUI: true,
 };

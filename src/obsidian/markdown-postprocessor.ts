@@ -40,19 +40,62 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
   ) {
     const child = new MarkdownRenderChild(el);
     md.addChild(child);
+    // Defer the heavy work until the block scrolls into view. Cheap placeholder
+    // first; IntersectionObserver triggers the real render exactly once. Falls
+    // back to immediate render if IntersectionObserver isn't available.
+    el.createDiv({ cls: "txs-timeline-placeholder", text: "Timeline loading…" });
+    const run = () => {
+      el.empty();
+      void doRender();
+    };
+    if (typeof IntersectionObserver === "undefined") {
+      run();
+      return;
+    }
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            obs.disconnect();
+            run();
+            return;
+          }
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    obs.observe(el);
+    child.register(() => obs.disconnect());
+
+    async function doRender() {
     try {
       const settings = ctx.getSettings();
       const opts = parseBlockOptions(source, settings.renderDefaults);
       const xmlPath = opts.sourceXmlOverride || settings.sourceXmlPath;
-      if (!xmlPath) {
-        renderError(el, "No source XML configured. Set it in plugin settings.");
+      const xmlAvailable = !!xmlPath && ctx.vault.exists(xmlPath);
+      let doc;
+      const mode = settings.eventSource;
+      if (mode === "xml") {
+        if (!xmlAvailable) {
+          renderError(el, `XML file not found: ${xmlPath ?? "(unset)"}`);
+          return;
+        }
+        doc = await ctx.cache.getXml(xmlPath);
+      } else if (mode === "md") {
+        doc = await ctx.cache.getMdDoc();
+      } else {
+        // auto
+        doc = xmlAvailable
+          ? await ctx.cache.getXml(xmlPath)
+          : await ctx.cache.getMdDoc();
+      }
+      if (!doc.events.length && !xmlAvailable && mode !== "xml") {
+        renderError(
+          el,
+          `No events found. Configure event notes directory or run "Auto-detect event notes" in settings.`
+        );
         return;
       }
-      if (!ctx.vault.exists(xmlPath)) {
-        renderError(el, `XML file not found: ${xmlPath}`);
-        return;
-      }
-      const doc = await ctx.cache.getXml(xmlPath);
 
       // Filter by category include/exclude
       let events: TimelineEvent[] = doc.events;
@@ -66,11 +109,22 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
       }
 
       // Viewport: from current note frontmatter, or from XML displayed_period
-      const viewport = await resolveViewport(ctx, md.sourcePath, doc);
+      let viewport = await resolveViewport(ctx, md.sourcePath, doc);
+      const padYears = opts.pointPaddingYears ?? settings.pointPaddingYears;
+      viewport = expandDegenerateViewport(viewport, padYears);
       if (viewport) {
         events = eventsInViewport(events, viewport);
       }
 
+      const initialHidden = new Set<string>(settings.hiddenCategories);
+      if (opts.categoryInclude && opts.categoryInclude.length) {
+        // include-mode: hide everything not in the include set
+        const inc = new Set(opts.categoryInclude);
+        for (const c of doc.categories) if (!inc.has(c.name)) initialHidden.add(c.name);
+      }
+      if (opts.categoryExclude) {
+        for (const c of opts.categoryExclude) initialHidden.add(c);
+      }
       renderTimeline({
         container: el,
         events,
@@ -82,9 +136,12 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
           if (path) ctx.app.workspace.openLinkText(path, "", false);
         },
         categoryColors: settings.categoryColors,
+        initialHidden: Array.from(initialHidden),
+        filterKey: opts.source || "default",
       });
     } catch (e) {
       renderError(el, (e as Error).message);
+    }
     }
   };
 }
@@ -122,6 +179,15 @@ export function parseBlockOptions(
   }
   if (parsed.orientation === "vertical" || parsed.orientation === "horizontal") {
     opt.orientation = parsed.orientation;
+  }
+  if (
+    typeof parsed.pointPaddingYears === "number" &&
+    Number.isFinite(parsed.pointPaddingYears)
+  ) {
+    opt.pointPaddingYears = parsed.pointPaddingYears;
+  }
+  if (typeof parsed.showFilterUI === "boolean") {
+    opt.showFilterUI = parsed.showFilterUI;
   }
   const cats = parsed.categories as Record<string, unknown> | undefined;
   if (cats && typeof cats === "object") {
@@ -175,6 +241,27 @@ function asViewportDate(v: unknown): TimelineDate | null {
     return null;
   }
   return parseFrontmatterDate(v as string | number);
+}
+
+/**
+ * Pad a zero-span (or very narrow) viewport so single-point event notes get
+ * usable surrounding context. Returns null when input is null.
+ */
+function expandDegenerateViewport(
+  vp: ViewportRange | null,
+  padYears: number
+): ViewportRange | null {
+  if (!vp) return vp;
+  const sameYear = vp.start.year === vp.end.year;
+  const sameMonth = (vp.start.month ?? 1) === (vp.end.month ?? 1);
+  const sameDay = (vp.start.day ?? 1) === (vp.end.day ?? 1);
+  const span = sameYear && sameMonth && sameDay;
+  if (!span || padYears <= 0) return vp;
+  const pad = Math.max(1, Math.floor(padYears));
+  return {
+    start: { ...vp.start, year: vp.start.year - pad },
+    end: { ...vp.end, year: vp.end.year + pad },
+  };
 }
 
 function autoViewport(events: TimelineEvent[]): ViewportRange | undefined {

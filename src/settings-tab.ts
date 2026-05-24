@@ -17,6 +17,24 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
     containerEl.empty();
     const s = this.plugin.settings;
 
+    const help = containerEl.createDiv({ cls: "setting-item-description" });
+    help.appendText("Needs a .timeline save file from ");
+    help.createEl("a", {
+      text: "Timeline Project",
+      href: "http://thetimelineproj.sourceforge.net/",
+    }).setAttr("target", "_blank");
+    help.appendText(" (free desktop app). Docs: ");
+    help.createEl("a", {
+      text: "thetimelineproj.sourceforge.net/docs",
+      href: "https://thetimelineproj.sourceforge.net/docs/contents.html",
+    }).setAttr("target", "_blank");
+    help.appendText(". Plugin source / issues: ");
+    help.createEl("a", {
+      text: "github.com/davadev/obsidian_timeline",
+      href: "https://github.com/davadev/obsidian_timeline",
+    }).setAttr("target", "_blank");
+    help.appendText(".");
+
     containerEl.createEl("h2", { text: "Paths" });
 
     new Setting(containerEl)
@@ -100,6 +118,34 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Auto-detect event notes (scan vault)")
+      .setDesc(
+        "Walks the vault for notes with timeline.enabled: true and points the plugin at the longest common parent folder. Useful first-run action on mobile."
+      )
+      .addButton((b) =>
+        b
+          .setButtonText("Detect")
+          .onClick(() => this.plugin.runCommand("txs-auto-detect"))
+      );
+
+    new Setting(containerEl)
+      .setName("Event source for rendering")
+      .setDesc(
+        "auto: prefer XML when present, fall back to Markdown scan. xml: always read the .timeline XML. md: always build events from Markdown notes (mobile-friendly when XML is not synced)."
+      )
+      .addDropdown((d) =>
+        d
+          .addOption("auto", "auto")
+          .addOption("xml", "xml")
+          .addOption("md", "md")
+          .setValue(s.eventSource)
+          .onChange(async (v) => {
+            s.eventSource = v as typeof s.eventSource;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Wipe event notes and reimport from XML")
       .setDesc(
         "Use after a plugin upgrade that changed the event-note schema. Backs up the XML, deletes every .md in the event notes directory, then reimports."
@@ -123,12 +169,16 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
     for (const key of mirrorFields) {
       new Setting(containerEl)
         .setName(`timeline.${key}`)
+        .setDesc("Schema-affecting — changing this will offer a reimport.")
         .addText((t) =>
           t
             .setValue(s.mirrorNames[key])
-            .onChange(async (v) => {
-              s.mirrorNames[key] = v.trim() || DEFAULT_MIRROR_NAMES[key];
-              await this.plugin.saveSettings();
+            .onChange((v) => {
+              const next = v.trim() || DEFAULT_MIRROR_NAMES[key];
+              if (next === s.mirrorNames[key]) return;
+              void this.plugin.applySchemaAffectingChange(() => {
+                s.mirrorNames[key] = next;
+              });
             })
         );
     }
@@ -192,6 +242,50 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
               s.renderDefaults.zoom = n;
               await this.plugin.saveSettings();
             }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Years of context for single-point notes")
+      .setDesc(
+        "When a viewer note's start = end, the viewport is padded by this many years on each side so neighbouring range events are visible. Per-block override: pointPaddingYears: <n>."
+      )
+      .addText((t) =>
+        t.setValue(String(s.pointPaddingYears)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n >= 0) {
+            s.pointPaddingYears = n;
+            await this.plugin.saveSettings();
+          }
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Show in-render filter bar by default")
+      .setDesc(
+        "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false."
+      )
+      .addToggle((t) =>
+        t.setValue(s.renderDefaults.showFilterUI).onChange(async (v) => {
+          s.renderDefaults.showFilterUI = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Globally hidden categories")
+      .setDesc(
+        "Comma-separated list. Hidden by default in every render; the in-render chip bar can re-enable per timeline."
+      )
+      .addText((t) =>
+        t
+          .setValue(s.hiddenCategories.join(","))
+          .onChange(async (v) => {
+            s.hiddenCategories = v
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean);
+            await this.plugin.saveSettings();
           })
       );
 

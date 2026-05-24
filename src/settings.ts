@@ -34,6 +34,24 @@ export interface TimelineXmlSyncSettings {
   knownCategories: string[];
   /** Last event-note schema version that wrote the existing notes. */
   lastImportSchemaVersion: number;
+  /**
+   * Years added on each side of a degenerate (zero-span) viewport so that
+   * single-point event notes still show neighbouring range events.
+   * Per-block override: `pointPaddingYears: <n>`.
+   */
+  pointPaddingYears: number;
+  /** Categories hidden by default (global filter). Per-block include/exclude wins. */
+  hiddenCategories: string[];
+  /**
+   * Where to read events from when rendering ` ```timeline ` blocks.
+   * - "xml": always use the configured XML file. Fail if missing.
+   * - "md": always build the event list from Markdown notes in eventNotesDir.
+   * - "auto": prefer XML when it exists, fall back to MD scan otherwise.
+   *
+   * The auto + md modes are what make the plugin useful on iOS when you only
+   * have Markdown notes synced (no Timeline Project XML available).
+   */
+  eventSource: "xml" | "md" | "auto";
 }
 
 /**
@@ -59,4 +77,7 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   logLevel: "info",
   knownCategories: [],
   lastImportSchemaVersion: 0,
+  pointPaddingYears: 100,
+  hiddenCategories: [],
+  eventSource: "auto",
 };

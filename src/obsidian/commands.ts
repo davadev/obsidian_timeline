@@ -82,6 +82,79 @@ export function registerCommands(ctx: CommandsContext): void {
     name: "Wipe event notes and reimport from XML",
     callback: () => wipeAndReimport(ctx).catch(reportErr),
   });
+
+  plugin.addCommand({
+    id: "txs-auto-detect",
+    name: "Auto-detect event notes (scan vault)",
+    callback: () => autoDetectEventNotes(ctx).catch(reportErr),
+  });
+}
+
+/**
+ * Walks the metadataCache for every markdown file with `timeline.enabled: true`
+ * in its frontmatter and infers the event notes directory + likely timeline id
+ * from the longest common parent path. Updates settings and rebuilds caches.
+ * Useful first-run action on iOS where you may already have the markdown notes
+ * but no XML.
+ */
+export async function autoDetectEventNotes(
+  ctx: CommandsContext
+): Promise<void> {
+  const matches: { path: string; id?: string }[] = [];
+  for (const f of ctx.app.vault.getMarkdownFiles()) {
+    const meta = ctx.app.metadataCache.getFileCache(f);
+    const fm = meta?.frontmatter as Record<string, unknown> | undefined;
+    if (!fm) continue;
+    const tl = fm.timeline;
+    if (!tl || typeof tl !== "object" || Array.isArray(tl)) continue;
+    if ((tl as Record<string, unknown>).enabled !== true) continue;
+    const id = (tl as Record<string, unknown>).id;
+    matches.push({ path: f.path, id: typeof id === "string" ? id : undefined });
+  }
+  if (!matches.length) {
+    new Notice("No timeline-enabled notes found in vault.");
+    return;
+  }
+  const s = ctx.getSettings();
+  const dir = longestCommonDir(matches.map((m) => m.path));
+  if (dir) s.eventNotesDir = dir;
+  // Pick most frequent timeline id.
+  const idCounts = new Map<string, number>();
+  for (const m of matches) {
+    if (!m.id) continue;
+    idCounts.set(m.id, (idCounts.get(m.id) ?? 0) + 1);
+  }
+  if (idCounts.size) {
+    let best = "";
+    let bestN = 0;
+    for (const [id, n] of idCounts) {
+      if (n > bestN) {
+        best = id;
+        bestN = n;
+      }
+    }
+    if (best) s.timelineId = best;
+  }
+  await ctx.saveSettings();
+  ctx.cache.resetIndex();
+  ctx.cache.invalidateMdDoc();
+  new Notice(
+    `Detected ${matches.length} timeline note(s) in "${s.eventNotesDir}" (id: ${s.timelineId}).`
+  );
+}
+
+function longestCommonDir(paths: string[]): string {
+  if (!paths.length) return "";
+  const parts = paths.map((p) => p.split("/").slice(0, -1));
+  let common: string[] = parts[0].slice();
+  for (let i = 1; i < parts.length; i++) {
+    const other = parts[i];
+    let j = 0;
+    while (j < common.length && j < other.length && common[j] === other[j]) j++;
+    common = common.slice(0, j);
+    if (!common.length) break;
+  }
+  return common.join("/");
 }
 
 /**
