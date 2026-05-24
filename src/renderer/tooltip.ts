@@ -3,17 +3,24 @@ import { toFrontmatterString } from "../timeline/date";
 
 let activeTip: HTMLElement | null = null;
 
+/**
+ * Show a tooltip near the given page coordinates. Attaches to document.body
+ * with `position: fixed` so it floats above any scroll container — earlier
+ * versions attached it to the bar wrapper and the tooltip ended up clipped
+ * or mis-positioned when the global Timeline view's scrollable body shifted.
+ */
 export function showTooltip(
-  container: HTMLElement,
+  _container: HTMLElement,
   ev: TimelineEvent,
-  x: number,
-  y: number
+  clientX: number,
+  clientY: number
 ): void {
   hideTooltip();
   const tip = document.createElement("div");
   tip.className = "txs-tooltip";
-  tip.style.left = `${x + 12}px`;
-  tip.style.top = `${y + 12}px`;
+  tip.style.position = "fixed";
+  tip.style.left = `${clientX + 12}px`;
+  tip.style.top = `${clientY + 12}px`;
   tip.innerHTML = "";
   const title = document.createElement("div");
   title.style.fontWeight = "600";
@@ -44,7 +51,20 @@ export function showTooltip(
     tip.appendChild(d);
   }
 
-  container.appendChild(tip);
+  // Hide first to avoid a visible flash when the initial placement is
+  // outside the viewport — measure once, then reposition + show.
+  tip.style.visibility = "hidden";
+  document.body.appendChild(tip);
+  const r = tip.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left = clientX + 12;
+  let top = clientY + 12;
+  if (left + r.width > vw - 8) left = Math.max(8, clientX - r.width - 12);
+  if (top + r.height > vh - 8) top = Math.max(8, clientY - r.height - 12);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+  tip.style.visibility = "visible";
   activeTip = tip;
 }
 

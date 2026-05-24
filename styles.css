@@ -55,17 +55,20 @@
 .txs-axis-line {
   stroke: var(--text-faint);
   stroke-width: 1;
+  pointer-events: none;
 }
 
 .txs-axis-tick {
   stroke: var(--text-muted);
   stroke-width: 1;
+  pointer-events: none;
 }
 
 .txs-axis-text {
   fill: var(--text-muted);
   font-size: 10px;
   text-anchor: middle;
+  pointer-events: none;
 }
 
 .txs-timeline-list {
@@ -263,6 +266,31 @@
 
 .txs-view-header h3 {
   margin: 0;
+}
+
+.txs-view-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 4px 0;
+}
+
+.txs-view-search {
+  flex: 1 1 200px;
+  min-width: 120px;
+  padding: 4px 8px;
+}
+
+.txs-view-range-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.txs-view-year {
+  width: 70px;
+  padding: 4px 6px;
 }
 
 .txs-view-body {

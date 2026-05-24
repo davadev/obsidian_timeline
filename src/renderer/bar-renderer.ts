@@ -184,7 +184,11 @@ function attachEvents(
   if (!isMobile) {
     el.addEventListener("mouseenter", (e) => {
       const me = e as MouseEvent;
-      showTooltip(container, ev, me.offsetX, me.offsetY);
+      showTooltip(container, ev, me.clientX, me.clientY);
+    });
+    el.addEventListener("mousemove", (e) => {
+      const me = e as MouseEvent;
+      showTooltip(container, ev, me.clientX, me.clientY);
     });
     el.addEventListener("mouseleave", () => hideTooltip());
   }
@@ -260,6 +264,7 @@ function drawLaneStripes(
     }
     rect.setAttribute("fill", "var(--background-modifier-hover)");
     rect.setAttribute("opacity", "0.35");
+    rect.setAttribute("pointer-events", "none");
     svg.appendChild(rect);
   }
 }
