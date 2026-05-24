@@ -1,0 +1,27 @@
+# Obsidian
+.obsidian/
+
+# Build
+node_modules/
+main.js
+*.js.map
+dist/
+build/
+
+# Personal Timeline fixture (do not commit user data)
+Timeline2_11.timeline
+*.timeline
+!tests/fixtures/*.timeline
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test artifacts
+coverage/
+.nyc_output/

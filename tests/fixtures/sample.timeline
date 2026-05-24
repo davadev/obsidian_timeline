@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories>
+    <category>
+      <name>Prophecies</name>
+      <color>120,180,90</color>
+      <progress_color>180,220,140</progress_color>
+      <done_color>90,150,60</done_color>
+      <font_color>0,0,0</font_color>
+    </category>
+    <category>
+      <name>Kingdoms</name>
+      <color>200,120,80</color>
+      <progress_color>240,180,140</progress_color>
+      <done_color>150,80,40</done_color>
+      <font_color>0,0,0</font_color>
+    </category>
+  </categories>
+  <events>
+    <event id="seventy-weeks">
+      <start>-0454-03-30 00:00:00</start>
+      <end>0036-07-30 00:00:00</end>
+      <text>70 weeks of years</text>
+      <category>Prophecies</category>
+      <description>Daniel 9:24-27 prophecy reckoning</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="medo-persia">
+      <start>-0539-01-01 00:00:00</start>
+      <end>-0331-01-01 00:00:00</end>
+      <text>Medo-Persian Empire</text>
+      <category>Kingdoms</category>
+      <description>From fall of Babylon to Alexander's conquest.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="point-event">
+      <start>0033-04-03 00:00:00</start>
+      <end>0033-04-03 00:00:00</end>
+      <text>Sample point event</text>
+      <category>Prophecies</category>
+      <description>A point event used as a marker.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+  </events>
+  <view>
+    <displayed_period>
+      <start>-0500-01-01 00:00:00</start>
+      <end>0100-01-01 00:00:00</end>
+    </displayed_period>
+    <hidden_categories/>
+  </view>
+</timeline>

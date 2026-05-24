@@ -1,0 +1,123 @@
+/* Timeline XML Sync — render block styles */
+
+.txs-timeline {
+  width: 100%;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.txs-timeline-bar {
+  width: 100%;
+  position: relative;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.txs-timeline-bar svg {
+  display: block;
+  min-width: 100%;
+}
+
+.txs-event-bar {
+  cursor: pointer;
+  rx: 3;
+  ry: 3;
+}
+
+.txs-event-point {
+  cursor: pointer;
+}
+
+.txs-event-label {
+  font-size: 11px;
+  fill: var(--text-on-accent);
+  pointer-events: none;
+  dominant-baseline: middle;
+}
+
+.txs-axis-line {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+}
+
+.txs-axis-tick {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+
+.txs-axis-text {
+  fill: var(--text-muted);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.txs-timeline-list {
+  margin-top: 8px;
+  list-style: none;
+  padding-left: 0;
+}
+
+.txs-timeline-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.txs-timeline-list .txs-date {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  margin-right: 6px;
+}
+
+.txs-timeline-list .txs-category {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  margin-left: 6px;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+.txs-timeline-list .txs-title {
+  font-weight: 600;
+}
+
+.txs-timeline-list .txs-desc {
+  display: block;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.txs-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  max-width: 280px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.txs-mobile-panel {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+}
+
+.txs-error {
+  color: var(--text-error);
+  font-family: var(--font-monospace);
+  padding: 8px;
+  border-left: 3px solid var(--text-error);
+  background: var(--background-secondary);
+}
