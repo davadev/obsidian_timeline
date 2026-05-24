@@ -41,8 +41,8 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
     const child = new MarkdownRenderChild(el);
     md.addChild(child);
     try {
-      const opts = parseBlockOptions(source);
       const settings = ctx.getSettings();
+      const opts = parseBlockOptions(source, settings.renderDefaults);
       const xmlPath = opts.sourceXmlOverride || settings.sourceXmlPath;
       if (!xmlPath) {
         renderError(el, "No source XML configured. Set it in plugin settings.");
@@ -95,7 +95,10 @@ function renderError(el: HTMLElement, msg: string): void {
 }
 
 /** Parse the YAML body of a ```timeline block. */
-export function parseBlockOptions(source: string): RenderOptions {
+export function parseBlockOptions(
+  source: string,
+  base: RenderOptions = DEFAULT_RENDER_OPTIONS
+): RenderOptions {
   let parsed: Record<string, unknown> = {};
   try {
     const p = YAML.parse(source);
@@ -105,7 +108,7 @@ export function parseBlockOptions(source: string): RenderOptions {
   } catch {
     // ignore — use defaults
   }
-  const opt: RenderOptions = { ...DEFAULT_RENDER_OPTIONS };
+  const opt: RenderOptions = { ...base };
   if (typeof parsed.mode === "string") opt.mode = parsed.mode as RenderOptions["mode"];
   if (typeof parsed.source === "string") opt.source = parsed.source;
   if (typeof parsed.sourceXml === "string") opt.sourceXmlOverride = parsed.sourceXml;
@@ -113,6 +116,12 @@ export function parseBlockOptions(source: string): RenderOptions {
   if (typeof parsed.sort === "string") opt.sort = parsed.sort as RenderOptions["sort"];
   if (Array.isArray(parsed.show)) {
     opt.show = parsed.show.filter((x): x is string => typeof x === "string") as RenderOptions["show"];
+  }
+  if (typeof parsed.zoom === "number" && Number.isFinite(parsed.zoom) && parsed.zoom > 0) {
+    opt.zoom = parsed.zoom;
+  }
+  if (parsed.orientation === "vertical" || parsed.orientation === "horizontal") {
+    opt.orientation = parsed.orientation;
   }
   const cats = parsed.categories as Record<string, unknown> | undefined;
   if (cats && typeof cats === "object") {

@@ -6,16 +6,28 @@ import {
   toFrontmatterString,
 } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
+import type { Orientation } from "./render-options";
+
+/**
+ * SVG bar renderer that supports two orientations:
+ *
+ * - horizontal: time runs left→right, lanes stack top↓bottom. SVG width grows
+ *   with the zoom factor and the wrapper allows horizontal scrolling.
+ * - vertical: time runs top→bottom, lanes are columns running left→right.
+ *   SVG height grows with the zoom factor and the wrapper scrolls vertically.
+ *   Labels on bars are rendered rotated 90° so they remain readable; tooltips
+ *   and mobile panels stay horizontal.
+ */
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const LANE_HEIGHT = 26;
+const LANE_THICKNESS = 26; // height (horizontal) or width (vertical) of one lane
 const LANE_GAP = 6;
-const TOP_PAD = 34;
-const BOTTOM_PAD = 10;
+const AXIS_PAD = 34; // padding before first lane that holds axis labels
+const TAIL_PAD = 10;
 const POINT_RADIUS = 6;
 const LABEL_PAD = 8;
-const CHAR_W = 6.5; // approx px per character at 12px UI font
-const MIN_BAR_WIDTH = 4;
+const CHAR_W = 6.5;
+const MIN_BAR_THICKNESS = 4;
 
 export interface BarRenderArgs {
   container: HTMLElement;
@@ -24,39 +36,66 @@ export interface BarRenderArgs {
   viewport: ViewportRange | undefined;
   categoryColors: Record<string, string>;
   onOpenEvent: (id: string) => void;
+  zoom: number;
+  orientation: Orientation;
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
-  const { container, events, viewport, categoryColors, onOpenEvent } = args;
+  const {
+    container,
+    events,
+    viewport,
+    categoryColors,
+    onOpenEvent,
+    zoom,
+    orientation,
+  } = args;
   const wrapper = container.createDiv({ cls: "txs-timeline-bar" });
   if (!viewport || events.length === 0) {
     wrapper.createDiv({ text: "No events to display." });
     return wrapper;
   }
+  const isVertical = orientation === "vertical";
+  wrapper.toggleClass("txs-vertical", isVertical);
 
   const lanes = assignLanes(events);
   const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
-  const width = Math.max(320, container.clientWidth || 800);
-  const height = TOP_PAD + laneCount * (LANE_HEIGHT + LANE_GAP) + BOTTOM_PAD;
+
+  const containerSize = isVertical
+    ? Math.max(280, container.clientWidth || 640)
+    : Math.max(320, container.clientWidth || 800);
+  // Time-axis size grows with zoom; cross-axis is laneCount-derived.
+  const timeAxisBase = isVertical
+    ? Math.max(360, container.clientHeight || 600)
+    : containerSize;
+  const timeAxisSize = Math.max(120, Math.round(timeAxisBase * zoom));
+  const crossAxisSize =
+    AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
+
+  const width = isVertical ? crossAxisSize : timeAxisSize;
+  const height = isVertical ? timeAxisSize : crossAxisSize;
 
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-  drawLaneStripes(svg, laneCount, width);
-  drawAxis(svg, viewport, width, height);
+  drawLaneStripes(svg, laneCount, isVertical, width, height);
+  drawAxis(svg, viewport, isVertical, width, height);
 
   const isMobile = isLikelyMobile();
 
   events.forEach((ev, i) => {
     const lane = lanes[i];
-    const y = TOP_PAD + lane * (LANE_HEIGHT + LANE_GAP);
+    const cross = AXIS_PAD + lane * (LANE_THICKNESS + LANE_GAP);
     const color = colorFor(ev, categoryColors);
     const textColor = contrastTextColor(color);
     if (ev.isPoint) {
-      const cx = fractionalPosition(ev.start, viewport.start, viewport.end) * width;
-      const cy = y + LANE_HEIGHT / 2;
+      const along =
+        fractionalPosition(ev.start, viewport.start, viewport.end) *
+        timeAxisSize;
+      const cx = isVertical ? cross + LANE_THICKNESS / 2 : along;
+      const cy = isVertical ? along : cross + LANE_THICKNESS / 2;
       const circle = document.createElementNS(SVG_NS, "circle");
       circle.setAttribute("cx", String(cx));
       circle.setAttribute("cy", String(cy));
@@ -68,14 +107,24 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(circle, ev, container, onOpenEvent, isMobile);
       svg.appendChild(circle);
     } else {
-      const x1 = fractionalPosition(ev.start, viewport.start, viewport.end) * width;
-      const x2 = fractionalPosition(ev.end, viewport.start, viewport.end) * width;
-      const w = Math.max(MIN_BAR_WIDTH, x2 - x1);
+      const a1 =
+        fractionalPosition(ev.start, viewport.start, viewport.end) *
+        timeAxisSize;
+      const a2 =
+        fractionalPosition(ev.end, viewport.start, viewport.end) * timeAxisSize;
+      const span = Math.max(MIN_BAR_THICKNESS, a2 - a1);
       const rect = document.createElementNS(SVG_NS, "rect");
-      rect.setAttribute("x", String(x1));
-      rect.setAttribute("y", String(y));
-      rect.setAttribute("width", String(w));
-      rect.setAttribute("height", String(LANE_HEIGHT));
+      if (isVertical) {
+        rect.setAttribute("x", String(cross));
+        rect.setAttribute("y", String(a1));
+        rect.setAttribute("width", String(LANE_THICKNESS));
+        rect.setAttribute("height", String(span));
+      } else {
+        rect.setAttribute("x", String(a1));
+        rect.setAttribute("y", String(cross));
+        rect.setAttribute("width", String(span));
+        rect.setAttribute("height", String(LANE_THICKNESS));
+      }
       rect.setAttribute("rx", "4");
       rect.setAttribute("ry", "4");
       rect.setAttribute("fill", color);
@@ -83,14 +132,27 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
 
-      const maxChars = Math.floor((w - LABEL_PAD * 2) / CHAR_W);
+      const maxChars = Math.floor((span - LABEL_PAD * 2) / CHAR_W);
       if (maxChars >= 4) {
         const label = document.createElementNS(SVG_NS, "text");
-        label.setAttribute("x", String(x1 + LABEL_PAD));
-        label.setAttribute("y", String(y + LANE_HEIGHT / 2));
+        const text = truncate(ev.text, maxChars);
+        if (isVertical) {
+          const tx = cross + LANE_THICKNESS / 2;
+          const ty = a1 + LABEL_PAD;
+          label.setAttribute("x", String(tx));
+          label.setAttribute("y", String(ty));
+          label.setAttribute(
+            "transform",
+            `rotate(90 ${tx} ${ty})`
+          );
+          label.setAttribute("text-anchor", "start");
+        } else {
+          label.setAttribute("x", String(a1 + LABEL_PAD));
+          label.setAttribute("y", String(cross + LANE_THICKNESS / 2));
+        }
         label.setAttribute("class", "txs-event-label");
         label.setAttribute("fill", textColor);
-        label.textContent = truncate(ev.text, maxChars);
+        label.textContent = text;
         svg.appendChild(label);
       }
     }
@@ -151,14 +213,29 @@ function showMobilePanel(
   closeBtn.addEventListener("click", () => panel.remove());
 }
 
-function drawLaneStripes(svg: SVGSVGElement, laneCount: number, width: number): void {
+function drawLaneStripes(
+  svg: SVGSVGElement,
+  laneCount: number,
+  isVertical: boolean,
+  width: number,
+  height: number
+): void {
   for (let i = 0; i < laneCount; i++) {
     if (i % 2 === 0) continue;
+    const offset = AXIS_PAD + i * (LANE_THICKNESS + LANE_GAP) - LANE_GAP / 2;
+    const thickness = LANE_THICKNESS + LANE_GAP;
     const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("x", "0");
-    rect.setAttribute("y", String(TOP_PAD + i * (LANE_HEIGHT + LANE_GAP) - LANE_GAP / 2));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(LANE_HEIGHT + LANE_GAP));
+    if (isVertical) {
+      rect.setAttribute("x", String(offset));
+      rect.setAttribute("y", "0");
+      rect.setAttribute("width", String(thickness));
+      rect.setAttribute("height", String(height));
+    } else {
+      rect.setAttribute("x", "0");
+      rect.setAttribute("y", String(offset));
+      rect.setAttribute("width", String(width));
+      rect.setAttribute("height", String(thickness));
+    }
     rect.setAttribute("fill", "var(--background-modifier-hover)");
     rect.setAttribute("opacity", "0.35");
     svg.appendChild(rect);
@@ -168,43 +245,81 @@ function drawLaneStripes(svg: SVGSVGElement, laneCount: number, width: number): 
 function drawAxis(
   svg: SVGSVGElement,
   vp: ViewportRange,
+  isVertical: boolean,
   width: number,
   height: number
 ): void {
+  const timeSize = isVertical ? height : width;
+  // Axis baseline
   const line = document.createElementNS(SVG_NS, "line");
-  line.setAttribute("x1", "0");
-  line.setAttribute("y1", String(TOP_PAD - 6));
-  line.setAttribute("x2", String(width));
-  line.setAttribute("y2", String(TOP_PAD - 6));
+  if (isVertical) {
+    line.setAttribute("x1", String(AXIS_PAD - 6));
+    line.setAttribute("y1", "0");
+    line.setAttribute("x2", String(AXIS_PAD - 6));
+    line.setAttribute("y2", String(height));
+  } else {
+    line.setAttribute("x1", "0");
+    line.setAttribute("y1", String(AXIS_PAD - 6));
+    line.setAttribute("x2", String(width));
+    line.setAttribute("y2", String(AXIS_PAD - 6));
+  }
   line.setAttribute("class", "txs-axis-line");
   svg.appendChild(line);
 
-  const tickCount = Math.min(8, Math.max(4, Math.floor(width / 120)));
+  const tickCount = Math.min(
+    16,
+    Math.max(4, Math.floor(timeSize / (isVertical ? 80 : 120)))
+  );
   for (let i = 0; i <= tickCount; i++) {
-    const x = (i / tickCount) * width;
-    const t = document.createElementNS(SVG_NS, "line");
-    t.setAttribute("x1", String(x));
-    t.setAttribute("y1", String(TOP_PAD - 12));
-    t.setAttribute("x2", String(x));
-    t.setAttribute("y2", String(TOP_PAD - 2));
-    t.setAttribute("class", "txs-axis-tick");
-    svg.appendChild(t);
+    const t = i / tickCount;
+    const along = t * timeSize;
 
+    // tick mark
+    const tick = document.createElementNS(SVG_NS, "line");
+    if (isVertical) {
+      tick.setAttribute("x1", String(AXIS_PAD - 12));
+      tick.setAttribute("y1", String(along));
+      tick.setAttribute("x2", String(AXIS_PAD - 2));
+      tick.setAttribute("y2", String(along));
+    } else {
+      tick.setAttribute("x1", String(along));
+      tick.setAttribute("y1", String(AXIS_PAD - 12));
+      tick.setAttribute("x2", String(along));
+      tick.setAttribute("y2", String(AXIS_PAD - 2));
+    }
+    tick.setAttribute("class", "txs-axis-tick");
+    svg.appendChild(tick);
+
+    // grid line
     const grid = document.createElementNS(SVG_NS, "line");
-    grid.setAttribute("x1", String(x));
-    grid.setAttribute("y1", String(TOP_PAD));
-    grid.setAttribute("x2", String(x));
-    grid.setAttribute("y2", String(height - BOTTOM_PAD));
+    if (isVertical) {
+      grid.setAttribute("x1", String(AXIS_PAD));
+      grid.setAttribute("y1", String(along));
+      grid.setAttribute("x2", String(width - TAIL_PAD));
+      grid.setAttribute("y2", String(along));
+    } else {
+      grid.setAttribute("x1", String(along));
+      grid.setAttribute("y1", String(AXIS_PAD));
+      grid.setAttribute("x2", String(along));
+      grid.setAttribute("y2", String(height - TAIL_PAD));
+    }
     grid.setAttribute("stroke", "var(--background-modifier-border)");
     grid.setAttribute("stroke-width", "1");
     grid.setAttribute("opacity", "0.4");
     svg.appendChild(grid);
 
+    // label
     const text = document.createElementNS(SVG_NS, "text");
-    text.setAttribute("x", String(clampLabel(x, width)));
-    text.setAttribute("y", String(TOP_PAD - 16));
     text.setAttribute("class", "txs-axis-text");
-    text.textContent = interpolateYearLabel(vp, i / tickCount);
+    if (isVertical) {
+      text.setAttribute("x", String(AXIS_PAD - 16));
+      text.setAttribute("y", String(clampLabel(along, height)));
+      text.setAttribute("text-anchor", "end");
+    } else {
+      text.setAttribute("x", String(clampLabel(along, width)));
+      text.setAttribute("y", String(AXIS_PAD - 16));
+    }
+    text.textContent = interpolateYearLabel(vp, t);
     svg.appendChild(text);
   }
 }
@@ -218,18 +333,12 @@ function formatYear(y: number): string {
   return y < 0 ? `${-y} BCE` : `${y}`;
 }
 
-function clampLabel(x: number, width: number): number {
-  if (x < 28) return 28;
-  if (x > width - 28) return width - 28;
-  return x;
+function clampLabel(coord: number, size: number): number {
+  if (coord < 28) return 28;
+  if (coord > size - 28) return size - 28;
+  return coord;
 }
 
-/**
- * Color resolution order: category color (settings) > category color (XML
- * mapped by hash) > event default_color > deterministic per-category hash >
- * accent fallback. Putting category first means imported palettes win over
- * Timeline 2.11's per-event default_color, which is often a generic gray.
- */
 function colorFor(ev: TimelineEvent, palette: Record<string, string>): string {
   if (ev.category && palette[ev.category]) return palette[ev.category];
   if (ev.category) return hashColor(ev.category);
@@ -253,11 +362,9 @@ function hashColor(s: string): string {
   return `hsl(${hue}, 55%, 50%)`;
 }
 
-/** Best-effort black/white text based on perceived luminance of fill color. */
 function contrastTextColor(fill: string): string {
   const rgb = parseColorToRgb(fill);
   if (!rgb) return "#ffffff";
-  // Relative luminance (sRGB approximation).
   const [r, g, b] = rgb.map((v) => v / 255);
   const lum =
     0.2126 * srgbToLinear(r) +
@@ -273,7 +380,6 @@ function srgbToLinear(c: number): number {
 function parseColorToRgb(s: string): [number, number, number] | null {
   if (!s) return null;
   const trimmed = s.trim();
-  // #rgb / #rrggbb
   const hex = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
     const v = hex[1];

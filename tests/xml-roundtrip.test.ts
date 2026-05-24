@@ -45,6 +45,28 @@ describe("XML round-trip", () => {
     expect(doc.view?.displayedPeriod?.end.year).toBe(100);
   });
 
+  it("captures full description text across inline elements (br/b/i/a)", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events>
+    <event id="e1">
+      <start>2000-01-01 00:00:00</start>
+      <end>2001-01-01 00:00:00</end>
+      <text>Hello</text>
+      <description>He<br/>was a great king. <b>Reigned</b> for <i>many</i> years.</description>
+    </event>
+  </events>
+</timeline>`;
+    const doc = parseTimelineXml(xml);
+    expect(doc.events[0].description).toContain("was a great king");
+    expect(doc.events[0].description).toContain("Reigned");
+    expect(doc.events[0].description).toContain("many");
+    expect(doc.events[0].description?.startsWith("He")).toBe(true);
+  });
+
   it("preserves unknown XML child elements through a round-trip", () => {
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <timeline>

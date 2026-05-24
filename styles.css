@@ -13,12 +13,26 @@
   border-radius: 6px;
   padding: 8px;
   overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 80vh;
+}
+
+.txs-timeline-bar.txs-vertical {
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
 .txs-timeline-bar svg {
   display: block;
+}
+
+.txs-timeline-bar:not(.txs-vertical) svg {
   min-width: 100%;
+}
+
+.txs-timeline-bar.txs-vertical svg {
+  width: 100%;
+  min-height: 100%;
 }
 
 .txs-event-bar {

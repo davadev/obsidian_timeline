@@ -1,6 +1,7 @@
 import { Notice, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
 import {
   DEFAULT_SETTINGS,
+  EVENT_NOTE_SCHEMA_VERSION,
   type TimelineXmlSyncSettings,
 } from "./settings";
 import { TimelineXmlSyncSettingTab } from "./settings-tab";
@@ -126,6 +127,17 @@ export default class TimelineXmlSyncPlugin extends Plugin {
 
     // Pre-warm the id index so the first render is fast.
     this.cache.buildIndex();
+
+    // One-shot notice if the on-disk notes were written by an older schema.
+    if (
+      this.settings.lastImportSchemaVersion > 0 &&
+      this.settings.lastImportSchemaVersion < EVENT_NOTE_SCHEMA_VERSION
+    ) {
+      new Notice(
+        `Timeline XML Sync: event note schema changed (v${this.settings.lastImportSchemaVersion} → v${EVENT_NOTE_SCHEMA_VERSION}). Run "Wipe event notes and reimport from XML" to refresh.`,
+        12000
+      );
+    }
   }
 
   private installSafeMode(): void {

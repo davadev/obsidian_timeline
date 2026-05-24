@@ -99,6 +99,18 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
         )
       );
 
+    new Setting(containerEl)
+      .setName("Wipe event notes and reimport from XML")
+      .setDesc(
+        "Use after a plugin upgrade that changed the event-note schema. Backs up the XML, deletes every .md in the event notes directory, then reimports."
+      )
+      .addButton((b) =>
+        b
+          .setButtonText("Wipe + reimport")
+          .setWarning()
+          .onClick(() => this.plugin.runCommand("txs-wipe-reimport"))
+      );
+
     containerEl.createEl("h2", { text: "Mirror property names" });
     const mirrorFields: (keyof typeof DEFAULT_MIRROR_NAMES)[] = [
       "start",
@@ -162,6 +174,36 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
           .setValue(s.renderDefaults.sort)
           .onChange(async (v) => {
             s.renderDefaults.sort = v as typeof s.renderDefaults.sort;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Default zoom factor")
+      .setDesc(
+        "Multiplier for the time axis. 1 = fits container, 4 = 4× wider (horizontal scroll). Per-block `zoom: N` overrides this."
+      )
+      .addText((t) =>
+        t
+          .setValue(String(s.renderDefaults.zoom))
+          .onChange(async (v) => {
+            const n = parseFloat(v);
+            if (Number.isFinite(n) && n > 0) {
+              s.renderDefaults.zoom = n;
+              await this.plugin.saveSettings();
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Default orientation")
+      .addDropdown((d) =>
+        d
+          .addOption("horizontal", "horizontal")
+          .addOption("vertical", "vertical")
+          .setValue(s.renderDefaults.orientation)
+          .onChange(async (v) => {
+            s.renderDefaults.orientation = v as typeof s.renderDefaults.orientation;
             await this.plugin.saveSettings();
           })
       );

@@ -51,12 +51,50 @@ function nodeChildren(n: RawNode): RawNode[] {
   return Array.isArray(v) ? (v as RawNode[]) : [];
 }
 
-/** Concatenate all text-node children into a string. */
+/**
+ * Concatenate direct #text children into a string.
+ * Use {@link deepTextOf} when an element may have inline children (br/i/b/a).
+ */
 function textOf(children: RawNode[]): string {
   let out = "";
   for (const c of children) {
     const t = (c as Record<string, unknown>)[TEXT_KEY];
     if (typeof t === "string") out += t;
+  }
+  return out;
+}
+
+/**
+ * Recursively collect text content across nested inline elements. Required for
+ * Timeline Project descriptions which often contain inline HTML (br/i/b/a) —
+ * the plain textOf would drop everything after the first inline child.
+ */
+function deepTextOf(children: RawNode[]): string {
+  let out = "";
+  for (const c of children) {
+    const name = nodeName(c);
+    if (name === "#text" || name === "") {
+      const t = (c as Record<string, unknown>)[TEXT_KEY];
+      if (typeof t === "string") out += t;
+      continue;
+    }
+    if (name === "#cdata") {
+      const v = (c as Record<string, unknown>)["#cdata"];
+      if (typeof v === "string") out += v;
+      else if (Array.isArray(v)) {
+        for (const item of v) {
+          const t = (item as Record<string, unknown>)?.[TEXT_KEY];
+          if (typeof t === "string") out += t;
+        }
+      }
+      continue;
+    }
+    const kids = nodeChildren(c);
+    if (name === "br") {
+      out += "\n";
+      continue;
+    }
+    out += deepTextOf(kids);
   }
   return out;
 }
@@ -74,6 +112,12 @@ function readText(parent: RawNode[], tag: string): string | undefined {
   const node = findChild(parent, tag);
   if (!node) return undefined;
   return textOf(nodeChildren(node));
+}
+
+function readDeepText(parent: RawNode[], tag: string): string | undefined {
+  const node = findChild(parent, tag);
+  if (!node) return undefined;
+  return deepTextOf(nodeChildren(node));
 }
 
 function readBool(parent: RawNode[], tag: string): boolean | undefined {
@@ -158,7 +202,7 @@ export function parseTimelineXml(xml: string): TimelineDoc {
           start.minute === end.minute &&
           start.second === end.second,
         category: readText(ch, "category"),
-        description: readText(ch, "description"),
+        description: readDeepText(ch, "description"),
         hyperlink: readText(ch, "hyperlink"),
         labels: parseLabels(readText(ch, "labels")),
         progress: readNumber(ch, "progress"),

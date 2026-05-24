@@ -188,6 +188,8 @@ Options:
 | `sort` | `chronological` / `reverse-chronological` / `category` | `chronological` | |
 | `show` | list | `[title,date,category,description]` | Fields rendered next to each event in the textual view. |
 | `categories.include` / `.exclude` | list | _(empty)_ | Category name filter. |
+| `zoom` | number | `1` | Time-axis scale. `2` = 2× wider with horizontal scroll. |
+| `orientation` | `horizontal` / `vertical` | `horizontal` | Vertical reads top→bottom; lane labels rotate 90°, scroll becomes vertical. Tooltips stay horizontal. |
 
 ### Viewport
 
@@ -211,6 +213,7 @@ If no viewport is defined, the displayed period from the XML `<view>` is used. O
 | Timeline XML Sync: Create new timeline event note | Creates a fresh event note even without the core Templates plugin. |
 | Timeline XML Sync: Open timeline sync diagnostics | Dumps current diagnostics to the developer console. |
 | Timeline XML Sync: Rebuild internal index/cache | Forces a fresh validate/index. |
+| Timeline XML Sync: Wipe event notes and reimport from XML | Backs up XML, deletes every event note, reimports. Use after a plugin upgrade that changes the event-note schema. |
 
 Auto-sync is enabled by default — any MD change inside the event notes directory triggers a debounced regenerate.
 

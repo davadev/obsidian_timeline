@@ -1,5 +1,5 @@
 import { Notice, type App, type Plugin } from "obsidian";
-import type { TimelineXmlSyncSettings } from "../settings";
+import { EVENT_NOTE_SCHEMA_VERSION, type TimelineXmlSyncSettings } from "../settings";
 import type { VaultAdapter } from "./vault-adapter";
 import type { TemplateService } from "./template-service";
 import type { TimelineCache } from "./cache";
@@ -76,6 +76,51 @@ export function registerCommands(ctx: CommandsContext): void {
     name: "Rebuild internal index/cache",
     callback: () => rebuildIndex(ctx).catch(reportErr),
   });
+
+  plugin.addCommand({
+    id: "txs-wipe-reimport",
+    name: "Wipe event notes and reimport from XML",
+    callback: () => wipeAndReimport(ctx).catch(reportErr),
+  });
+}
+
+/**
+ * Schema-safe reimport. Used when the event-note layout has been bumped in a
+ * way that older notes can't round-trip cleanly. Backs up the XML first (the
+ * XML is the canonical source), removes every .md file in the event notes
+ * directory, then re-runs importXml so the new notes match the current
+ * schema. Updates lastImportSchemaVersion on success.
+ */
+export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
+  const s = ctx.getSettings();
+  if (!s.sourceXmlPath || !s.eventNotesDir) {
+    throw new Error("Configure XML path and event notes directory first.");
+  }
+  if (!ctx.vault.exists(s.sourceXmlPath)) {
+    throw new Error(`XML not found: ${s.sourceXmlPath}`);
+  }
+  // Backup XML first — extra paranoia, the user could still recover.
+  if (s.backupEnabled) {
+    const bak = await ctx.vault.backup(s.sourceXmlPath);
+    if (bak) console.log("[Timeline XML Sync] pre-reimport backup:", bak);
+  }
+  const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
+  let removed = 0;
+  await ctx.withSelfWrite(async () => {
+    for (const f of files) {
+      await ctx.vault.deleteFile(f.path);
+      removed++;
+    }
+  });
+  await importXml(ctx);
+  s.lastImportSchemaVersion = EVENT_NOTE_SCHEMA_VERSION;
+  await ctx.saveSettings();
+  new Notice(`Reimport complete — removed ${removed} old notes.`);
+}
+
+/** Check whether the on-disk notes were written by an older schema. */
+export function needsSchemaReimport(s: TimelineXmlSyncSettings): boolean {
+  return s.lastImportSchemaVersion < EVENT_NOTE_SCHEMA_VERSION;
 }
 
 function reportErr(e: unknown): void {
@@ -95,6 +140,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
 
   // Auto-populate category palette + knownCategories from the XML.
   ingestCategories(s, doc.categories);
+  s.lastImportSchemaVersion = EVENT_NOTE_SCHEMA_VERSION;
   await ctx.saveSettings();
 
   let created = 0;

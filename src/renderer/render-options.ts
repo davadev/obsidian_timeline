@@ -1,6 +1,7 @@
 export type RenderMode = "bar" | "list" | "hybrid";
 export type DetailsStyle = "list" | "compact" | "table" | "cards";
 export type SortOrder = "chronological" | "reverse-chronological" | "category";
+export type Orientation = "horizontal" | "vertical";
 
 export type ShowField =
   | "title"
@@ -20,6 +21,10 @@ export interface RenderOptions {
   show: ShowField[];
   categoryInclude?: string[];
   categoryExclude?: string[];
+  /** Time-axis scale multiplier — 1 = container width, 4 = 4× wider with horizontal scroll. */
+  zoom: number;
+  /** Axis orientation. Vertical reads top→bottom, lanes are columns. */
+  orientation: Orientation;
 }
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
@@ -28,4 +33,6 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   details: "list",
   sort: "chronological",
   show: ["title", "date", "category", "description"],
+  zoom: 1,
+  orientation: "horizontal",
 };

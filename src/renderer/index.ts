@@ -29,6 +29,8 @@ export function renderTimeline(args: RenderArgs): void {
       viewport: args.viewport,
       categoryColors: args.categoryColors,
       onOpenEvent: args.onOpenEvent,
+      zoom: args.options.zoom,
+      orientation: args.options.orientation,
     });
   }
   if (mode === "list" || mode === "hybrid") {

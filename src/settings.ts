@@ -32,7 +32,18 @@ export interface TimelineXmlSyncSettings {
   logLevel: "error" | "warn" | "info" | "debug";
   /** Known category names — populated on XML import for the settings UI. */
   knownCategories: string[];
+  /** Last event-note schema version that wrote the existing notes. */
+  lastImportSchemaVersion: number;
 }
+
+/**
+ * Bumped whenever the canonical Markdown event-note layout changes in a way
+ * that older notes can no longer round-trip safely. The plugin compares this
+ * to `settings.lastImportSchemaVersion` on load — if it has moved forward the
+ * user is offered the safe reimport command (which wipes + re-creates notes
+ * from the still-canonical .timeline XML).
+ */
+export const EVENT_NOTE_SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   sourceXmlPath: "timelines/main.timeline",
@@ -47,4 +58,5 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   autoSyncDebounceMs: 60_000,
   logLevel: "info",
   knownCategories: [],
+  lastImportSchemaVersion: 0,
 };
