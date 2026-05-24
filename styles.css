@@ -77,6 +77,9 @@
 .txs-timeline-list li {
   padding: 4px 0;
   border-bottom: 1px solid var(--background-modifier-border);
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .txs-timeline-list .txs-date {
@@ -104,6 +107,16 @@
   display: block;
   color: var(--text-muted);
   margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.txs-view-body .txs-timeline,
+.txs-view-body .txs-timeline-body {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .txs-filter-bar {
