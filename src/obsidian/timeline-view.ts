@@ -95,16 +95,20 @@ export class TimelineView extends ItemView {
         return;
       }
 
+      // Always span the full event set in the global view (ignore the XML's
+      // narrow displayed_period). Auto-pick zoom so dense timelines get a wide
+      // scrollable canvas while sparse ones stay readable.
+      const fullViewport = autoViewport(doc.events);
+      const autoZoom = pickAutoZoom(doc.events.length, fullViewport, container);
       renderTimeline({
         container,
         events: doc.events,
         categories: doc.categories,
-        viewport: doc.view?.displayedPeriod ?? autoViewport(doc.events),
+        viewport: fullViewport,
         options: {
           ...settings.renderDefaults,
-          // Full-view defaults: list+bar combined, generous zoom.
           mode: settings.renderDefaults.mode,
-          zoom: Math.max(settings.renderDefaults.zoom, 2),
+          zoom: autoZoom,
           showFilterUI: true,
         },
         onOpenEvent: (id) => {
@@ -132,5 +136,27 @@ function autoViewport(events: { start: { year: number }; end: { year: number } }
     if (e.start.year < minY) minY = e.start.year;
     if (e.end.year > maxY) maxY = e.end.year;
   }
-  return { start: { year: minY }, end: { year: maxY } };
+  // Small padding so events at the very edge aren't visually clipped.
+  const span = Math.max(1, maxY - minY);
+  const pad = Math.max(1, Math.floor(span * 0.02));
+  return { start: { year: minY - pad }, end: { year: maxY + pad } };
+}
+
+/**
+ * Choose a zoom multiplier so the full timeline becomes horizontally
+ * scrollable without crowding. Tries to give every event ~60 px of room and
+ * every year ~3 px, whichever ends up wider. Clamped to [1, 50].
+ */
+function pickAutoZoom(
+  eventCount: number,
+  vp: { start: { year: number }; end: { year: number } } | undefined,
+  container: HTMLElement
+): number {
+  if (!vp) return 1;
+  const width = Math.max(320, container.clientWidth || 800);
+  const span = Math.max(1, vp.end.year - vp.start.year);
+  const desiredByEvents = Math.ceil((eventCount * 60) / width);
+  const desiredByYears = Math.ceil((span * 3) / width);
+  const z = Math.max(1, desiredByEvents, desiredByYears);
+  return Math.min(50, z);
 }
