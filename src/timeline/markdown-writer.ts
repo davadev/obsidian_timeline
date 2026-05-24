@@ -97,6 +97,13 @@ function defaultBody(ev: TimelineEvent): string {
     "",
     (ev.description ?? "").trim(),
     "",
+    "## Timeline",
+    "",
+    "```timeline",
+    "mode: hybrid",
+    "source: main",
+    "```",
+    "",
   ].join("\n");
 }
 

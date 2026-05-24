@@ -120,4 +120,11 @@ timeline_role: event
 ## Text
 
 ## Description
+
+## Timeline
+
+\`\`\`timeline
+mode: hybrid
+source: main
+\`\`\`
 `;

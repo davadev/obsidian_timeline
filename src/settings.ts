@@ -30,6 +30,8 @@ export interface TimelineXmlSyncSettings {
   autoSyncDebounceMs: number;
   /** "error" | "warn" | "info" | "debug" */
   logLevel: "error" | "warn" | "info" | "debug";
+  /** Known category names — populated on XML import for the settings UI. */
+  knownCategories: string[];
 }
 
 export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   categoryColors: {},
   backupEnabled: true,
   autoSync: true,
-  autoSyncDebounceMs: 1500,
+  autoSyncDebounceMs: 60_000,
   logLevel: "info",
+  knownCategories: [],
 };

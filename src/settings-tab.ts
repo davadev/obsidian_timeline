@@ -1,6 +1,11 @@
 import { PluginSettingTab, Setting, type App } from "obsidian";
 import type TimelineXmlSyncPlugin from "./main";
 import { DEFAULT_MIRROR_NAMES } from "./timeline/model";
+import {
+  getDeviceSyncMode,
+  setDeviceSyncMode,
+  type DeviceSyncMode,
+} from "./obsidian/device-prefs";
 
 export class TimelineXmlSyncSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: TimelineXmlSyncPlugin) {
@@ -177,61 +182,90 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     containerEl.createEl("h2", { text: "Category colors" });
+    containerEl.createEl("div", {
+      text:
+        "Categories discovered on import are listed here. Colors mirror the XML by default; edit to override. Use a CSS color (e.g. #88bb55 or rgb(120,180,90)).",
+      cls: "setting-item-description",
+    });
     const colorsBox = containerEl.createDiv();
     const renderColors = () => {
       colorsBox.empty();
-      const names = Object.keys(s.categoryColors);
+      const all = new Set<string>([
+        ...s.knownCategories,
+        ...Object.keys(s.categoryColors),
+      ]);
+      const names = Array.from(all).sort();
       if (!names.length) {
-        colorsBox.createDiv({ text: "(no category colors configured)" });
+        colorsBox.createDiv({
+          text: "(no categories yet — run the Import command to populate)",
+        });
       }
       for (const name of names) {
-        new Setting(colorsBox)
-          .setName(name)
-          .addText((t) =>
-            t.setValue(s.categoryColors[name]).onChange(async (v) => {
-              s.categoryColors[name] = v.trim();
+        const swatch = document.createElement("span");
+        swatch.style.display = "inline-block";
+        swatch.style.width = "16px";
+        swatch.style.height = "16px";
+        swatch.style.marginRight = "8px";
+        swatch.style.verticalAlign = "middle";
+        swatch.style.border = "1px solid var(--background-modifier-border)";
+        swatch.style.borderRadius = "3px";
+        swatch.style.background =
+          s.categoryColors[name] ?? "var(--background-secondary)";
+        const setting = new Setting(colorsBox).setName(name);
+        setting.nameEl.prepend(swatch);
+        setting.addText((t) =>
+          t
+            .setPlaceholder("#aabbcc or rgb(…)")
+            .setValue(s.categoryColors[name] ?? "")
+            .onChange(async (v) => {
+              const val = v.trim();
+              if (val) s.categoryColors[name] = val;
+              else delete s.categoryColors[name];
+              swatch.style.background =
+                s.categoryColors[name] ?? "var(--background-secondary)";
               await this.plugin.saveSettings();
             })
-          )
-          .addExtraButton((b) =>
-            b
-              .setIcon("trash")
-              .setTooltip("Remove")
-              .onClick(async () => {
-                delete s.categoryColors[name];
-                await this.plugin.saveSettings();
-                renderColors();
-              })
-          );
+        );
+        setting.addExtraButton((b) =>
+          b
+            .setIcon("trash")
+            .setTooltip("Remove color override")
+            .onClick(async () => {
+              delete s.categoryColors[name];
+              await this.plugin.saveSettings();
+              renderColors();
+            })
+        );
       }
-      const addRow = colorsBox.createDiv();
-      addRow.style.display = "flex";
-      addRow.style.gap = "6px";
-      addRow.style.marginTop = "6px";
-      const nameInput = addRow.createEl("input", { type: "text", placeholder: "category" });
-      const colorInput = addRow.createEl("input", { type: "text", placeholder: "#aabbcc or r,g,b" });
-      const addBtn = addRow.createEl("button", { text: "Add" });
-      addBtn.addEventListener("click", async () => {
-        const n = nameInput.value.trim();
-        const c = colorInput.value.trim();
-        if (n && c) {
-          s.categoryColors[n] = c;
-          await this.plugin.saveSettings();
-          renderColors();
-        }
-      });
     };
     renderColors();
 
     containerEl.createEl("h2", { text: "Sync & backup" });
 
     new Setting(containerEl)
-      .setName("Auto-sync Markdown → XML")
+      .setName("Auto-sync Markdown → XML (global)")
+      .setDesc(
+        "Vault-wide default. The per-device override below can force this on or off for the current device only."
+      )
       .addToggle((t) =>
         t.setValue(s.autoSync).onChange(async (v) => {
           s.autoSync = v;
           await this.plugin.saveSettings();
         })
+      );
+
+    new Setting(containerEl)
+      .setName("Auto-sync on this device")
+      .setDesc(
+        "Stored in this device's local storage — does NOT sync with the vault. Use 'Off' on phones if only the desktop should write the .timeline file."
+      )
+      .addDropdown((d) =>
+        d
+          .addOption("global", "Use global setting")
+          .addOption("on", "Force on (this device)")
+          .addOption("off", "Force off (this device)")
+          .setValue(getDeviceSyncMode())
+          .onChange((v) => setDeviceSyncMode(v as DeviceSyncMode))
       );
 
     new Setting(containerEl)

@@ -4,10 +4,11 @@ import {
   MarkdownRenderChild,
   type App,
 } from "obsidian";
+// YAML only used by parseBlockOptions; render-time YAML reparse for viewport
+// has been replaced with metadataCache for performance.
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { VaultAdapter } from "./vault-adapter";
-import { parseTimelineXml } from "../timeline/xml-parser";
-import { parseEventNote } from "../timeline/markdown-parser";
+import type { TimelineCache } from "./cache";
 import {
   eventsInViewport,
   type ViewportRange,
@@ -20,6 +21,7 @@ import { parseFrontmatterDate, type TimelineDate } from "../timeline/date";
 export interface PostProcessorContext {
   app: App;
   vault: VaultAdapter;
+  cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
 }
 
@@ -50,8 +52,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         renderError(el, `XML file not found: ${xmlPath}`);
         return;
       }
-      const xml = await ctx.vault.readText(xmlPath);
-      const doc = parseTimelineXml(xml);
+      const doc = await ctx.cache.getXml(xmlPath);
 
       // Filter by category include/exclude
       let events: TimelineEvent[] = doc.events;
@@ -70,9 +71,6 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         events = eventsInViewport(events, viewport);
       }
 
-      // Build a path map for click-through navigation: event_id -> note path
-      const idToPath = await indexEventNotes(ctx, settings.eventNotesDir);
-
       renderTimeline({
         container: el,
         events,
@@ -80,7 +78,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         viewport: viewport ?? autoViewport(events),
         options: opts,
         onOpenEvent: (id) => {
-          const path = idToPath.get(id);
+          const path = ctx.cache.resolvePath(id);
           if (path) ctx.app.workspace.openLinkText(path, "", false);
         },
         categoryColors: settings.categoryColors,
@@ -134,21 +132,14 @@ async function resolveViewport(
   if (sourcePath) {
     const file = ctx.vault.getFile(sourcePath);
     if (file) {
-      const raw = await ctx.vault.readText(file.path);
-      const parsed = parseEventNote(raw, { path: file.path });
-      // Extract viewport from frontmatter even if it's a non-event "viewport" note
-      const fm = extractFrontmatter(raw);
+      // Fast path: use metadataCache (no YAML reparse).
+      const meta = ctx.app.metadataCache.getFileCache(file);
+      const fm = meta?.frontmatter as Record<string, unknown> | undefined;
       if (fm && fm.timeline && typeof fm.timeline === "object") {
         const tl = fm.timeline as Record<string, unknown>;
         const start = asViewportDate(tl.start);
         const end = asViewportDate(tl.end);
         if (start && end) return { start, end };
-      }
-      if (parsed.note) {
-        return {
-          start: parsed.note.event.start,
-          end: parsed.note.event.end,
-        };
       }
     }
   }
@@ -156,17 +147,6 @@ async function resolveViewport(
     return doc.view.displayedPeriod;
   }
   return null;
-}
-
-function extractFrontmatter(raw: string): Record<string, unknown> | null {
-  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!m) return null;
-  try {
-    const p = YAML.parse(m[1]);
-    return p && typeof p === "object" ? (p as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }
 
 function asViewportDate(v: unknown): TimelineDate | null {
@@ -186,25 +166,6 @@ function asViewportDate(v: unknown): TimelineDate | null {
     return null;
   }
   return parseFrontmatterDate(v as string | number);
-}
-
-async function indexEventNotes(
-  ctx: PostProcessorContext,
-  dir: string
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  if (!dir) return map;
-  const files = ctx.vault.listMarkdownFiles(dir);
-  for (const f of files) {
-    try {
-      const raw = await ctx.vault.readText(f.path);
-      const p = parseEventNote(raw, { path: f.path });
-      if (p.note) map.set(p.note.event.id, f.path);
-    } catch {
-      // ignore unreadable
-    }
-  }
-  return map;
 }
 
 function autoViewport(events: TimelineEvent[]): ViewportRange | undefined {

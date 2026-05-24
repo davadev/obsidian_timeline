@@ -18,6 +18,10 @@ Mobile-safe — uses only the Obsidian Vault API and browser DOM/SVG. No `fs`, `
 - Unknown XML attributes / child elements survive a round-trip.
 - Round-trip and validation covered by Vitest.
 - Settings UI for paths, mirror property names, render defaults, category colors, backups, and log level.
+- Auto-color of imported categories (palette pulled straight from the XML), with per-category color editor in settings.
+- Per-device sync toggle (localStorage) — let the desktop own XML writes while the phone stays read-only.
+- Crash safety net: a hard crash auto-disables the plugin on next start so Obsidian Mobile keeps loading; a re-enable command clears the flag.
+- Performance caches: parsed XML keyed by mtime, event_id → path index served from Obsidian's metadataCache (no per-render YAML reparse).
 
 ---
 

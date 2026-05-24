@@ -32,10 +32,10 @@
 }
 
 .txs-event-label {
-  font-size: 11px;
-  fill: var(--text-on-accent);
+  font-size: 12px;
   pointer-events: none;
   dominant-baseline: middle;
+  font-weight: 500;
 }
 
 .txs-axis-line {

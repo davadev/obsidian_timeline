@@ -2,20 +2,22 @@ import { Notice, type App, type Plugin } from "obsidian";
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { VaultAdapter } from "./vault-adapter";
 import type { TemplateService } from "./template-service";
-import { parseTimelineXml } from "../timeline/xml-parser";
+import type { TimelineCache } from "./cache";
 import { writeTimelineXml } from "../timeline/xml-writer";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
-import type { EventNote } from "../timeline/model";
+import type { EventNote, TimelineCategory } from "../timeline/model";
 
 export interface CommandsContext {
   app: App;
   plugin: Plugin;
   vault: VaultAdapter;
   templates: TemplateService;
+  cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
+  saveSettings: () => Promise<void>;
   /** Suppress sync loop while plugin itself writes files. */
   withSelfWrite: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Replace stored diagnostics. */
@@ -87,9 +89,13 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   if (!s.eventNotesDir)
     throw new Error("Configure event notes directory in settings first.");
 
-  const xml = await ctx.vault.readText(s.sourceXmlPath);
-  const doc = parseTimelineXml(xml);
+  ctx.cache.invalidateXml(s.sourceXmlPath);
+  const doc = await ctx.cache.getXml(s.sourceXmlPath);
   await ctx.vault.ensureFolder(s.eventNotesDir);
+
+  // Auto-populate category palette + knownCategories from the XML.
+  ingestCategories(s, doc.categories);
+  await ctx.saveSettings();
 
   let created = 0;
   let updated = 0;
@@ -107,9 +113,31 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       else created++;
     }
   });
+  ctx.cache.resetIndex();
   new Notice(
     `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total.`
   );
+}
+
+function ingestCategories(
+  s: TimelineXmlSyncSettings,
+  categories: TimelineCategory[]
+): void {
+  const known = new Set(s.knownCategories);
+  for (const c of categories) {
+    if (!c.name) continue;
+    known.add(c.name);
+    if (!s.categoryColors[c.name] && c.color) {
+      s.categoryColors[c.name] = normalizeColor(c.color);
+    }
+  }
+  s.knownCategories = Array.from(known).sort();
+}
+
+function normalizeColor(raw: string): string {
+  const m = raw.match(/^(\d+),(\d+),(\d+)$/);
+  if (m) return `rgb(${m[1]},${m[2]},${m[3]})`;
+  return raw;
 }
 
 export async function loadAllNotes(ctx: CommandsContext): Promise<{
@@ -166,8 +194,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
 
   let doc;
   if (ctx.vault.exists(s.sourceXmlPath)) {
-    const oldXml = await ctx.vault.readText(s.sourceXmlPath);
-    doc = parseTimelineXml(oldXml);
+    doc = await ctx.cache.getXml(s.sourceXmlPath);
   } else {
     doc = {
       version: "2.11.0",
@@ -187,6 +214,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   await ctx.withSelfWrite(async () => {
     await ctx.vault.writeText(s.sourceXmlPath, xml);
   });
+  ctx.cache.invalidateXml(s.sourceXmlPath);
   new Notice(`Timeline XML regenerated — ${notes.length} events.`);
 }
 
