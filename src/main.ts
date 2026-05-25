@@ -3,6 +3,7 @@ import {
   Notice,
   Platform,
   Plugin,
+  SuggestModal,
   TAbstractFile,
   TFile,
   normalizePath,
@@ -174,33 +175,12 @@ export default class TimelineXmlSyncPlugin extends Plugin {
         run: () => this.insertTimelineBlock(),
       },
     ];
-    // Dynamic import to avoid pulling SuggestModal into the test bundle path.
-    void import("obsidian").then(({ SuggestModal }) => {
-      type AppT = ConstructorParameters<typeof SuggestModal>[0];
-      class Picker extends SuggestModal<Action> {
-        constructor(app: AppT) {
-          super(app);
-          this.setPlaceholder("Pick a Timeline action…");
-        }
-        getSuggestions(query: string): Action[] {
-          const q = query.toLowerCase();
-          return actions.filter(
-            (a) =>
-              !q ||
-              a.label.toLowerCase().includes(q) ||
-              a.description.toLowerCase().includes(q)
-          );
-        }
-        renderSuggestion(a: Action, el: HTMLElement): void {
-          el.createEl("div", { text: a.label, cls: "txs-picker-title" });
-          el.createEl("div", { text: a.description, cls: "txs-picker-desc" });
-        }
-        onChooseSuggestion(a: Action): void {
-          a.run();
-        }
-      }
-      new Picker(this.app).open();
-    });
+    try {
+      new TimelineActionPicker(this.app, actions).open();
+    } catch (e) {
+      console.error("[Timeline XML Sync] action picker failed:", e);
+      new Notice(`Timeline picker failed: ${(e as Error).message}`);
+    }
   }
 
   /** Insert a default ```timeline block at the cursor of the active editor. */
@@ -608,6 +588,36 @@ export default class TimelineXmlSyncPlugin extends Plugin {
         void this.tripSafetyNet(e as Error, "vault-event");
       }
     }
+  }
+}
+
+class TimelineActionPicker extends SuggestModal<{
+  label: string;
+  description: string;
+  run: () => void;
+}> {
+  constructor(
+    app: ConstructorParameters<typeof SuggestModal>[0],
+    private actions: { label: string; description: string; run: () => void }[]
+  ) {
+    super(app);
+    this.setPlaceholder("Pick a Timeline action…");
+  }
+  getSuggestions(query: string) {
+    const q = query.toLowerCase();
+    return this.actions.filter(
+      (a) =>
+        !q ||
+        a.label.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q)
+    );
+  }
+  renderSuggestion(a: { label: string; description: string }, el: HTMLElement) {
+    el.createEl("div", { text: a.label, cls: "txs-picker-title" });
+    el.createEl("div", { text: a.description, cls: "txs-picker-desc" });
+  }
+  onChooseSuggestion(a: { run: () => void }) {
+    a.run();
   }
 }
 
