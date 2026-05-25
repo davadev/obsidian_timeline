@@ -55,13 +55,11 @@ export class TimelineView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.fullRender();
-    this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => {
-        if (this.app.workspace.getActiveViewOfType(TimelineView) === this) {
-          void this.fullRender();
-        }
-      })
-    );
+    // Deliberately NOT subscribing to active-leaf-change here. Doing so used
+    // to re-fullRender every time focus shifted (opening or closing the
+    // sidebar / inspector counts), which wiped the body + each bar's scroll
+    // position. Use the Refresh button — or reopen the view — when you need
+    // fresh data.
   }
 
   async onClose(): Promise<void> {
@@ -193,6 +191,14 @@ export class TimelineView extends ItemView {
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
     if (!body) return;
+    // Snapshot scroll position(s) before wiping so the user doesn't lose
+    // their place when the filter / inspector toggles trigger a body redraw.
+    const bodyScrollTop = body.scrollTop;
+    const barScrolls: number[] = [];
+    body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
+      barScrolls.push(b.scrollLeft);
+    });
+
     body.empty();
     if (!this.cachedDoc) return;
     const { cache, getSettings, app } = this.args;
@@ -225,6 +231,20 @@ export class TimelineView extends ItemView {
       initialHidden: settings.hiddenCategories,
       filterKey: `view:${settings.timelineId}`,
       isMobile: Platform.isMobile,
+    });
+
+    // Restore scroll position(s). Two rAFs: first lets the SVG attach +
+    // measure, second lands after layout so scrollLeft / scrollTop stick on
+    // iOS WebView (single rAF was occasionally too early).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        body.scrollTop = bodyScrollTop;
+        body
+          .querySelectorAll<HTMLElement>(".txs-timeline-bar")
+          .forEach((b, i) => {
+            if (i < barScrolls.length) b.scrollLeft = barScrolls[i];
+          });
+      });
     });
   }
 }
