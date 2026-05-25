@@ -173,14 +173,25 @@ function attachEvents(
   onOpen: (id: string) => void,
   isMobile: boolean
 ): void {
+  // Always route through the plugin's click router (inspector or open-note).
+  // The mobile in-place panel was redundant with the inspector view and made
+  // the bar feel inert on phones because nothing visible happened "above" the
+  // fold.
   el.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (isMobile) {
-      showMobilePanel(container, ev, onOpen);
-    } else {
-      onOpen(ev.id);
-    }
+    onOpen(ev.id);
   });
+  // touchend fallback for iOS Safari where synthetic click can be flaky on
+  // SVG nodes inside a scrollable container.
+  el.addEventListener("touchend", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onOpen(ev.id);
+  }, { passive: false });
+  // Make the hit target obvious + suppress the iOS 300ms tap delay.
+  (el as unknown as HTMLElement).style.cursor = "pointer";
+  el.setAttribute("style", `${el.getAttribute("style") ?? ""} touch-action: manipulation;`);
+
   if (!isMobile) {
     el.addEventListener("mouseenter", (e) => {
       const me = e as MouseEvent;
@@ -192,51 +203,6 @@ function attachEvents(
     });
     el.addEventListener("mouseleave", () => hideTooltip());
   }
-}
-
-function showMobilePanel(
-  container: HTMLElement,
-  ev: TimelineEvent,
-  onOpen: (id: string) => void
-): void {
-  container.querySelectorAll(".txs-mobile-panel").forEach((p) => p.remove());
-  const panel = container.createDiv({ cls: "txs-mobile-panel" });
-  panel.createEl("div", { cls: "txs-mp-title", text: ev.text });
-  panel.createEl("div", {
-    cls: "txs-mp-date",
-    text: ev.isPoint
-      ? toFrontmatterString(ev.start)
-      : `${toFrontmatterString(ev.start)} → ${toFrontmatterString(ev.end)}`,
-  });
-  if (ev.category) {
-    panel.createEl("div", {
-      cls: "txs-mp-meta",
-      text: `Category: ${ev.category}`,
-    });
-  }
-  if (ev.description) {
-    panel.createEl("div", {
-      cls: "txs-mp-desc",
-      text: ev.description,
-    });
-  }
-  if (ev.hyperlink) {
-    const link = panel.createEl("a", {
-      cls: "txs-mp-link",
-      text: ev.hyperlink,
-      href: ev.hyperlink,
-    });
-    link.setAttr("target", "_blank");
-    link.setAttr("rel", "noopener");
-  }
-  const actions = panel.createDiv({ cls: "txs-mp-actions" });
-  const openBtn = actions.createEl("button", {
-    cls: "mod-cta",
-    text: "Open event note",
-  });
-  openBtn.addEventListener("click", () => onOpen(ev.id));
-  const closeBtn = actions.createEl("button", { text: "Close" });
-  closeBtn.addEventListener("click", () => panel.remove());
 }
 
 function drawLaneStripes(
