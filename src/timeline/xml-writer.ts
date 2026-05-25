@@ -129,7 +129,13 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   if (desc) children.push(desc);
   const hl = maybeLeaf("hyperlink", ev.hyperlink);
   if (hl) children.push(hl);
-  if (ev.labels && ev.labels.length) children.push(leaf("labels", ev.labels.join(";")));
+  if (ev.labels && ev.labels.length) {
+    // Timeline 2.11 expects space-separated tokens. Any whitespace inside a
+    // user-typed label is collapsed to an underscore so the round-trip stays
+    // parseable.
+    const tokens = ev.labels.map((l) => l.trim().replace(/\s+/g, "_")).filter(Boolean);
+    children.push(leaf("labels", tokens.join(" ")));
+  }
   const prog = numLeaf("progress", ev.progress);
   if (prog) children.push(prog);
   const fuzzy = boolLeaf("fuzzy", ev.fuzzy);

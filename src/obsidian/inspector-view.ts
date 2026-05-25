@@ -145,17 +145,26 @@ export class InspectorView extends ItemView {
     const endGroup = dateGroup(body, "End", ev.end);
     endGroup.onChange = () => this.markDirty();
 
-    // Native date picker (only for CE dates — fast input for modern dates)
-    if (Platform.isMobile || (ev.start.year >= 100 && ev.end.year >= 100)) {
+    // Native date picker. Hidden when either date is BCE — `<input type=date>`
+    // can't represent year < 1, and showing it empty was a foot-gun on mobile:
+    // tap → picker defaults to today → change event fires → BCE date got
+    // overwritten with today. Both fields are pre-populated from the current
+    // event so an accidental open + dismiss can't clobber the data.
+    const ceSafe = ev.start.year >= 1 && ev.end.year >= 1;
+    if (ceSafe) {
       const pickerWrap = body.createDiv({ cls: "txs-inspector-row" });
       pickerWrap.createEl("label", { text: "Quick picker (CE only)" });
       const sp = pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement;
       const ep = pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement;
-      if (ev.start.year >= 100) sp.value = toIsoDate(ev.start);
-      if (ev.end.year >= 100) ep.value = toIsoDate(ev.end);
+      const startIso = toIsoDate(ev.start);
+      const endIso = toIsoDate(ev.end);
+      sp.defaultValue = startIso;
+      ep.defaultValue = endIso;
+      sp.value = startIso;
+      ep.value = endIso;
       sp.addEventListener("change", () => {
         const d = fromIsoDate(sp.value);
-        if (d) {
+        if (d && (d.year !== ev.start.year || d.month !== ev.start.month || d.day !== ev.start.day)) {
           ev.start = d;
           this.markDirty();
           this.renderForm();
@@ -163,11 +172,16 @@ export class InspectorView extends ItemView {
       });
       ep.addEventListener("change", () => {
         const d = fromIsoDate(ep.value);
-        if (d) {
+        if (d && (d.year !== ev.end.year || d.month !== ev.end.month || d.day !== ev.end.day)) {
           ev.end = d;
           this.markDirty();
           this.renderForm();
         }
+      });
+    } else {
+      body.createDiv({
+        cls: "txs-inspector-meta",
+        text: "Quick picker disabled for BCE dates — use the year/month/day inputs above.",
       });
     }
 
@@ -180,12 +194,13 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
-    // Labels
-    const labelsInput = field(body, "Labels (comma-separated)", "input");
-    (labelsInput as HTMLInputElement).value = (ev.labels ?? []).join(", ");
+    // Labels (UI accepts comma OR space OR semicolon — Timeline 2.11 XML uses
+    // space-separated tokens, the writer converts on save).
+    const labelsInput = field(body, "Labels (space / comma / ; separated)", "input");
+    (labelsInput as HTMLInputElement).value = (ev.labels ?? []).join(" ");
     labelsInput.addEventListener("input", () => {
       ev.labels = (labelsInput as HTMLInputElement).value
-        .split(",")
+        .split(/[\s,;]+/)
         .map((s) => s.trim())
         .filter(Boolean);
       this.markDirty();

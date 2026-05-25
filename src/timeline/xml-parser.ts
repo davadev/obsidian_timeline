@@ -299,10 +299,15 @@ export function parseTimelineXml(xml: string): TimelineDoc {
   };
 }
 
+/**
+ * Timeline Project 2.11 serialises labels as space-separated tokens. Older
+ * dumps occasionally used ";" or "," (or the user pasted a comma list).
+ * Accept all of them; writer always emits the canonical space form.
+ */
 function parseLabels(raw: string | undefined): string[] | undefined {
   if (!raw) return undefined;
   return raw
-    .split(/[;,]/)
+    .split(/[\s,;]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }

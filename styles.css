@@ -319,10 +319,15 @@
 }
 
 .txs-inspector-thumb {
+  /* Keep intrinsic aspect ratio — Obsidian's base stylesheet sets img to
+   * width: 100% which squeezed the inspector thumbnail. */
+  width: auto;
+  height: auto;
   max-width: 100%;
-  max-height: 160px;
+  max-height: 240px;
+  object-fit: contain;
   display: block;
-  margin: 4px 0;
+  margin: 4px auto;
   border-radius: 4px;
 }
 
