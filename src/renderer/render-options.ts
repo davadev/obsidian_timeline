@@ -43,6 +43,20 @@ export interface RenderOptions {
   labelsExclude?: string[];
   /** Free-text search over title / description / category. */
   search?: string;
+  /**
+   * Whether the surrounding note's frontmatter `timeline.start / end` (or the
+   * XML `displayed_period`) is treated as a viewport that pre-filters events
+   * before the rich filter panel runs.
+   *
+   * - `true` (default): a note with `timeline.role: event` / `viewport` will
+   *   only show overlapping events. Useful when the block is embedded in an
+   *   event note and you want "events near this one".
+   * - `false`: skip the note-frontmatter viewport entirely — events are
+   *   filtered only by the block's own YAML + the inline filter panel.
+   *   This is what the "Insert timeline view block" command emits so the
+   *   inserted block behaves like the global Timeline view by default.
+   */
+  useViewport?: boolean;
 }
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {

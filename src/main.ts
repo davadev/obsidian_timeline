@@ -191,7 +191,10 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       return;
     }
     const editor = view.editor;
-    const snippet = "```timeline\nmode: hybrid\nsource: main\n```\n";
+    // viewport: false → ignore the host note's timeline.start/end so the
+    // inserted block behaves like the global Timeline view by default.
+    // Drop the line or set viewport: true if you want event-overlap filtering.
+    const snippet = "```timeline\nmode: hybrid\nsource: main\nviewport: false\n```\n";
     editor.replaceSelection(snippet);
   }
 

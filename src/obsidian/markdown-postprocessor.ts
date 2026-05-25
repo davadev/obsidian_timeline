@@ -148,12 +148,17 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         );
       }
 
-      // Viewport: from current note frontmatter, or from XML displayed_period
-      let viewport = await resolveViewport(ctx, md.sourcePath, doc);
-      const padYears = opts.pointPaddingYears ?? settings.pointPaddingYears;
-      viewport = expandDegenerateViewport(viewport, padYears);
-      if (viewport) {
-        events = eventsInViewport(events, viewport);
+      // Viewport: from current note frontmatter, or from XML displayed_period.
+      // Block YAML can opt out via `viewport: false` (the insert-block command
+      // emits this by default so inserted blocks behave like the global view).
+      let viewport: ViewportRange | null = null;
+      if (opts.useViewport !== false) {
+        viewport = await resolveViewport(ctx, md.sourcePath, doc);
+        const padYears = opts.pointPaddingYears ?? settings.pointPaddingYears;
+        viewport = expandDegenerateViewport(viewport, padYears);
+        if (viewport) {
+          events = eventsInViewport(events, viewport);
+        }
       }
 
       const initialHidden = new Set<string>(settings.hiddenCategories);
@@ -255,6 +260,9 @@ export function parseBlockOptions(
       opt.labelsExclude = labels.exclude.filter((x): x is string => typeof x === "string");
   }
   if (typeof parsed.search === "string") opt.search = parsed.search;
+  if (typeof parsed.viewport === "boolean") opt.useViewport = parsed.viewport;
+  // Alternative spelling for clarity.
+  if (typeof parsed.useViewport === "boolean") opt.useViewport = parsed.useViewport;
   const cats = parsed.categories as Record<string, unknown> | undefined;
   if (cats && typeof cats === "object") {
     if (Array.isArray(cats.include))
