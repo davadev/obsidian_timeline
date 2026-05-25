@@ -6,7 +6,7 @@ import type {
   TimelineEvent,
   TimelineView,
 } from "./model";
-import { PARSER_OPTIONS } from "./xml-parser";
+import { PARSER_OPTIONS, decodeEntities } from "./xml-parser";
 
 /**
  * Browser-safe Timeline Project XML writer.
@@ -46,11 +46,16 @@ const KNOWN_CATEGORY_TAGS = new Set([
   "parent",
 ]);
 
+// Builder needs entity encoding ON so leaf text containing &, <, > round-trips
+// to valid XML — the parser disables processEntities to dodge fast-xml-parser's
+// 1000-entity expansion guard. We decode entities manually on the read side
+// (see xml-parser.ts decodeEntities). Re-enable for the write side here.
 const BUILDER_OPTIONS = {
   ...PARSER_OPTIONS,
   format: true,
   indentBy: "  ",
   suppressEmptyNode: false,
+  processEntities: true,
 } as const;
 
 function textNode(s: string): RawNode {
@@ -297,6 +302,26 @@ export function canonicalizeXml(xml: string): string {
   const parser = new XMLParser(PARSER_OPTIONS);
   const builder = new XMLBuilder(BUILDER_OPTIONS);
   const tree = parser.parse(xml) as RawNode[];
+  // Decode entities in text nodes before re-emitting — the parser is run with
+  // processEntities:false (to dodge fast-xml-parser's entity cap) but the
+  // builder is run with processEntities:true, which would otherwise double-
+  // escape an already-encoded `&apos;` into `&amp;apos;`.
+  decodeTextNodesInPlace(tree);
   const cleaned = stripWhitespaceTextNodes(tree);
   return builder.build(cleaned) as string;
+}
+
+function decodeTextNodesInPlace(nodes: RawNode[]): void {
+  for (const n of nodes) {
+    for (const key of Object.keys(n)) {
+      if (key === ":@") continue;
+      if (key === "#text") {
+        const v = (n as Record<string, unknown>)[key];
+        if (typeof v === "string") (n as Record<string, unknown>)[key] = decodeEntities(v);
+        continue;
+      }
+      const v = (n as Record<string, unknown>)[key];
+      if (Array.isArray(v)) decodeTextNodesInPlace(v as RawNode[]);
+    }
+  }
 }

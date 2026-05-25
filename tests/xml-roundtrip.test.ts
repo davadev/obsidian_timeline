@@ -45,6 +45,29 @@ describe("XML round-trip", () => {
     expect(doc.view?.displayedPeriod?.end.year).toBe(100);
   });
 
+  it("parses XML with >1000 numeric entity references without throwing", () => {
+    // Synthesises 2000 &#10; (newline) entities inside a description so we
+    // are well past fast-xml-parser's 1000-entity expansion cap.
+    const heavy = "a&#10;".repeat(2000);
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events>
+    <event id="big">
+      <start>2000-01-01 00:00:00</start>
+      <end>2001-01-01 00:00:00</end>
+      <text>Big</text>
+      <description>${heavy}</description>
+    </event>
+  </events>
+</timeline>`;
+    const doc = parseTimelineXml(xml);
+    expect(doc.events[0].description?.includes("a\n")).toBe(true);
+    expect((doc.events[0].description ?? "").length).toBeGreaterThan(2000);
+  });
+
   it("captures description inside a CDATA section", () => {
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <timeline>

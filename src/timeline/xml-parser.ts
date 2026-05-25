@@ -24,7 +24,14 @@ export const PARSER_OPTIONS = {
   trimValues: false,
   parseTagValue: false,
   parseAttributeValue: false,
-  processEntities: true,
+  // Disable fast-xml-parser's built-in entity processing. The library has a
+  // hardcoded ~1000-entity expansion cap (anti-billion-laughs), and after a
+  // round-trip our descriptions can easily emit more than that — Timeline
+  // 2.11 serializes newlines as numeric entities (&#10;) which blew past the
+  // limit on mobile (error: "Entity expansion limit exceeded: 1003 > 1000").
+  // We decode the few entities we actually care about ourselves in textOf /
+  // deepTextOf, so attributes and structure are preserved either way.
+  processEntities: false,
   // keep XML declaration nodes
   ignoreDeclaration: false,
   // Preserve CDATA sections under a dedicated key so deepTextOf can pull
@@ -32,6 +39,43 @@ export const PARSER_OPTIONS = {
   // hyperlinks in CDATA which would otherwise vanish in the default config.
   cdataPropName: "#cdata",
 } as const;
+
+/**
+ * Decode the entity references that appear in Timeline XML text content.
+ * Supports the five named XML entities plus numeric `&#NN;` / `&#xNN;`.
+ * Anything we don't recognise is left untouched.
+ */
+export function decodeEntities(s: string): string {
+  if (!s || s.indexOf("&") === -1) return s;
+  return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (full, body) => {
+    if (body[0] === "#") {
+      const hex = body[1] === "x" || body[1] === "X";
+      const codepoint = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
+      if (!Number.isFinite(codepoint) || codepoint < 0 || codepoint > 0x10ffff) {
+        return full;
+      }
+      try {
+        return String.fromCodePoint(codepoint);
+      } catch {
+        return full;
+      }
+    }
+    switch (body) {
+      case "amp":
+        return "&";
+      case "lt":
+        return "<";
+      case "gt":
+        return ">";
+      case "quot":
+        return '"';
+      case "apos":
+        return "'";
+      default:
+        return full;
+    }
+  });
+}
 
 /** preserveOrder=true: each node is a single-key object; attributes live on ":@" sibling. */
 type RawNode = Record<string, unknown> & { ":@"?: Record<string, string> };
@@ -65,7 +109,7 @@ function textOf(children: RawNode[]): string {
     const t = (c as Record<string, unknown>)[TEXT_KEY];
     if (typeof t === "string") out += t;
   }
-  return out;
+  return decodeEntities(out);
 }
 
 /**
@@ -79,12 +123,12 @@ function deepTextOf(children: RawNode[]): string {
     const name = nodeName(c);
     if (name === "#text" || name === "") {
       const t = (c as Record<string, unknown>)[TEXT_KEY];
-      if (typeof t === "string") out += t;
+      if (typeof t === "string") out += decodeEntities(t);
       continue;
     }
     if (name === "#cdata") {
       const v = (c as Record<string, unknown>)["#cdata"];
-      if (typeof v === "string") out += v;
+      if (typeof v === "string") out += v; // CDATA content is verbatim, no entity decode
       else if (Array.isArray(v)) {
         for (const item of v) {
           const t = (item as Record<string, unknown>)?.[TEXT_KEY];
