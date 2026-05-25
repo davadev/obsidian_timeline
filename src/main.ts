@@ -151,6 +151,58 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     }
   }
 
+  /**
+   * Native SuggestModal that lists the three "create" / "insert" actions.
+   * Keeps the ribbon to a single icon while remaining discoverable.
+   */
+  openTimelineActionPicker(): void {
+    type Action = { label: string; description: string; run: () => void };
+    const actions: Action[] = [
+      {
+        label: "New timeline event",
+        description: "Prompt + create event note + open inspector.",
+        run: () => void this.commandsCtx.createEventInteractive(),
+      },
+      {
+        label: "New era",
+        description: "Prompt + create era note + open inspector.",
+        run: () => void this.createEraInteractive(),
+      },
+      {
+        label: "Insert timeline view block",
+        description: "Insert ```timeline mode: hybrid``` at the editor cursor.",
+        run: () => this.insertTimelineBlock(),
+      },
+    ];
+    // Dynamic import to avoid pulling SuggestModal into the test bundle path.
+    void import("obsidian").then(({ SuggestModal }) => {
+      type AppT = ConstructorParameters<typeof SuggestModal>[0];
+      class Picker extends SuggestModal<Action> {
+        constructor(app: AppT) {
+          super(app);
+          this.setPlaceholder("Pick a Timeline action…");
+        }
+        getSuggestions(query: string): Action[] {
+          const q = query.toLowerCase();
+          return actions.filter(
+            (a) =>
+              !q ||
+              a.label.toLowerCase().includes(q) ||
+              a.description.toLowerCase().includes(q)
+          );
+        }
+        renderSuggestion(a: Action, el: HTMLElement): void {
+          el.createEl("div", { text: a.label, cls: "txs-picker-title" });
+          el.createEl("div", { text: a.description, cls: "txs-picker-desc" });
+        }
+        onChooseSuggestion(a: Action): void {
+          a.run();
+        }
+      }
+      new Picker(this.app).open();
+    });
+  }
+
   /** Insert a default ```timeline block at the cursor of the active editor. */
   insertTimelineBlock(): void {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -281,14 +333,11 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     this.addRibbonIcon("calendar-range", "Open Timeline view", () => {
       void this.activateTimelineView();
     });
-    this.addRibbonIcon("plus-circle", "New timeline event", () => {
-      void this.commandsCtx.createEventInteractive();
-    });
-    this.addRibbonIcon("hourglass", "New era", () => {
-      void this.createEraInteractive();
-    });
-    this.addRibbonIcon("clock", "Insert timeline view block", () => {
-      this.insertTimelineBlock();
+    // Single consolidated picker for "create" / "insert" actions so the
+    // ribbon stays tidy. The individual commands remain registered below for
+    // hotkey bindings and the command palette.
+    this.addRibbonIcon("plus-circle", "Timeline actions…", () => {
+      this.openTimelineActionPicker();
     });
     this.addCommand({
       id: "txs-create-era",

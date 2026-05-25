@@ -421,6 +421,12 @@ function serializeBlockBody(
   if (state.start && state.end) doc.range = [state.start.year, state.end.year];
   else delete doc.range;
 
+  // zoom override
+  if (state.zoom != null) doc.zoom = state.zoom;
+  // (do not delete zoom if it was originally set without an override — only
+  // when the user explicitly clears the filter's zoom field we drop it.)
+  else if (Object.prototype.hasOwnProperty.call(doc, "zoom")) delete doc.zoom;
+
   return YAML.stringify(doc, { lineWidth: 0 }).trimEnd();
 }
 

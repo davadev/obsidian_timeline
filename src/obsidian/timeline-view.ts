@@ -22,6 +22,7 @@ interface ViewFilters {
   end: TimelineDate | null;
   labels: string[];
   hiddenCategories: Set<string>;
+  zoom: number | null;
 }
 
 const EMPTY_FILTERS = (): ViewFilters => ({
@@ -30,6 +31,7 @@ const EMPTY_FILTERS = (): ViewFilters => ({
   end: null,
   labels: [],
   hiddenCategories: new Set(),
+  zoom: null,
 });
 
 /**
@@ -136,8 +138,19 @@ export class TimelineView extends ItemView {
         (this.filters.start ? 1 : 0) +
         (this.filters.end ? 1 : 0) +
         (this.filters.labels.length ? 1 : 0) +
-        (this.filters.hiddenCategories.size ? 1 : 0);
+        (this.filters.hiddenCategories.size ? 1 : 0) +
+        (this.filters.zoom != null ? 1 : 0);
       badge.textContent = n ? `Filters (${n} active)` : "Filters";
+    };
+
+    // Coalesce keystrokes — don't re-render on every character.
+    let renderTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRender = () => {
+      if (renderTimer) clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => {
+        renderTimer = null;
+        this.bodyRender();
+      }, 250);
     };
 
     // Search
@@ -150,7 +163,7 @@ export class TimelineView extends ItemView {
     searchInput.addEventListener("input", () => {
       this.filters.search = searchInput.value;
       updateBadge();
-      this.bodyRender();
+      scheduleRender();
     });
 
     // Date range — granularity comes from settings.
@@ -194,7 +207,7 @@ export class TimelineView extends ItemView {
         .map((s) => s.trim())
         .filter(Boolean);
       updateBadge();
-      this.bodyRender();
+      scheduleRender();
     });
 
     // Categories — chip bar lives INSIDE the filter panel for the global view.
@@ -220,12 +233,35 @@ export class TimelineView extends ItemView {
       }
     }
 
+    // Zoom override
+    const zoomRow = panel.createDiv({ cls: "txs-view-zoom-row" });
+    zoomRow.createEl("span", { text: "Zoom override:" });
+    const zoomInput = zoomRow.createEl("input", {
+      type: "number",
+      placeholder: "auto",
+    }) as HTMLInputElement;
+    zoomInput.style.width = "80px";
+    zoomInput.step = "0.5";
+    zoomInput.min = "0.5";
+    if (this.filters.zoom != null) zoomInput.value = String(this.filters.zoom);
+    zoomInput.addEventListener("input", () => {
+      const v = zoomInput.value.trim();
+      if (v === "") this.filters.zoom = null;
+      else {
+        const n = parseFloat(v);
+        this.filters.zoom = Number.isFinite(n) && n > 0 ? n : null;
+      }
+      updateBadge();
+      scheduleRender();
+    });
+
     // Clear
     const clearBtn = panel.createEl("button", { text: "Clear filters" });
     clearBtn.addEventListener("click", () => {
       this.filters = EMPTY_FILTERS();
       searchInput.value = "";
       labelsInput.value = "";
+      zoomInput.value = "";
       startGroup.reset();
       endGroup.reset();
       updateBadge();
@@ -256,7 +292,8 @@ export class TimelineView extends ItemView {
     }
 
     const fullViewport = autoViewport(filtered);
-    const autoZoom = pickAutoZoom(filtered.length, fullViewport, body);
+    const computedZoom = pickAutoZoom(filtered.length, fullViewport, body);
+    const autoZoom = this.filters.zoom != null ? this.filters.zoom : computedZoom;
     renderTimeline({
       container: body,
       events: filtered,

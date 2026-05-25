@@ -64,6 +64,23 @@
   pointer-events: none;
 }
 
+.txs-picker-title {
+  font-weight: 600;
+}
+
+.txs-picker-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-view-zoom-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
 .txs-era-strip {
   display: flex;
   flex-wrap: wrap;

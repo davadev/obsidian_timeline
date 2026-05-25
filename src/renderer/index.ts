@@ -45,11 +45,10 @@ export function renderTimeline(args: RenderArgs): void {
   // Mount-point for the bar+list combo (so filter chips re-render only the body).
   const body = args.container.createDiv({ cls: "txs-timeline-body" });
 
-  const drawEvents = (events: typeof args.events) => {
+  const drawEvents = (events: typeof args.events, zoomOverride?: number | null) => {
     body.empty();
-    // (Era chip strip removed — the era name is now centered inside the band
-    // at the top of the bar render itself; see bar-renderer.drawEras.)
     const { mode } = args.options;
+    const effectiveZoom = zoomOverride != null ? zoomOverride : args.options.zoom;
     if (mode === "bar" || mode === "hybrid") {
       renderBar({
         container: body,
@@ -58,7 +57,7 @@ export function renderTimeline(args: RenderArgs): void {
         viewport: args.viewport,
         categoryColors: args.categoryColors,
         onOpenEvent: args.onOpenEvent,
-        zoom: args.options.zoom,
+        zoom: effectiveZoom,
         orientation: args.options.orientation,
         isMobile: args.isMobile,
         eras: args.eras,
@@ -94,12 +93,11 @@ export function renderTimeline(args: RenderArgs): void {
       precision: args.filterPrecision ?? "year",
       defaultOpen: false, // inline blocks always collapsed by default
       onChange: (state) => {
-        drawEvents(applyRichFilter(args.events, state));
+        drawEvents(applyRichFilter(args.events, state), state.zoom);
         args.onFilterChange?.(state);
       },
     });
-    // First paint uses persisted-or-seeded state from the panel.
-    drawEvents(applyRichFilter(args.events, handle.state));
+    drawEvents(applyRichFilter(args.events, handle.state), handle.state.zoom);
   } else {
     drawEvents(args.events);
   }

@@ -135,6 +135,8 @@ export interface RichFilterState {
   labels: string[];
   start: TimelineDate | null;
   end: TimelineDate | null;
+  /** Zoom override — null means "fall back to block's zoom / global default". */
+  zoom: number | null;
 }
 
 export interface RichFilterArgs {
@@ -166,6 +168,7 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
     labels: persisted?.labels ?? [],
     start: persisted?.start ?? null,
     end: persisted?.end ?? null,
+    zoom: persisted?.zoom ?? null,
   };
 
   const panel = args.parent.createEl("details", {
@@ -182,15 +185,25 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
       (state.labels.length ? 1 : 0) +
       (state.start ? 1 : 0) +
       (state.end ? 1 : 0) +
-      (state.hiddenCategories.size ? 1 : 0);
+      (state.hiddenCategories.size ? 1 : 0) +
+      (state.zoom != null ? 1 : 0);
     badge.textContent = n ? `Filters (${n} active)` : "Filters";
   };
   updateBadge();
 
+  // Coalesce keystrokes — without this every character in a search box
+  // re-renders the timeline AND rewrites the block YAML, which makes typing
+  // jarring (the body redraws under the input on every key). Keep the badge
+  // updates instant for responsiveness; defer the heavy work to a debounce.
+  let fireTimer: ReturnType<typeof setTimeout> | null = null;
   const fire = () => {
-    persistRichState(args.sourceKey, state);
     updateBadge();
-    args.onChange(state);
+    if (fireTimer) clearTimeout(fireTimer);
+    fireTimer = setTimeout(() => {
+      fireTimer = null;
+      persistRichState(args.sourceKey, state);
+      args.onChange(state);
+    }, 250);
   };
 
   const body = panel.createDiv({ cls: "txs-filter-rich-body" });
@@ -238,6 +251,28 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
     fire();
   });
 
+  // Zoom override
+  const zoomRow = body.createDiv({ cls: "txs-filter-rich-row" });
+  zoomRow.createEl("label", { text: "Zoom override (blank = default)" });
+  const zoomInput = zoomRow.createEl("input", {
+    type: "number",
+    placeholder: "e.g. 3",
+  }) as HTMLInputElement;
+  zoomInput.style.width = "100px";
+  zoomInput.step = "0.5";
+  zoomInput.min = "0.5";
+  if (state.zoom != null) zoomInput.value = String(state.zoom);
+  zoomInput.addEventListener("input", () => {
+    const v = zoomInput.value.trim();
+    if (v === "") {
+      state.zoom = null;
+    } else {
+      const n = parseFloat(v);
+      state.zoom = Number.isFinite(n) && n > 0 ? n : null;
+    }
+    fire();
+  });
+
   // Categories
   if (args.allCategories.length) {
     const catRow = body.createDiv({ cls: "txs-filter-rich-row" });
@@ -269,11 +304,12 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
     state.labels = [];
     state.start = null;
     state.end = null;
+    state.zoom = null;
     searchInput.value = "";
     labelsInput.value = "";
+    zoomInput.value = "";
     startCtl.reset();
     endCtl.reset();
-    // repaint chips
     body.querySelectorAll<HTMLElement>(".txs-filter-chip").forEach((c) => paintChip(c, true));
     fire();
   });
@@ -376,6 +412,7 @@ interface PersistShape {
   labels: string[];
   start: TimelineDate | null;
   end: TimelineDate | null;
+  zoom: number | null;
 }
 
 function loadRichState(sourceKey: string): PersistShape | null {
@@ -389,6 +426,7 @@ function loadRichState(sourceKey: string): PersistShape | null {
       labels: Array.isArray(p.labels) ? p.labels : [],
       start: p.start ?? null,
       end: p.end ?? null,
+      zoom: typeof p.zoom === "number" && p.zoom > 0 ? p.zoom : null,
     };
   } catch {
     return null;
@@ -403,6 +441,7 @@ function persistRichState(sourceKey: string, s: RichFilterState): void {
       labels: s.labels,
       start: s.start,
       end: s.end,
+      zoom: s.zoom,
     };
     localStorage.setItem(STORAGE_PREFIX_RICH + sourceKey, JSON.stringify(shape));
   } catch {
