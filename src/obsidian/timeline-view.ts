@@ -3,7 +3,8 @@ import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import { renderTimeline } from "../renderer";
 import type { TimelineDoc, TimelineEvent } from "../timeline/model";
-import { compare } from "../timeline/date";
+import { compare, type TimelineDate } from "../timeline/date";
+import { distinctCategories, renderFilterBar } from "../renderer/filter-bar";
 
 export const VIEW_TYPE_TIMELINE = "txs-timeline-view";
 
@@ -16,25 +17,31 @@ export interface TimelineViewArgs {
 
 interface ViewFilters {
   search: string;
-  startYear: number | null;
-  endYear: number | null;
-  labels: string[]; // hide any event NOT carrying at least one of these labels
+  start: TimelineDate | null;
+  end: TimelineDate | null;
+  labels: string[];
+  hiddenCategories: Set<string>;
 }
 
-const EMPTY_FILTERS: ViewFilters = {
+const EMPTY_FILTERS = (): ViewFilters => ({
   search: "",
-  startYear: null,
-  endYear: null,
+  start: null,
+  end: null,
   labels: [],
-};
+  hiddenCategories: new Set(),
+});
 
 /**
  * Workspace-leaf view (like the Graph view) showing the entire timeline.
- * Honors the same eventSource preference as the inline render block, so it
- * works on iOS even when no .timeline XML is present.
+ * Filter panel is a collapsible <details> that hosts search, granular date
+ * inputs (year — or year+month+day — or full datetime, per setting), label
+ * filter, and the category chip bar.
+ *
+ * Inline ` ```timeline ` blocks keep their own above-block filter bar; the
+ * global view is the only place where the chips live inside the filters.
  */
 export class TimelineView extends ItemView {
-  private filters: ViewFilters = { ...EMPTY_FILTERS };
+  private filters: ViewFilters = EMPTY_FILTERS();
   private cachedDoc: TimelineDoc | null = null;
 
   constructor(leaf: WorkspaceLeaf, private args: TimelineViewArgs) {
@@ -44,36 +51,27 @@ export class TimelineView extends ItemView {
   getViewType(): string {
     return VIEW_TYPE_TIMELINE;
   }
-
   getDisplayText(): string {
     return "Timeline";
   }
-
   getIcon(): string {
     return "calendar-range";
   }
 
   async onOpen(): Promise<void> {
     await this.fullRender();
-    // Deliberately NOT subscribing to active-leaf-change here. Doing so used
-    // to re-fullRender every time focus shifted (opening or closing the
-    // sidebar / inspector counts), which wiped the body + each bar's scroll
-    // position. Use the Refresh button — or reopen the view — when you need
-    // fresh data.
   }
 
   async onClose(): Promise<void> {
     this.contentEl.empty();
   }
 
-  /** Full re-render including header + filters + body. */
   private async fullRender(): Promise<void> {
     const { cache, getSettings, app } = this.args;
     const settings = getSettings();
     this.contentEl.empty();
     this.contentEl.addClass("txs-view-root");
 
-    // Header: title + refresh button
     const header = this.contentEl.createDiv({ cls: "txs-view-header" });
     header.createEl("h3", { text: "Timeline" });
     const refreshBtn = header.createEl("button", { text: "Refresh" });
@@ -84,106 +82,7 @@ export class TimelineView extends ItemView {
       void this.fullRender();
     });
 
-    // Filter row: collapsible <details> so it doesn't eat screen on phones.
-    // Defaults: collapsed on mobile, open on desktop.
-    const filterRow = this.contentEl.createEl("details", {
-      cls: "txs-view-filters",
-    }) as HTMLDetailsElement;
-    if (!Platform.isMobile) filterRow.open = true;
-    const summary = filterRow.createEl("summary", { cls: "txs-view-filters-summary" });
-    const countBadge = summary.createEl("span", {
-      cls: "txs-view-filters-badge",
-      text: "Filters",
-    });
-    const updateBadge = () => {
-      const n =
-        (this.filters.search ? 1 : 0) +
-        (this.filters.startYear != null ? 1 : 0) +
-        (this.filters.endYear != null ? 1 : 0) +
-        (this.filters.labels.length ? 1 : 0);
-      countBadge.textContent = n ? `Filters (${n} active)` : "Filters";
-    };
-    updateBadge();
-
-    const searchInput = filterRow.createEl("input", {
-      cls: "txs-view-search",
-      type: "search",
-      placeholder: "Search title / description / category…",
-    });
-    searchInput.value = this.filters.search;
-    searchInput.addEventListener("input", () => {
-      this.filters.search = searchInput.value;
-      updateBadge();
-      this.bodyRender();
-    });
-
-    const rangeLabel = filterRow.createEl("span", {
-      cls: "txs-view-range-label",
-      text: "Years:",
-    });
-    rangeLabel.title = "Inclusive year range. Use negative numbers for BCE.";
-    const startInput = filterRow.createEl("input", {
-      cls: "txs-view-year",
-      type: "number",
-      placeholder: "from",
-    });
-    if (this.filters.startYear != null) startInput.value = String(this.filters.startYear);
-    startInput.addEventListener("input", () => {
-      const v = startInput.value.trim();
-      this.filters.startYear = v === "" ? null : parseInt(v, 10);
-      if (this.filters.startYear != null && !Number.isFinite(this.filters.startYear)) {
-        this.filters.startYear = null;
-      }
-      updateBadge();
-      this.bodyRender();
-    });
-
-    const endInput = filterRow.createEl("input", {
-      cls: "txs-view-year",
-      type: "number",
-      placeholder: "to",
-    });
-    if (this.filters.endYear != null) endInput.value = String(this.filters.endYear);
-    endInput.addEventListener("input", () => {
-      const v = endInput.value.trim();
-      this.filters.endYear = v === "" ? null : parseInt(v, 10);
-      if (this.filters.endYear != null && !Number.isFinite(this.filters.endYear)) {
-        this.filters.endYear = null;
-      }
-      updateBadge();
-      this.bodyRender();
-    });
-
-    const labelsInput = filterRow.createEl("input", {
-      cls: "txs-view-labels",
-      type: "text",
-      placeholder: "labels (comma separated)",
-    });
-    labelsInput.value = this.filters.labels.join(",");
-    labelsInput.addEventListener("input", () => {
-      this.filters.labels = labelsInput.value
-        .split(/[\s,;]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      updateBadge();
-      this.bodyRender();
-    });
-
-    const clearBtn = filterRow.createEl("button", { text: "Clear" });
-    clearBtn.addEventListener("click", () => {
-      this.filters = { ...EMPTY_FILTERS };
-      searchInput.value = "";
-      startInput.value = "";
-      endInput.value = "";
-      labelsInput.value = "";
-      updateBadge();
-      this.bodyRender();
-    });
-
-    // Body (re-rendered on filter changes)
-    this.contentEl.createDiv({ cls: "txs-view-body" });
-
-    // Load doc once per fullRender — subsequent filter changes reuse it.
+    // Load doc first — we need categories to populate the chip bar.
     try {
       const xmlPath = settings.sourceXmlPath;
       const xmlAvailable =
@@ -199,24 +98,143 @@ export class TimelineView extends ItemView {
           : await cache.getMdDoc();
       }
     } catch (e) {
-      this.contentEl
-        .querySelector(".txs-view-body")!
-        .createDiv({
-          cls: "txs-error",
-          text: `Timeline view error: ${(e as Error).message}`,
-        });
+      this.contentEl.createDiv({
+        cls: "txs-error",
+        text: `Timeline view error: ${(e as Error).message}`,
+      });
       return;
     }
 
+    this.buildFilterPanel(settings);
+    this.contentEl.createDiv({ cls: "txs-view-body" });
     this.bodyRender();
   }
 
-  /** Re-render only the body using the cached doc + current filters. */
+  private buildFilterPanel(settings: TimelineXmlSyncSettings): void {
+    const doc = this.cachedDoc;
+    if (!doc) return;
+
+    const panel = this.contentEl.createEl("details", {
+      cls: "txs-view-filters",
+    }) as HTMLDetailsElement;
+    if (!Platform.isMobile) panel.open = true;
+
+    const summary = panel.createEl("summary", {
+      cls: "txs-view-filters-summary",
+    });
+    const badge = summary.createEl("span", {
+      cls: "txs-view-filters-badge",
+      text: "Filters",
+    });
+
+    const updateBadge = () => {
+      const n =
+        (this.filters.search ? 1 : 0) +
+        (this.filters.start ? 1 : 0) +
+        (this.filters.end ? 1 : 0) +
+        (this.filters.labels.length ? 1 : 0) +
+        (this.filters.hiddenCategories.size ? 1 : 0);
+      badge.textContent = n ? `Filters (${n} active)` : "Filters";
+    };
+
+    // Search
+    const searchInput = panel.createEl("input", {
+      cls: "txs-view-search",
+      type: "search",
+      placeholder: "Search title / description / category…",
+    });
+    searchInput.value = this.filters.search;
+    searchInput.addEventListener("input", () => {
+      this.filters.search = searchInput.value;
+      updateBadge();
+      this.bodyRender();
+    });
+
+    // Date range — granularity comes from settings.
+    const dateBox = panel.createDiv({ cls: "txs-view-date-row" });
+    dateBox.createEl("span", {
+      cls: "txs-view-range-label",
+      text: "From → to:",
+    });
+    const startGroup = renderDateInputs(
+      dateBox,
+      this.filters.start,
+      settings.globalFilterPrecision,
+      (d) => {
+        this.filters.start = d;
+        updateBadge();
+        this.bodyRender();
+      }
+    );
+    dateBox.createEl("span", { text: "→" });
+    const endGroup = renderDateInputs(
+      dateBox,
+      this.filters.end,
+      settings.globalFilterPrecision,
+      (d) => {
+        this.filters.end = d;
+        updateBadge();
+        this.bodyRender();
+      }
+    );
+
+    // Labels
+    const labelsInput = panel.createEl("input", {
+      cls: "txs-view-labels",
+      type: "text",
+      placeholder: "labels (space / comma / ;)",
+    });
+    labelsInput.value = this.filters.labels.join(" ");
+    labelsInput.addEventListener("input", () => {
+      this.filters.labels = labelsInput.value
+        .split(/[\s,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      updateBadge();
+      this.bodyRender();
+    });
+
+    // Categories — chip bar lives INSIDE the filter panel for the global view.
+    const cats = distinctCategories(doc.events, doc.categories);
+    if (cats.length) {
+      renderFilterBar({
+        parent: panel,
+        sourceKey: `view:${settings.timelineId}`,
+        allCategories: cats,
+        initialHidden: Array.from(this.filters.hiddenCategories.size
+          ? this.filters.hiddenCategories
+          : new Set(settings.hiddenCategories)),
+        categoryColors: settings.categoryColors,
+        onChange: (hidden) => {
+          this.filters.hiddenCategories = hidden;
+          updateBadge();
+          this.bodyRender();
+        },
+      });
+      // Seed local set with the persisted chip state for initial render.
+      if (!this.filters.hiddenCategories.size) {
+        this.filters.hiddenCategories = new Set(settings.hiddenCategories);
+      }
+    }
+
+    // Clear
+    const clearBtn = panel.createEl("button", { text: "Clear filters" });
+    clearBtn.addEventListener("click", () => {
+      this.filters = EMPTY_FILTERS();
+      searchInput.value = "";
+      labelsInput.value = "";
+      startGroup.reset();
+      endGroup.reset();
+      updateBadge();
+      this.bodyRender();
+    });
+
+    updateBadge();
+  }
+
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
     if (!body) return;
-    // Snapshot scroll position(s) before wiping so the user doesn't lose
-    // their place when the filter / inspector toggles trigger a body redraw.
     const bodyScrollTop = body.scrollTop;
     const barScrolls: number[] = [];
     body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
@@ -228,7 +246,7 @@ export class TimelineView extends ItemView {
     const { cache, getSettings, app } = this.args;
     const settings = getSettings();
 
-    const filtered = applyFilters(this.cachedDoc.events, this.filters);
+    let filtered = applyFilters(this.cachedDoc.events, this.filters);
     if (!filtered.length) {
       body.createDiv({ text: "No events match current filters." });
       return;
@@ -245,21 +263,20 @@ export class TimelineView extends ItemView {
         ...settings.renderDefaults,
         mode: settings.renderDefaults.mode,
         zoom: autoZoom,
-        // Global view list: only title/date/category + Open link. No descriptions.
         show: ["title", "date", "category"],
         details: "compact",
-        showFilterUI: true,
+        // Category chips are in the filter panel for the global view, so the
+        // renderer's own chip bar would be duplicate noise.
+        showFilterUI: false,
       },
       onOpenEvent: (id) => this.args.onEventClick(id),
       categoryColors: settings.categoryColors,
-      initialHidden: settings.hiddenCategories,
+      // Already filtered by our hiddenCategories above — don't double-filter.
+      initialHidden: [],
       filterKey: `view:${settings.timelineId}`,
       isMobile: Platform.isMobile,
     });
 
-    // Restore scroll position(s). Two rAFs: first lets the SVG attach +
-    // measure, second lands after layout so scrollLeft / scrollTop stick on
-    // iOS WebView (single rAF was occasionally too early).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         body.scrollTop = bodyScrollTop;
@@ -275,18 +292,15 @@ export class TimelineView extends ItemView {
 
 function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] {
   const q = f.search.trim().toLowerCase();
+  const hidden = f.hiddenCategories;
   return events.filter((e) => {
+    if (hidden.size && e.category && hidden.has(e.category)) return false;
     if (q) {
       const hay = `${e.text}\n${e.description ?? ""}\n${e.category ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
-    if (f.startYear != null) {
-      // event must end at or after startYear
-      if (compare(e.end, { year: f.startYear, month: 1, day: 1 }) < 0) return false;
-    }
-    if (f.endYear != null) {
-      if (compare(e.start, { year: f.endYear, month: 12, day: 31 }) > 0) return false;
-    }
+    if (f.start && compare(e.end, f.start) < 0) return false;
+    if (f.end && compare(e.start, f.end) > 0) return false;
     if (f.labels.length) {
       const need = new Set(f.labels.map((s) => s.toLowerCase()));
       const have = (e.labels ?? []).map((s) => s.toLowerCase());
@@ -294,6 +308,84 @@ function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] 
     }
     return true;
   });
+}
+
+interface DateGroupHandle {
+  reset: () => void;
+}
+
+/**
+ * Renders the date inputs for one side of the range. `precision` controls
+ * which fields are emitted. Calls `onChange` with the assembled TimelineDate
+ * (or null when the year field is cleared) after every keystroke.
+ */
+function renderDateInputs(
+  parent: HTMLElement,
+  initial: TimelineDate | null,
+  precision: "year" | "day" | "time",
+  onChange: (d: TimelineDate | null) => void
+): DateGroupHandle {
+  const wrap = parent.createDiv({ cls: "txs-view-date-fields" });
+  const inputs: HTMLInputElement[] = [];
+  const mk = (placeholder: string, value: number | undefined, width: number) => {
+    const i = wrap.createEl("input", {
+      type: "number",
+      placeholder,
+    }) as HTMLInputElement;
+    i.style.width = `${width}px`;
+    if (value != null) i.value = String(value);
+    inputs.push(i);
+    return i;
+  };
+  const yIn = mk("year", initial?.year, 70);
+  let moIn: HTMLInputElement | null = null;
+  let dIn: HTMLInputElement | null = null;
+  let hIn: HTMLInputElement | null = null;
+  let miIn: HTMLInputElement | null = null;
+  let sIn: HTMLInputElement | null = null;
+  if (precision === "day" || precision === "time") {
+    moIn = mk("mo", initial?.month, 40);
+    dIn = mk("dd", initial?.day, 40);
+  }
+  if (precision === "time") {
+    hIn = mk("hh", initial?.hour, 40);
+    miIn = mk("mm", initial?.minute, 40);
+    sIn = mk("ss", initial?.second, 40);
+  }
+
+  const fire = () => {
+    const y = yIn.value.trim();
+    if (y === "") {
+      onChange(null);
+      return;
+    }
+    const year = parseInt(y, 10);
+    if (!Number.isFinite(year)) {
+      onChange(null);
+      return;
+    }
+    const intOf = (el: HTMLInputElement | null) => {
+      if (!el || el.value.trim() === "") return undefined;
+      const n = parseInt(el.value, 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    onChange({
+      year,
+      month: intOf(moIn),
+      day: intOf(dIn),
+      hour: intOf(hIn),
+      minute: intOf(miIn),
+      second: intOf(sIn),
+    });
+  };
+
+  for (const i of inputs) i.addEventListener("input", fire);
+
+  return {
+    reset: () => {
+      for (const i of inputs) i.value = "";
+    },
+  };
 }
 
 function autoViewport(events: { start: { year: number }; end: { year: number } }[]) {

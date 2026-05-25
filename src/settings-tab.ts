@@ -7,6 +7,59 @@ import {
   type DeviceSyncMode,
 } from "./obsidian/device-prefs";
 
+/**
+ * Coerce any of the color formats we accept (#rgb, #rrggbb, rgb(r,g,b),
+ * rgba(...), hsl(...), bare "r,g,b") into a #rrggbb string suitable for the
+ * native <input type="color"> picker. Returns the input unchanged when we
+ * can't parse it (the picker will just default to black, no crash).
+ */
+function toHexColor(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "#888888";
+  const hex6 = s.match(/^#([0-9a-f]{6})$/i);
+  if (hex6) return `#${hex6[1].toLowerCase()}`;
+  const hex3 = s.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if (hex3) {
+    const r = hex3[1] + hex3[1];
+    const g = hex3[2] + hex3[2];
+    const b = hex3[3] + hex3[3];
+    return `#${(r + g + b).toLowerCase()}`;
+  }
+  const rgb = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgb) {
+    return rgbHex(parseInt(rgb[1], 10), parseInt(rgb[2], 10), parseInt(rgb[3], 10));
+  }
+  const bare = s.match(/^(\d+)\s*,\s*(\d+)\s*,\s*(\d+)$/);
+  if (bare) {
+    return rgbHex(parseInt(bare[1], 10), parseInt(bare[2], 10), parseInt(bare[3], 10));
+  }
+  // hsl → rgb → hex
+  const hsl = s.match(/^hsla?\(\s*(\d+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/i);
+  if (hsl) {
+    const [r, g, b] = hslToRgb(
+      parseInt(hsl[1], 10),
+      parseFloat(hsl[2]) / 100,
+      parseFloat(hsl[3]) / 100
+    );
+    return rgbHex(r, g, b);
+  }
+  return "#888888";
+}
+
+function rgbHex(r: number, g: number, b: number): string {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
+  const h = (n: number) => clamp(n).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) =>
+    255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)));
+  return [f(0), f(8), f(4)];
+}
+
 export class TimelineXmlSyncSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: TimelineXmlSyncPlugin) {
     super(app, plugin);
@@ -289,6 +342,23 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Global view date filter precision")
+      .setDesc(
+        "How many date components the filter row in the Timeline view exposes. Year keeps things compact; Day or Time adds the extra inputs."
+      )
+      .addDropdown((d) =>
+        d
+          .addOption("year", "Year only (default)")
+          .addOption("day", "Year + month + day")
+          .addOption("time", "Year + month + day + time")
+          .setValue(s.globalFilterPrecision)
+          .onChange(async (v) => {
+            s.globalFilterPrecision = v as typeof s.globalFilterPrecision;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Globally hidden categories")
       .setDesc(
         "Comma-separated list. Hidden by default in every render; the in-render chip bar can re-enable per timeline."
@@ -365,8 +435,27 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
           s.categoryColors[name] ?? "var(--background-secondary)";
         const setting = new Setting(colorsBox).setName(name);
         setting.nameEl.prepend(swatch);
-        setting.addText((t) =>
-          t
+
+        // Track the text input so the color picker can keep them in sync.
+        let textComponent: { setValue: (v: string) => void } | null = null;
+
+        // Native color picker — `<input type=color>` only understands
+        // #rrggbb, so we normalise from rgb(...) / hsl(...) when seeding.
+        const picker = document.createElement("input");
+        picker.type = "color";
+        picker.value = toHexColor(s.categoryColors[name] ?? "#888888");
+        picker.style.marginRight = "6px";
+        picker.addEventListener("input", async () => {
+          s.categoryColors[name] = picker.value;
+          swatch.style.background = picker.value;
+          textComponent?.setValue(picker.value);
+          await this.plugin.saveSettings();
+        });
+        setting.controlEl.prepend(picker);
+
+        setting.addText((t) => {
+          textComponent = t;
+          return t
             .setPlaceholder("#aabbcc or rgb(…)")
             .setValue(s.categoryColors[name] ?? "")
             .onChange(async (v) => {
@@ -375,9 +464,10 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
               else delete s.categoryColors[name];
               swatch.style.background =
                 s.categoryColors[name] ?? "var(--background-secondary)";
+              picker.value = toHexColor(s.categoryColors[name] ?? "#888888");
               await this.plugin.saveSettings();
-            })
-        );
+            });
+        });
         setting.addExtraButton((b) =>
           b
             .setIcon("trash")

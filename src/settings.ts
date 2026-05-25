@@ -56,6 +56,13 @@ export interface TimelineXmlSyncSettings {
   firstRunCompleted: boolean;
   /** What happens when the user clicks/taps an event in a rendered timeline. */
   clickBehavior: "open-note" | "inspector";
+  /**
+   * How precise the global Timeline view's date-range inputs are.
+   * - "year": year-only fields (compact, default)
+   * - "day": adds month + day
+   * - "time": adds hour + minute + second on top of day
+   */
+  globalFilterPrecision: "year" | "day" | "time";
 }
 
 /**
@@ -86,4 +93,5 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   eventSource: "auto",
   firstRunCompleted: false,
   clickBehavior: "inspector",
+  globalFilterPrecision: "year",
 };
