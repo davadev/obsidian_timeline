@@ -148,11 +148,25 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         );
       }
 
-      // Viewport: from current note frontmatter, or from XML displayed_period.
-      // Block YAML can opt out via `viewport: false` (the insert-block command
-      // emits this by default so inserted blocks behave like the global view).
+      // Viewport policy:
+      //   - block YAML `viewport: true`  → always use host frontmatter / XML period
+      //   - block YAML `viewport: false` → never use it (insert-block default)
+      //   - omitted                      → use ONLY when host note's
+      //                                    `timeline.role` is "viewport".
+      //
+      // Reason for the new default: blocks dropped into an event note used to
+      // silently inherit that event's start/end as a hard filter, so the same
+      // filter values yielded fewer events in the inserted block than in the
+      // global view. Now event notes don't auto-restrict; viewport-role notes
+      // do (which is what they're for), and any block can override either way.
       let viewport: ViewportRange | null = null;
-      if (opts.useViewport !== false) {
+      const useViewport =
+        opts.useViewport === true
+          ? true
+          : opts.useViewport === false
+            ? false
+            : await hostIsViewportNote(ctx, md.sourcePath);
+      if (useViewport) {
         viewport = await resolveViewport(ctx, md.sourcePath, doc);
         const padYears = opts.pointPaddingYears ?? settings.pointPaddingYears;
         viewport = expandDegenerateViewport(viewport, padYears);
@@ -436,6 +450,27 @@ function serializeBlockBody(
   else if (Object.prototype.hasOwnProperty.call(doc, "zoom")) delete doc.zoom;
 
   return YAML.stringify(doc, { lineWidth: 0 }).trimEnd();
+}
+
+/**
+ * Returns true when the host note's frontmatter declares
+ * `timeline.role: viewport`. Used to decide whether an inline ```timeline
+ * block should inherit the host's start/end as a viewport when the block
+ * itself didn't specify a `viewport` opt.
+ */
+async function hostIsViewportNote(
+  ctx: PostProcessorContext,
+  sourcePath: string
+): Promise<boolean> {
+  if (!sourcePath) return false;
+  const file = ctx.vault.getFile(sourcePath);
+  if (!file) return false;
+  const meta = ctx.app.metadataCache.getFileCache(file);
+  const fm = meta?.frontmatter as Record<string, unknown> | undefined;
+  if (!fm) return false;
+  const tl = fm.timeline as Record<string, unknown> | undefined;
+  if (!tl || typeof tl !== "object" || Array.isArray(tl)) return false;
+  return tl.role === "viewport";
 }
 
 /** Drop eras whose range doesn't overlap the visible viewport. */

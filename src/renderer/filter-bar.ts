@@ -326,6 +326,16 @@ export function applyRichFilter(
   const labelNeed = state.labels.length
     ? new Set(state.labels.map((s) => s.toLowerCase()))
     : null;
+  // Pre-normalise the filter boundaries:
+  //  - start fills missing components with the START of the period (1 / 1 / 0)
+  //    → "year -2400" means "from Jan 1 of -2400 onwards"
+  //  - end fills missing components with the END of the period (12 / 31 / 23 …)
+  //    → "year -2000" means "through Dec 31 of -2000"
+  // Without this an event with start = {-2000, 6, 15} got dropped against an
+  // end = {-2000} because compare() defaulted both to Jan 1 and the event
+  // start ended up "after" the filter end.
+  const filterStart = state.start ?? null;
+  const filterEnd = state.end ? expandToEndOfPeriod(state.end) : null;
   return events.filter((e) => {
     if (state.hiddenCategories.size && e.category && state.hiddenCategories.has(e.category)) {
       return false;
@@ -334,14 +344,62 @@ export function applyRichFilter(
       const hay = `${e.text}\n${e.description ?? ""}\n${e.category ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
-    if (state.start && compare(e.end, state.start) < 0) return false;
-    if (state.end && compare(e.start, state.end) > 0) return false;
+    if (filterStart && compare(e.end, filterStart) < 0) return false;
+    if (filterEnd && compare(e.start, filterEnd) > 0) return false;
     if (labelNeed) {
       const have = (e.labels ?? []).map((s) => s.toLowerCase());
       if (!have.some((l) => labelNeed.has(l))) return false;
     }
     return true;
   });
+}
+
+/**
+ * Expand a partial TimelineDate to the LAST instant of the largest specified
+ * unit, so a year-only or year+month-only filter end is treated inclusively.
+ */
+function expandToEndOfPeriod(d: TimelineDate): TimelineDate {
+  const out: TimelineDate = { ...d };
+  if (out.month == null) {
+    out.month = 12;
+    out.day = 31;
+    out.hour = 23;
+    out.minute = 59;
+    out.second = 59;
+    return out;
+  }
+  if (out.day == null) {
+    out.day = daysInMonth(out.year, out.month);
+    out.hour = 23;
+    out.minute = 59;
+    out.second = 59;
+    return out;
+  }
+  if (out.hour == null) {
+    out.hour = 23;
+    out.minute = 59;
+    out.second = 59;
+    return out;
+  }
+  if (out.minute == null) {
+    out.minute = 59;
+    out.second = 59;
+    return out;
+  }
+  if (out.second == null) {
+    out.second = 59;
+  }
+  return out;
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap =
+      year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  if (month === 4 || month === 6 || month === 9 || month === 11) return 30;
+  return 31;
 }
 
 interface DateCtl {

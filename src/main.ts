@@ -191,10 +191,12 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       return;
     }
     const editor = view.editor;
-    // viewport: false → ignore the host note's timeline.start/end so the
-    // inserted block behaves like the global Timeline view by default.
-    // Drop the line or set viewport: true if you want event-overlap filtering.
-    const snippet = "```timeline\nmode: hybrid\nsource: main\nviewport: false\n```\n";
+    // The block inherits the host note's frontmatter timeline.start/end only
+    // when the note explicitly declares `timeline.role: viewport`. Event /
+    // ordinary notes no longer auto-restrict the rendered events — same
+    // behaviour as the global Timeline view. Set `viewport: true` to force
+    // it on; `viewport: false` to force it off regardless of role.
+    const snippet = "```timeline\nmode: hybrid\nsource: main\n```\n";
     editor.replaceSelection(snippet);
   }
 
