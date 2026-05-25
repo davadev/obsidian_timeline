@@ -98,6 +98,45 @@ timeline:
     expect(out).toContain("seventy-weeks");
   });
 
+  it("extracts a multi-line description that contains the letter z", () => {
+    const md = `---
+title: Hezekiah
+timeline:
+  enabled: true
+  id: main
+  event_id: hez
+  role: event
+  source_xml: x.timeline
+  start: { year: -769, month: 1, day: 1 }
+  end: { year: -715, month: 1, day: 1 }
+---
+
+# Hezekiah
+
+## Text
+
+Hezekiah
+
+## Description
+
+Hezekiah was a king of Judah.
+He purged the temple at Zion and trusted Yahweh.
+He reigned 29 years.
+
+## Timeline
+
+\`\`\`timeline
+mode: hybrid
+\`\`\`
+`;
+    const parsed = parseEventNote(md, { path: "events/hez.md" });
+    expect(parsed.note).toBeTruthy();
+    const desc = parsed.note!.event.description ?? "";
+    expect(desc).toContain("Hezekiah was a king of Judah");
+    expect(desc).toContain("Zion");
+    expect(desc).toContain("29 years");
+  });
+
   it("renders MD with both nested timeline and mirror props", () => {
     const ev: TimelineEvent = {
       id: "abc",

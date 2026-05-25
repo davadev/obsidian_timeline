@@ -65,7 +65,7 @@ export interface TimelineXmlSyncSettings {
  * user is offered the safe reimport command (which wipes + re-creates notes
  * from the still-canonical .timeline XML).
  */
-export const EVENT_NOTE_SCHEMA_VERSION = 2;
+export const EVENT_NOTE_SCHEMA_VERSION = 3;
 
 export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   sourceXmlPath: "timelines/main.timeline",

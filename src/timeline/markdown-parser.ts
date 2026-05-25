@@ -209,15 +209,35 @@ function extractH1(body: string): string | undefined {
   return m ? m[1] : undefined;
 }
 
-/** Read the contents of a `## <name>` heading (until the next heading or EOF). */
+/**
+ * Read the contents of a `## <name>` heading (until the next heading or EOF).
+ *
+ * Line-based scan instead of a regex with a lookahead — the previous regex
+ * used a literal `\Z` (invalid in JS, becomes the letter Z) combined with the
+ * `i` flag, so any z/Z character in the body silently truncated the capture.
+ * Symptom: descriptions for events whose text contained "Hezekiah" / "Nazareth"
+ * etc. imported as just the prefix before the first z.
+ */
 export function extractSection(body: string, name: string): string {
-  const re = new RegExp(
-    `^##\\s+${escapeRe(name)}\\s*$([\\s\\S]*?)(?=^##\\s+|^#\\s+|\\Z)`,
-    "im"
-  );
-  const m = body.match(re);
-  if (!m) return "";
-  return m[1].trim();
+  const headingRe = new RegExp(`^##\\s+${escapeRe(name)}\\s*$`);
+  const stopRe = /^#{1,6}\s+/;
+  const lines = body.split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i])) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start === -1) return "";
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (stopRe.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n").trim();
 }
 
 function escapeRe(s: string): string {
