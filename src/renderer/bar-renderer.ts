@@ -174,21 +174,16 @@ function attachEvents(
   isMobile: boolean
 ): void {
   // Always route through the plugin's click router (inspector or open-note).
-  // The mobile in-place panel was redundant with the inspector view and made
-  // the bar feel inert on phones because nothing visible happened "above" the
-  // fold.
+  // We only listen for "click" — iOS's synthetic click event is already
+  // suppressed when the user is panning/scrolling, so a drag across the bar
+  // no longer triggers the inspector. A separate touchend listener we used
+  // to have was the source of the "scrolling accidentally opens events" bug
+  // on dense timelines.
   el.addEventListener("click", (e) => {
     e.stopPropagation();
     onOpen(ev.id);
   });
-  // touchend fallback for iOS Safari where synthetic click can be flaky on
-  // SVG nodes inside a scrollable container.
-  el.addEventListener("touchend", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onOpen(ev.id);
-  }, { passive: false });
-  // Make the hit target obvious + suppress the iOS 300ms tap delay.
+  // Hit-target affordance + suppress the iOS 300ms tap delay.
   (el as unknown as HTMLElement).style.cursor = "pointer";
   el.setAttribute("style", `${el.getAttribute("style") ?? ""} touch-action: manipulation;`);
 
