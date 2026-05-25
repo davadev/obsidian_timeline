@@ -362,12 +362,55 @@
 }
 
 .txs-view-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
+  /* <details> element. When closed only the summary shows, so the body has
+   * full screen for the timeline — important on phones. */
   flex: 0 0 auto;
-  padding: 4px 0;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.txs-view-filters[open] {
+  padding: 4px 6px 6px;
+}
+
+.txs-view-filters > .txs-view-filters-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.txs-view-filters > .txs-view-filters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.txs-view-filters > .txs-view-filters-summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.1s ease;
+  color: var(--text-faint);
+}
+
+.txs-view-filters[open] > .txs-view-filters-summary::before {
+  transform: rotate(90deg);
+}
+
+.txs-view-filters-badge {
+  font-weight: 500;
+}
+
+.txs-view-filters > *:not(summary) {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  margin-top: 4px;
 }
 
 .txs-view-search {

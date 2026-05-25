@@ -84,8 +84,27 @@ export class TimelineView extends ItemView {
       void this.fullRender();
     });
 
-    // Filter row: search + date range
-    const filterRow = this.contentEl.createDiv({ cls: "txs-view-filters" });
+    // Filter row: collapsible <details> so it doesn't eat screen on phones.
+    // Defaults: collapsed on mobile, open on desktop.
+    const filterRow = this.contentEl.createEl("details", {
+      cls: "txs-view-filters",
+    }) as HTMLDetailsElement;
+    if (!Platform.isMobile) filterRow.open = true;
+    const summary = filterRow.createEl("summary", { cls: "txs-view-filters-summary" });
+    const countBadge = summary.createEl("span", {
+      cls: "txs-view-filters-badge",
+      text: "Filters",
+    });
+    const updateBadge = () => {
+      const n =
+        (this.filters.search ? 1 : 0) +
+        (this.filters.startYear != null ? 1 : 0) +
+        (this.filters.endYear != null ? 1 : 0) +
+        (this.filters.labels.length ? 1 : 0);
+      countBadge.textContent = n ? `Filters (${n} active)` : "Filters";
+    };
+    updateBadge();
+
     const searchInput = filterRow.createEl("input", {
       cls: "txs-view-search",
       type: "search",
@@ -94,6 +113,7 @@ export class TimelineView extends ItemView {
     searchInput.value = this.filters.search;
     searchInput.addEventListener("input", () => {
       this.filters.search = searchInput.value;
+      updateBadge();
       this.bodyRender();
     });
 
@@ -114,6 +134,7 @@ export class TimelineView extends ItemView {
       if (this.filters.startYear != null && !Number.isFinite(this.filters.startYear)) {
         this.filters.startYear = null;
       }
+      updateBadge();
       this.bodyRender();
     });
 
@@ -129,6 +150,7 @@ export class TimelineView extends ItemView {
       if (this.filters.endYear != null && !Number.isFinite(this.filters.endYear)) {
         this.filters.endYear = null;
       }
+      updateBadge();
       this.bodyRender();
     });
 
@@ -140,9 +162,10 @@ export class TimelineView extends ItemView {
     labelsInput.value = this.filters.labels.join(",");
     labelsInput.addEventListener("input", () => {
       this.filters.labels = labelsInput.value
-        .split(",")
+        .split(/[\s,;]+/)
         .map((s) => s.trim())
         .filter(Boolean);
+      updateBadge();
       this.bodyRender();
     });
 
@@ -153,6 +176,7 @@ export class TimelineView extends ItemView {
       startInput.value = "";
       endInput.value = "";
       labelsInput.value = "";
+      updateBadge();
       this.bodyRender();
     });
 
