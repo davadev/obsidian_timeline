@@ -91,6 +91,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     endsToday: boolOrUndef(timeline.ends_today),
     defaultColor: strOrUndef(timeline.default_color),
     icon: strOrUndef(timeline.icon),
+    iconAttachmentPath: strOrUndef(timeline.icon_path),
     alert: strOrUndef(timeline.alert),
   };
 

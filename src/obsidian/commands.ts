@@ -9,6 +9,11 @@ import { parseEventNote } from "../timeline/markdown-parser";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
+import {
+  arrayBufferToBase64,
+  base64ToArrayBuffer,
+  guessImageExtension,
+} from "../timeline/base64";
 
 export interface CommandsContext {
   app: App;
@@ -207,6 +212,14 @@ export async function autoDetectEventNotes(
   );
 }
 
+async function writeBinary(
+  ctx: CommandsContext,
+  path: string,
+  data: ArrayBuffer
+): Promise<void> {
+  await ctx.vault.writeBinary(path, data);
+}
+
 function longestCommonDir(paths: string[]): string {
   if (!paths.length) return "";
   const parts = paths.map((p) => p.split("/").slice(0, -1));
@@ -280,10 +293,25 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   s.lastImportSchemaVersion = EVENT_NOTE_SCHEMA_VERSION;
   await ctx.saveSettings();
 
+  const attachmentsDir = `${s.eventNotesDir}/_attachments`;
   let created = 0;
   let updated = 0;
   await ctx.withSelfWrite(async () => {
     for (const ev of doc.events) {
+      // Picture sync (XML → MD): if the event carries a base64 icon, write
+      // it to a vault attachment and put the path on the event.
+      if (ev.icon && ev.icon.trim()) {
+        try {
+          const ext = guessImageExtension(ev.icon.trim());
+          const attPath = `${attachmentsDir}/${ev.id}.${ext}`;
+          await ctx.vault.ensureFolder(attachmentsDir);
+          const bytes = base64ToArrayBuffer(ev.icon.trim());
+          await writeBinary(ctx, attPath, bytes);
+          ev.iconAttachmentPath = attPath;
+        } catch (e) {
+          console.warn("[Timeline XML Sync] icon write failed for", ev.id, e);
+        }
+      }
       const md = renderEventMarkdown(ev, {
         sourceXmlPath: s.sourceXmlPath,
         timelineId: s.timelineId,
@@ -390,6 +418,23 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   if (s.backupEnabled && ctx.vault.exists(s.sourceXmlPath)) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
     if (bak) console.log("[Timeline XML Sync] backup:", bak);
+  }
+
+  // Picture sync (MD → XML): for any event whose note carries an
+  // `icon_path`, read the attachment back and base64-encode it into ev.icon.
+  for (const n of notes) {
+    const att = n.event.iconAttachmentPath;
+    if (!att) continue;
+    try {
+      const buf = await ctx.vault.readBinary(att);
+      n.event.icon = arrayBufferToBase64(buf);
+    } catch (e) {
+      console.warn(
+        "[Timeline XML Sync] could not read icon attachment",
+        att,
+        e
+      );
+    }
   }
 
   const merged = mergeNotesIntoDoc(doc, notes);

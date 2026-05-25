@@ -54,6 +54,8 @@ export interface TimelineXmlSyncSettings {
   eventSource: "xml" | "md" | "auto";
   /** Set on first successful install. Suppresses the first-run auto-detect. */
   firstRunCompleted: boolean;
+  /** What happens when the user clicks/taps an event in a rendered timeline. */
+  clickBehavior: "open-note" | "inspector";
 }
 
 /**
@@ -83,4 +85,5 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   hiddenCategories: [],
   eventSource: "auto",
   firstRunCompleted: false,
+  clickBehavior: "inspector",
 };

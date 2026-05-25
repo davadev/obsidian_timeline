@@ -249,6 +249,94 @@
   color: var(--text-accent);
 }
 
+.txs-inspector-root {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.txs-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.txs-inspector-header h3 {
+  margin: 0;
+  font-size: 1em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+}
+
+.txs-inspector-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.txs-inspector-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.txs-inspector-row label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-inspector-row input,
+.txs-inspector-row textarea,
+.txs-inspector-row select {
+  width: 100%;
+  padding: 4px 6px;
+  box-sizing: border-box;
+}
+
+.txs-date-fields {
+  display: flex;
+  gap: 4px;
+}
+
+.txs-date-fields input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.txs-inspector-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.txs-inspector-thumb {
+  max-width: 100%;
+  max-height: 160px;
+  display: block;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+
+.txs-inspector-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.txs-inspector-empty {
+  color: var(--text-muted);
+  padding: 12px;
+}
+
 .txs-view-root {
   padding: 12px;
   display: flex;

@@ -24,6 +24,8 @@ export interface PostProcessorContext {
   vault: VaultAdapter;
   cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
+  /** Single click router — plugin decides whether to open the note or inspector. */
+  onEventClick: (id: string) => void;
 }
 
 /**
@@ -162,10 +164,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         categories: doc.categories,
         viewport: viewport ?? autoViewport(events),
         options: opts,
-        onOpenEvent: (id) => {
-          const path = ctx.cache.resolvePath(id);
-          if (path) ctx.app.workspace.openLinkText(path, "", false);
-        },
+        onOpenEvent: (id) => ctx.onEventClick(id),
         categoryColors: settings.categoryColors,
         initialHidden: Array.from(initialHidden),
         filterKey: opts.source || "default",

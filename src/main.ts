@@ -9,6 +9,7 @@ import { VaultAdapter } from "./obsidian/vault-adapter";
 import { TemplateService } from "./obsidian/template-service";
 import { TimelineCache } from "./obsidian/cache";
 import { TimelineView, VIEW_TYPE_TIMELINE } from "./obsidian/timeline-view";
+import { InspectorView, VIEW_TYPE_INSPECTOR } from "./obsidian/inspector-view";
 import {
   effectiveAutoSync,
   getDeviceSyncMode,
@@ -68,6 +69,42 @@ export default class TimelineXmlSyncPlugin extends Plugin {
 
   onunload(): void {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_TIMELINE);
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
+  }
+
+  async activateInspector(eventId?: string): Promise<InspectorView | null> {
+    let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_INSPECTOR)[0];
+    if (!leaf) {
+      const right = this.app.workspace.getRightLeaf(false);
+      if (!right) return null;
+      leaf = right;
+      await leaf.setViewState({ type: VIEW_TYPE_INSPECTOR, active: true });
+    }
+    this.app.workspace.revealLeaf(leaf);
+    const view = leaf.view instanceof InspectorView ? leaf.view : null;
+    if (view && eventId) await view.loadEvent(eventId);
+    return view;
+  }
+
+  /**
+   * Renderer click router. Replaces the previous "open MD on click" behavior.
+   * When the user prefers the old behavior they can switch clickBehavior in
+   * settings. Inspector view is opened on demand; if it can't be opened
+   * (e.g. right sidebar disabled on mobile in a corner case) we fall back to
+   * opening the note.
+   */
+  onEventClick(eventId: string): void {
+    if (this.settings.clickBehavior === "open-note") {
+      const path = this.cache.resolvePath(eventId);
+      if (path) this.app.workspace.openLinkText(path, "", false);
+      return;
+    }
+    void this.activateInspector(eventId).then((view) => {
+      if (!view) {
+        const path = this.cache.resolvePath(eventId);
+        if (path) this.app.workspace.openLinkText(path, "", false);
+      }
+    });
   }
 
   /**
@@ -134,6 +171,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
           vault: this.vault,
           cache: this.cache,
           getSettings: () => this.settings,
+          onEventClick: (id) => this.onEventClick(id),
         }),
         "render"
       )
@@ -146,6 +184,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       app: this.app,
       cache: this.cache,
       getSettings: () => this.settings,
+      onEventClick: (id: string) => this.onEventClick(id),
     };
     this.registerView(VIEW_TYPE_TIMELINE, (leaf) => new TimelineView(leaf, viewArgs));
     this.addRibbonIcon("calendar-range", "Open Timeline view", () => {
@@ -155,6 +194,24 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       id: "txs-open-view",
       name: "Open Timeline view",
       callback: () => void this.activateTimelineView(),
+    });
+
+    // Right-sidebar Inspector for editing an event without leaving the note.
+    const inspectorArgs = {
+      app: this.app,
+      cache: this.cache,
+      vault: this.vault,
+      getSettings: () => this.settings,
+      withSelfWrite: <T,>(fn: () => Promise<T>) => this.withSelfWrite(fn),
+    };
+    this.registerView(
+      VIEW_TYPE_INSPECTOR,
+      (leaf) => new InspectorView(leaf, inspectorArgs)
+    );
+    this.addCommand({
+      id: "txs-open-inspector",
+      name: "Open Timeline inspector",
+      callback: () => void this.activateInspector(),
     });
 
     this.rebuildDebouncedSync();

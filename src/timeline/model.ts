@@ -36,7 +36,16 @@ export interface TimelineEvent {
   locked?: boolean;
   endsToday?: boolean;
   defaultColor?: Color;
+  /**
+   * Raw base64-encoded image payload from the Timeline XML <icon> tag.
+   * Stored as the bare base64 string (no `data:` prefix). When syncing into
+   * Markdown we write this byte stream to a vault attachment and replace it
+   * with `iconAttachmentPath`. On the way back to XML we re-base64 the
+   * attachment bytes so the picture round-trips.
+   */
   icon?: string;
+  /** Vault-relative path to the icon attachment (set during MD render). */
+  iconAttachmentPath?: string;
   alert?: string;
   /**
    * Preserved raw event subtree (preserveOrder structure). Used to re-emit

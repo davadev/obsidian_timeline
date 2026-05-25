@@ -68,7 +68,11 @@ export function renderEventMarkdown(
     ...(ev.locked != null ? { locked: ev.locked } : {}),
     ...(ev.progress != null ? { progress: ev.progress } : {}),
     ...(ev.defaultColor != null ? { default_color: ev.defaultColor } : {}),
-    ...(ev.icon != null ? { icon: ev.icon } : {}),
+    ...(ev.iconAttachmentPath
+      ? { icon_path: ev.iconAttachmentPath }
+      : ev.icon
+        ? { icon: ev.icon }
+        : {}),
     ...(ev.alert != null ? { alert: ev.alert } : {}),
   };
 
@@ -86,9 +90,11 @@ export function renderEventMarkdown(
 }
 
 function defaultBody(ev: TimelineEvent): string {
-  return [
-    `# ${ev.text}`,
-    "",
+  const lines: string[] = [`# ${ev.text}`, ""];
+  if (ev.iconAttachmentPath) {
+    lines.push("## Image", "", `![[${ev.iconAttachmentPath}]]`, "");
+  }
+  lines.push(
     SECTION_TEXT,
     "",
     ev.text,
@@ -103,8 +109,9 @@ function defaultBody(ev: TimelineEvent): string {
     "mode: hybrid",
     "source: main",
     "```",
-    "",
-  ].join("\n");
+    ""
+  );
+  return lines.join("\n");
 }
 
 /** Re-render an EventNote, preserving its existing body and extra frontmatter. */

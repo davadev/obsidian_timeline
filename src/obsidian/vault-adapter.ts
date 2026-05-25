@@ -41,6 +41,17 @@ export class VaultAdapter {
     return this.app.vault.create(np, content);
   }
 
+  async writeBinary(path: string, data: ArrayBuffer): Promise<TFile> {
+    const np = normalizePath(path);
+    const existing = this.app.vault.getAbstractFileByPath(np);
+    if (existing instanceof TFile) {
+      await this.app.vault.modifyBinary(existing, data);
+      return existing;
+    }
+    await this.ensureFolderFor(np);
+    return this.app.vault.createBinary(np, data);
+  }
+
   async deleteFile(path: string): Promise<void> {
     const file = this.getFile(path);
     if (!file) return;

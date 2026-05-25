@@ -229,6 +229,22 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Click behavior in rendered timelines")
+      .setDesc(
+        "What happens when you tap an event in a render block or the Timeline view."
+      )
+      .addDropdown((d) =>
+        d
+          .addOption("inspector", "Open in Timeline inspector (right sidebar)")
+          .addOption("open-note", "Open the underlying note")
+          .setValue(s.clickBehavior)
+          .onChange(async (v) => {
+            s.clickBehavior = v as typeof s.clickBehavior;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Default zoom factor")
       .setDesc(
         "Multiplier for the time axis. 1 = fits container, 4 = 4× wider (horizontal scroll). Per-block `zoom: N` overrides this."

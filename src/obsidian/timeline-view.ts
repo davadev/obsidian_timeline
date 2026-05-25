@@ -11,6 +11,7 @@ export interface TimelineViewArgs {
   app: App;
   cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
+  onEventClick: (id: string) => void;
 }
 
 interface ViewFilters {
@@ -219,10 +220,7 @@ export class TimelineView extends ItemView {
         details: "compact",
         showFilterUI: true,
       },
-      onOpenEvent: (id) => {
-        const path = cache.resolvePath(id);
-        if (path) app.workspace.openLinkText(path, "", false);
-      },
+      onOpenEvent: (id) => this.args.onEventClick(id),
       categoryColors: settings.categoryColors,
       initialHidden: settings.hiddenCategories,
       filterKey: `view:${settings.timelineId}`,
