@@ -109,12 +109,11 @@ export async function exportActiveNoteWithRenderedTimeline(
 }
 
 async function loadDoc(ctx: ExportContext) {
-  const s = ctx.getSettings();
-  const xmlAvailable =
-    !!s.sourceXmlPath && ctx.vault.exists(s.sourceXmlPath);
-  if (s.eventSource === "xml" && !xmlAvailable) return null;
-  if (s.eventSource === "md") return ctx.cache.getMdDoc();
-  return xmlAvailable ? ctx.cache.getXml(s.sourceXmlPath) : ctx.cache.getMdDoc();
+  try {
+    return await ctx.cache.getRenderDoc();
+  } catch {
+    return null;
+  }
 }
 
 function filterEvents(

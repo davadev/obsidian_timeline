@@ -72,22 +72,8 @@ export class TimelineView extends ItemView {
    * notes change (inspector save, new-event flow, external file write).
    */
   async refreshFromCache(): Promise<void> {
-    const { cache, getSettings, app } = this.args;
-    const settings = getSettings();
     try {
-      const xmlPath = settings.sourceXmlPath;
-      const xmlAvailable =
-        !!xmlPath && app.vault.getAbstractFileByPath(xmlPath) !== null;
-      if (settings.eventSource === "xml") {
-        if (!xmlAvailable) return;
-        this.cachedDoc = await cache.getXml(xmlPath);
-      } else if (settings.eventSource === "md") {
-        this.cachedDoc = await cache.getMdDoc();
-      } else {
-        this.cachedDoc = xmlAvailable
-          ? await cache.getXml(xmlPath)
-          : await cache.getMdDoc();
-      }
+      this.cachedDoc = await this.args.cache.getRenderDoc();
     } catch {
       return;
     }
@@ -112,19 +98,7 @@ export class TimelineView extends ItemView {
 
     // Load doc first — we need categories to populate the chip bar.
     try {
-      const xmlPath = settings.sourceXmlPath;
-      const xmlAvailable =
-        !!xmlPath && app.vault.getAbstractFileByPath(xmlPath) !== null;
-      if (settings.eventSource === "xml") {
-        if (!xmlAvailable) throw new Error(`XML not found: ${xmlPath}`);
-        this.cachedDoc = await cache.getXml(xmlPath);
-      } else if (settings.eventSource === "md") {
-        this.cachedDoc = await cache.getMdDoc();
-      } else {
-        this.cachedDoc = xmlAvailable
-          ? await cache.getXml(xmlPath)
-          : await cache.getMdDoc();
-      }
+      this.cachedDoc = await cache.getRenderDoc();
     } catch (e) {
       this.contentEl.createDiv({
         cls: "txs-error",

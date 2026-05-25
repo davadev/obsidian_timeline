@@ -77,22 +77,19 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
       const xmlPath = opts.sourceXmlOverride || settings.sourceXmlPath;
       const xmlAvailable = !!xmlPath && ctx.vault.exists(xmlPath);
       let doc;
-      const mode = settings.eventSource;
-      if (mode === "xml") {
-        if (!xmlAvailable) {
-          renderError(el, `XML file not found: ${xmlPath ?? "(unset)"}`);
-          return;
+      try {
+        // sourceXml block override still routes through the cache directly;
+        // the global merging only applies to the configured XML.
+        if (opts.sourceXmlOverride && xmlAvailable) {
+          doc = await ctx.cache.getXml(xmlPath);
+        } else {
+          doc = await ctx.cache.getRenderDoc();
         }
-        doc = await ctx.cache.getXml(xmlPath);
-      } else if (mode === "md") {
-        doc = await ctx.cache.getMdDoc();
-      } else {
-        // auto
-        doc = xmlAvailable
-          ? await ctx.cache.getXml(xmlPath)
-          : await ctx.cache.getMdDoc();
+      } catch (e) {
+        renderError(el, (e as Error).message);
+        return;
       }
-      if (!doc.events.length && !xmlAvailable && mode !== "xml") {
+      if (!doc.events.length) {
         renderError(
           el,
           `No events found. Configure event notes directory or run "Auto-detect event notes" in settings.`

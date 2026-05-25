@@ -188,6 +188,58 @@ export class TimelineCache {
     this.mdDoc = null;
     this.mdDocBuiltAt = 0;
   }
+
+  /**
+   * Single entry point used by the render paths (inline blocks, global view,
+   * export). Honours `eventSource`:
+   *
+   * - "xml": only the XML.
+   * - "md": only the Markdown notes.
+   * - "auto": XML if available, with Markdown events overlaid — MD wins for
+   *   any matching `event_id` and brand-new MD events get appended. This is
+   *   what makes a freshly-created note visible in the global view + render
+   *   blocks before the user has run a manual XML regenerate.
+   */
+  async getRenderDoc(): Promise<TimelineDoc> {
+    const s = this.getSettings();
+    const xmlPath = s.sourceXmlPath;
+    const xmlAvailable = !!xmlPath && this.vault.getAbstractFileByPath(xmlPath) !== null;
+    if (s.eventSource === "xml") {
+      if (!xmlAvailable) throw new Error(`XML not found: ${xmlPath}`);
+      return this.getXml(xmlPath);
+    }
+    if (s.eventSource === "md") return this.getMdDoc();
+    // auto
+    if (!xmlAvailable) return this.getMdDoc();
+    const xml = await this.getXml(xmlPath);
+    const md = await this.getMdDoc();
+    return overlayMdOnXml(xml, md);
+  }
+}
+
+/**
+ * Merge two TimelineDocs for render-only display. The XML doc is the base;
+ * any MD event whose id matches replaces the XML version (the MD note is the
+ * user's freshest edit), and MD-only events are appended. Category catalog
+ * is union-merged by name so newly invented categories show up too.
+ */
+function overlayMdOnXml(xml: TimelineDoc, md: TimelineDoc): TimelineDoc {
+  const byId = new Map<string, TimelineEvent>();
+  for (const e of xml.events) byId.set(e.id, e);
+  for (const e of md.events) byId.set(e.id, e);
+  const catNames = new Set(xml.categories.map((c) => c.name));
+  const cats: TimelineCategory[] = xml.categories.slice();
+  for (const c of md.categories) {
+    if (!catNames.has(c.name)) {
+      cats.push(c);
+      catNames.add(c.name);
+    }
+  }
+  return {
+    ...xml,
+    categories: cats,
+    events: Array.from(byId.values()),
+  };
 }
 
 const MD_DOC_TTL_MS = 30_000;
