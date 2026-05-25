@@ -214,6 +214,21 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       callback: () => void this.activateInspector(),
     });
 
+    this.addCommand({
+      id: "txs-export-with-image",
+      name: "Export note: render timelines to images",
+      callback: () =>
+        import("./obsidian/export").then(({ exportActiveNoteWithRenderedTimeline }) =>
+          exportActiveNoteWithRenderedTimeline({
+            app: this.app,
+            vault: this.vault,
+            cache: this.cache,
+            getSettings: () => this.settings,
+            withSelfWrite: (fn) => this.withSelfWrite(fn),
+          })
+        ),
+    });
+
     this.rebuildDebouncedSync();
     this.registerEvent(
       this.app.vault.on("create", (f) => this.onVaultEvent("create", f))
