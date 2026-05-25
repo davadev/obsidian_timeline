@@ -122,6 +122,84 @@
   max-width: 100%;
 }
 
+/* Rich inline filter panel (collapsible) for ```timeline render blocks. */
+.txs-filter-rich {
+  margin-bottom: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.txs-filter-rich[open] {
+  padding-bottom: 8px;
+}
+
+.txs-filter-rich-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.txs-filter-rich-summary::-webkit-details-marker {
+  display: none;
+}
+
+.txs-filter-rich-summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.1s ease;
+  color: var(--text-faint);
+}
+
+.txs-filter-rich[open] > .txs-filter-rich-summary::before {
+  transform: rotate(90deg);
+}
+
+.txs-filter-rich-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.txs-filter-rich-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.txs-filter-rich-row label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-filter-rich-row input[type="search"],
+.txs-filter-rich-row input[type="text"] {
+  padding: 4px 6px;
+}
+
+.txs-filter-rich-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.txs-filter-rich-date-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.txs-filter-rich-date-group input {
+  padding: 4px 6px;
+}
+
 .txs-filter-bar {
   display: flex;
   flex-wrap: wrap;

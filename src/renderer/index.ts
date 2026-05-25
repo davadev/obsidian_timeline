@@ -2,7 +2,11 @@ import type { TimelineCategory, TimelineEvent } from "../timeline/model";
 import type { ViewportRange } from "../timeline/overlap";
 import { renderBar } from "./bar-renderer";
 import { renderList } from "./list-renderer";
-import { distinctCategories, loadHidden, renderFilterBar } from "./filter-bar";
+import {
+  applyRichFilter,
+  distinctCategories,
+  renderRichFilterBar,
+} from "./filter-bar";
 import type { RenderOptions } from "./render-options";
 
 export { DEFAULT_RENDER_OPTIONS, type RenderOptions } from "./render-options";
@@ -21,6 +25,8 @@ export interface RenderArgs {
   filterKey: string;
   /** Caller-supplied mobile flag (use Obsidian's Platform.isMobile). */
   isMobile: boolean;
+  /** Date filter granularity inside the inline rich filter panel. */
+  filterPrecision?: "year" | "day" | "time";
 }
 
 export function renderTimeline(args: RenderArgs): void {
@@ -30,16 +36,13 @@ export function renderTimeline(args: RenderArgs): void {
   // Mount-point for the bar+list combo (so filter chips re-render only the body).
   const body = args.container.createDiv({ cls: "txs-timeline-body" });
 
-  const draw = (hidden: Set<string>) => {
+  const drawEvents = (events: typeof args.events) => {
     body.empty();
-    const visibleEvents = args.events.filter(
-      (e) => !e.category || !hidden.has(e.category)
-    );
     const { mode } = args.options;
     if (mode === "bar" || mode === "hybrid") {
       renderBar({
         container: body,
-        events: visibleEvents,
+        events,
         categories: args.categories,
         viewport: args.viewport,
         categoryColors: args.categoryColors,
@@ -52,36 +55,36 @@ export function renderTimeline(args: RenderArgs): void {
     if (mode === "list" || mode === "hybrid") {
       renderList({
         container: body,
-        events: visibleEvents,
+        events,
         options: args.options,
         onOpenEvent: args.onOpenEvent,
         isMobile: args.isMobile,
         categoryColors: args.categoryColors,
       });
     }
-    if (visibleEvents.length === 0) {
+    if (events.length === 0) {
       body.createDiv({ text: "No events to display." });
     }
   };
 
   const cats = distinctCategories(args.events, args.categories);
-  if (args.options.showFilterUI && cats.length > 0) {
-    renderFilterBar({
+  if (args.options.showFilterUI) {
+    const handle = renderRichFilterBar({
       parent: args.container,
       sourceKey: args.filterKey,
       allCategories: cats,
       initialHidden: args.initialHidden,
       categoryColors: args.categoryColors,
-      onChange: (hidden) => draw(hidden),
+      precision: args.filterPrecision ?? "year",
+      defaultOpen: false, // inline blocks always collapsed by default
+      onChange: (state) => drawEvents(applyRichFilter(args.events, state)),
     });
-    // First paint uses persisted state (filter-bar already merged it).
-    const persisted = loadHidden(args.filterKey);
-    const initial = new Set<string>([...args.initialHidden, ...persisted]);
-    draw(initial);
+    // First paint uses persisted-or-seeded state from the panel.
+    drawEvents(applyRichFilter(args.events, handle.state));
   } else {
-    draw(new Set(args.initialHidden));
+    drawEvents(args.events);
   }
 
-  // Place body after the filter bar (createDiv appended it before).
+  // Place body after the filter panel (createDiv appended it before).
   args.container.appendChild(body);
 }

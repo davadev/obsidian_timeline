@@ -169,6 +169,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         initialHidden: Array.from(initialHidden),
         filterKey: opts.source || "default",
         isMobile: Platform.isMobile,
+        filterPrecision: settings.globalFilterPrecision,
       });
     } catch (e) {
       renderError(el, (e as Error).message);
