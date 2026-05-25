@@ -3,8 +3,13 @@ import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import { renderTimeline } from "../renderer";
 import type { TimelineDoc, TimelineEvent } from "../timeline/model";
-import { compare, type TimelineDate } from "../timeline/date";
-import { distinctCategories, renderFilterBar } from "../renderer/filter-bar";
+import { type TimelineDate } from "../timeline/date";
+import {
+  applyRichFilter,
+  distinctCategories,
+  renderFilterBar,
+  type RichFilterState,
+} from "../renderer/filter-bar";
 
 export const VIEW_TYPE_TIMELINE = "txs-timeline-view";
 
@@ -333,23 +338,19 @@ export class TimelineView extends ItemView {
 }
 
 function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] {
-  const q = f.search.trim().toLowerCase();
-  const hidden = f.hiddenCategories;
-  return events.filter((e) => {
-    if (hidden.size && e.category && hidden.has(e.category)) return false;
-    if (q) {
-      const hay = `${e.text}\n${e.description ?? ""}\n${e.category ?? ""}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    if (f.start && compare(e.end, f.start) < 0) return false;
-    if (f.end && compare(e.start, f.end) > 0) return false;
-    if (f.labels.length) {
-      const need = new Set(f.labels.map((s) => s.toLowerCase()));
-      const have = (e.labels ?? []).map((s) => s.toLowerCase());
-      if (!have.some((l) => need.has(l))) return false;
-    }
-    return true;
-  });
+  // Delegate to the shared RichFilterState applicator so global view, inline
+  // ```timeline blocks, and the single-event view share one filter
+  // implementation. Keeps behaviour identical across views — no place for a
+  // copy-paste bug to drift apart.
+  const state: RichFilterState = {
+    hiddenCategories: f.hiddenCategories,
+    search: f.search,
+    labels: f.labels,
+    start: f.start,
+    end: f.end,
+    zoom: f.zoom,
+  };
+  return applyRichFilter(events, state);
 }
 
 interface DateGroupHandle {
