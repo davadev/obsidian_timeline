@@ -20,13 +20,25 @@ describe("XML round-trip", () => {
   it("preserves event count, ids, and ordering", () => {
     const original = readFileSync(fixturePath, "utf-8");
     const doc = parseTimelineXml(original);
-    expect(doc.events.length).toBe(3);
+    expect(doc.events.length).toBe(4);
     expect(doc.events.map((e) => e.id)).toEqual([
       "seventy-weeks",
       "medo-persia",
       "point-event",
+      "rich-event",
     ]);
     expect(doc.events[2].isPoint).toBe(true);
+    expect(doc.events[3].description).toContain("Multi-line description");
+    expect(doc.events[3].description).toContain("bracketed");
+    expect(doc.events[3].icon).toBe("iVBORw0KGgo=");
+  });
+
+  it("preserves eras with parent + hidden_categories", () => {
+    const original = readFileSync(fixturePath, "utf-8");
+    const doc = parseTimelineXml(original);
+    expect(doc.eras?.map((e) => e.name)).toEqual(["Antiquity", "Modern"]);
+    expect(doc.view?.hiddenCategories).toEqual(["Kingdoms"]);
+    expect(doc.categories[1].parent).toBe("Prophecies");
   });
 
   it("preserves categories", () => {

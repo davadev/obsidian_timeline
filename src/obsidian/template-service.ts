@@ -97,6 +97,138 @@ export class TemplateService {
     await openNote(path);
     await openInspector(eventId, path);
   }
+
+  /**
+   * Modal-driven flow to add an era. Prompts the user for the basics, writes
+   * the era's Markdown note into `_eras/<id>.md`, then loads it in the
+   * Timeline inspector for further tuning.
+   */
+  async createNewEraInteractive(
+    vault: VaultAdapter,
+    openEraInInspector: (eraId: string) => Promise<void>
+  ): Promise<void> {
+    const result = await promptForEra(this.app);
+    if (!result) return;
+    const { name, start, end, color } = result;
+    const { eventNotesDir, sourceXmlPath, timelineId } = this.getSettings();
+    const erasDir = `${eventNotesDir}/_eras`;
+    await vault.ensureFolder(erasDir);
+    const baseId = slugify(name || "era");
+    const stamp = new Date()
+      .toISOString()
+      .replace("T", "-")
+      .replace(/[:.Z]/g, "")
+      .slice(0, 15);
+    const id = `${baseId}-${stamp}`;
+    const { renderEraMarkdown } = await import("../timeline/era-md");
+    const md = renderEraMarkdown(
+      { id, name, start, end, color: color || undefined },
+      timelineId,
+      sourceXmlPath
+    );
+    const path = normalizePath(`${erasDir}/${id}.md`);
+    await vault.writeText(path, md);
+    new Notice(`Created era ${name}`);
+    await openEraInInspector(id);
+  }
+}
+
+interface EraPromptResult {
+  name: string;
+  start: { year: number; month?: number; day?: number };
+  end: { year: number; month?: number; day?: number };
+  color: string;
+}
+
+function promptForEra(app: App): Promise<EraPromptResult | null> {
+  return new Promise((resolve) => {
+    const modal = new Modal(app);
+    modal.titleEl.setText("New era");
+    const wrap = modal.contentEl.createDiv();
+
+    let name = "";
+    let startY = "";
+    let startM = "";
+    let startD = "";
+    let endY = "";
+    let endM = "";
+    let endD = "";
+    let color = "";
+    let resolved = false;
+
+    new Setting(wrap).setName("Name").addText((t) => {
+      t.setPlaceholder("e.g. Bronze Age");
+      t.inputEl.style.width = "100%";
+      t.onChange((v) => (name = v));
+      setTimeout(() => t.inputEl.focus(), 0);
+    });
+
+    const startBox = wrap.createDiv();
+    startBox.createEl("div", { text: "Start (year required; month/day optional)" });
+    const startRow = startBox.createDiv();
+    startRow.style.display = "flex";
+    startRow.style.gap = "6px";
+    const sy = startRow.createEl("input", { type: "number", placeholder: "year" }) as HTMLInputElement;
+    const sm = startRow.createEl("input", { type: "number", placeholder: "mm" }) as HTMLInputElement;
+    const sd = startRow.createEl("input", { type: "number", placeholder: "dd" }) as HTMLInputElement;
+    sm.style.width = "60px";
+    sd.style.width = "60px";
+    sy.addEventListener("input", () => (startY = sy.value));
+    sm.addEventListener("input", () => (startM = sm.value));
+    sd.addEventListener("input", () => (startD = sd.value));
+
+    const endBox = wrap.createDiv();
+    endBox.createEl("div", { text: "End (year required)" });
+    const endRow = endBox.createDiv();
+    endRow.style.display = "flex";
+    endRow.style.gap = "6px";
+    const ey = endRow.createEl("input", { type: "number", placeholder: "year" }) as HTMLInputElement;
+    const em = endRow.createEl("input", { type: "number", placeholder: "mm" }) as HTMLInputElement;
+    const ed = endRow.createEl("input", { type: "number", placeholder: "dd" }) as HTMLInputElement;
+    em.style.width = "60px";
+    ed.style.width = "60px";
+    ey.addEventListener("input", () => (endY = ey.value));
+    em.addEventListener("input", () => (endM = em.value));
+    ed.addEventListener("input", () => (endD = ed.value));
+
+    new Setting(wrap).setName("Color (optional)").addText((t) => {
+      t.setPlaceholder("r,g,b or #hex");
+      t.inputEl.style.width = "100%";
+      t.onChange((v) => (color = v));
+    });
+
+    const actions = wrap.createDiv({ cls: "modal-button-container" });
+    actions.style.marginTop = "12px";
+    const create = actions.createEl("button", { cls: "mod-cta", text: "Create" });
+    create.addEventListener("click", () => {
+      const yStart = parseInt(startY, 10);
+      const yEnd = parseInt(endY, 10);
+      if (!name.trim() || !Number.isFinite(yStart) || !Number.isFinite(yEnd)) {
+        new Notice("Name + start year + end year are required.");
+        return;
+      }
+      const intOr = (v: string): number | undefined => {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      resolved = true;
+      resolve({
+        name: name.trim(),
+        start: { year: yStart, month: intOr(startM), day: intOr(startD) },
+        end: { year: yEnd, month: intOr(endM), day: intOr(endD) },
+        color: color.trim(),
+      });
+      modal.close();
+    });
+    const cancel = actions.createEl("button", { text: "Cancel" });
+    cancel.style.marginLeft = "6px";
+    cancel.addEventListener("click", () => modal.close());
+
+    modal.onClose = () => {
+      if (!resolved) resolve(null);
+    };
+    modal.open();
+  });
 }
 
 function promptForTitle(app: App): Promise<string | null> {

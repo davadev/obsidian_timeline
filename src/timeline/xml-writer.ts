@@ -121,45 +121,64 @@ function unknownChildren(raw: unknown, known: Set<string>): RawNode[] {
   });
 }
 
+const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
+  "start",
+  "end",
+  "text",
+  "category",
+  "description",
+  "hyperlink",
+  "labels",
+  "progress",
+  "fuzzy",
+  "locked",
+  "ends_today",
+  "default_color",
+  "icon",
+  "alert",
+];
+
+/**
+ * Build the children of an `<event>` node. When the event has a `raw`
+ * skeleton from a prior parse, we walk the raw's child order so known fields
+ * stay in their original position (no spurious reordering of `labels`,
+ * `hyperlink`, etc.) and unknown children survive verbatim.
+ */
 function buildEventNode(ev: TimelineEvent): RawNode {
+  const wantsCData = descriptionWantsCData(ev);
+  const synth = (tag: string): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
+
   const children: RawNode[] = [];
-  children.push(dateLeaf("start", ev.start));
-  children.push(dateLeaf("end", ev.end));
-  children.push(leaf("text", ev.text));
-  const cat = maybeLeaf("category", ev.category);
-  if (cat) children.push(cat);
-  const desc = maybeLeaf("description", ev.description);
-  if (desc) children.push(desc);
-  const hl = maybeLeaf("hyperlink", ev.hyperlink);
-  if (hl) children.push(hl);
-  if (ev.labels && ev.labels.length) {
-    // Timeline 2.11 expects space-separated tokens. Any whitespace inside a
-    // user-typed label is collapsed to an underscore so the round-trip stays
-    // parseable.
-    const tokens = ev.labels.map((l) => l.trim().replace(/\s+/g, "_")).filter(Boolean);
-    children.push(leaf("labels", tokens.join(" ")));
+  const seen = new Set<string>();
+  if (ev.raw && typeof ev.raw === "object") {
+    for (const child of nodeChildren(ev.raw as RawNode)) {
+      const name = nodeName(child);
+      if (!name || name === "#text") continue;
+      if (KNOWN_EVENT_TAGS.has(name)) {
+        const synthChild = synth(name);
+        if (synthChild) {
+          children.push(synthChild);
+          seen.add(name);
+        } else {
+          // Field cleared by user — drop it.
+          seen.add(name);
+        }
+      } else {
+        // Unknown child — keep as-is.
+        children.push(child);
+      }
+    }
   }
-  const prog = numLeaf("progress", ev.progress);
-  if (prog) children.push(prog);
-  const fuzzy = boolLeaf("fuzzy", ev.fuzzy);
-  if (fuzzy) children.push(fuzzy);
-  const locked = boolLeaf("locked", ev.locked);
-  if (locked) children.push(locked);
-  const endsToday = boolLeaf("ends_today", ev.endsToday);
-  if (endsToday) children.push(endsToday);
-  const dc = maybeLeaf("default_color", ev.defaultColor);
-  if (dc) children.push(dc);
-  const icon = maybeLeaf("icon", ev.icon);
-  if (icon) children.push(icon);
-  const alert = maybeLeaf("alert", ev.alert);
-  if (alert) children.push(alert);
-
-  // Append preserved unknown children verbatim.
-  for (const u of unknownChildren(ev.raw, KNOWN_EVENT_TAGS)) {
-    children.push(u);
+  // Append any known fields the original didn't have.
+  for (const tag of EVENT_DEFAULT_ORDER) {
+    if (seen.has(tag)) continue;
+    const c = synth(tag);
+    if (c) {
+      children.push(c);
+      seen.add(tag);
+    }
   }
 
-  // Preserve any attributes from raw (e.g. id) — re-emit semantic id under @_id.
   const attrs: Record<string, string> = {};
   if (ev.raw && typeof ev.raw === "object") {
     const rawAttrs = ((ev.raw as RawNode)[":@"] || {}) as Record<string, string>;
@@ -170,20 +189,137 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   return elem("event", children, attrs);
 }
 
+function synthesizeEventChild(
+  tag: string,
+  ev: TimelineEvent,
+  wantsCData: boolean
+): RawNode | null {
+  switch (tag) {
+    case "start":
+      return dateLeaf("start", ev.start);
+    case "end":
+      return dateLeaf("end", ev.end);
+    case "text":
+      return leaf("text", ev.text);
+    case "category":
+      return maybeLeaf("category", ev.category);
+    case "description":
+      if (ev.description == null) return null;
+      return wantsCData
+        ? cdataLeaf("description", ev.description)
+        : leaf("description", ev.description);
+    case "hyperlink":
+      return maybeLeaf("hyperlink", ev.hyperlink);
+    case "labels": {
+      if (!ev.labels || !ev.labels.length) return null;
+      const tokens = ev.labels.map((l) => l.trim().replace(/\s+/g, "_")).filter(Boolean);
+      return leaf("labels", tokens.join(" "));
+    }
+    case "progress":
+      return numLeaf("progress", ev.progress);
+    case "fuzzy":
+      return boolLeaf("fuzzy", ev.fuzzy);
+    case "locked":
+      return boolLeaf("locked", ev.locked);
+    case "ends_today":
+      return boolLeaf("ends_today", ev.endsToday);
+    case "default_color":
+      return maybeLeaf("default_color", ev.defaultColor);
+    case "icon":
+      return maybeLeaf("icon", ev.icon);
+    case "alert":
+      return maybeLeaf("alert", ev.alert);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Re-emit description as CDATA when the original was CDATA OR the content
+ * contains characters that would otherwise force entity encoding (newlines
+ * are not technically required to be in CDATA but keeping the form matches
+ * what Timeline Project itself writes).
+ */
+function descriptionWantsCData(ev: TimelineEvent): boolean {
+  if (ev.description == null) return false;
+  // Was the original wrapped in CDATA?
+  if (ev.raw && typeof ev.raw === "object") {
+    for (const child of nodeChildren(ev.raw as RawNode)) {
+      if (nodeName(child) !== "description") continue;
+      for (const sub of nodeChildren(child)) {
+        if (nodeName(sub) === "#cdata") return true;
+      }
+    }
+  }
+  return /[\n\r<>&]/.test(ev.description);
+}
+
+function cdataLeaf(name: string, content: string): RawNode {
+  // fast-xml-parser preserveOrder shape for CDATA mirrors the parse output:
+  //   { "#cdata": [{ "#text": "..." }] }
+  // The builder with cdataPropName: "#cdata" emits a `<![CDATA[...]]>`
+  // section. The text node inside carries the literal content.
+  return elem(name, [
+    { "#cdata": [{ "#text": content }] } as RawNode,
+  ]);
+}
+
+const CATEGORY_DEFAULT_ORDER: ReadonlyArray<string> = [
+  "name",
+  "color",
+  "progress_color",
+  "done_color",
+  "font_color",
+  "parent",
+];
+
 function buildCategoryNode(c: TimelineCategory): RawNode {
+  const synth = (tag: string): RawNode | null => {
+    switch (tag) {
+      case "name":
+        return leaf("name", c.name);
+      case "color":
+        return maybeLeaf("color", c.color);
+      case "progress_color":
+        return maybeLeaf("progress_color", c.progressColor);
+      case "done_color":
+        return maybeLeaf("done_color", c.doneColor);
+      case "font_color":
+        return maybeLeaf("font_color", c.fontColor);
+      case "parent":
+        return maybeLeaf("parent", c.parent);
+      default:
+        return null;
+    }
+  };
   const children: RawNode[] = [];
-  children.push(leaf("name", c.name));
-  const col = maybeLeaf("color", c.color);
-  if (col) children.push(col);
-  const pcol = maybeLeaf("progress_color", c.progressColor);
-  if (pcol) children.push(pcol);
-  const dcol = maybeLeaf("done_color", c.doneColor);
-  if (dcol) children.push(dcol);
-  const fcol = maybeLeaf("font_color", c.fontColor);
-  if (fcol) children.push(fcol);
-  const par = maybeLeaf("parent", c.parent);
-  if (par) children.push(par);
-  for (const u of unknownChildren(c.raw, KNOWN_CATEGORY_TAGS)) children.push(u);
+  const seen = new Set<string>();
+  if (c.raw && typeof c.raw === "object") {
+    for (const child of nodeChildren(c.raw as RawNode)) {
+      const name = nodeName(child);
+      if (!name || name === "#text") continue;
+      if (KNOWN_CATEGORY_TAGS.has(name)) {
+        const synthChild = synth(name);
+        if (synthChild) {
+          children.push(synthChild);
+          seen.add(name);
+        } else {
+          seen.add(name);
+        }
+      } else {
+        children.push(child);
+      }
+    }
+  }
+  for (const tag of CATEGORY_DEFAULT_ORDER) {
+    if (seen.has(tag)) continue;
+    const c2 = synth(tag);
+    if (c2) {
+      children.push(c2);
+      seen.add(tag);
+    }
+  }
+
   const attrs: Record<string, string> = {};
   if (c.raw && typeof c.raw === "object") {
     const rawAttrs = ((c.raw as RawNode)[":@"] || {}) as Record<string, string>;

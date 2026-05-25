@@ -3,6 +3,7 @@ import {
   MarkdownPostProcessorContext,
   MarkdownRenderChild,
   Platform,
+  TFile,
   type App,
 } from "obsidian";
 // YAML only used by parseBlockOptions; render-time YAML reparse for viewport
@@ -109,6 +110,14 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         events = events.filter((e) => !e.category || !exc.has(e.category));
       }
 
+      // Search filter (case-insensitive over title/description/category).
+      if (opts.search && opts.search.trim()) {
+        const q = opts.search.trim().toLowerCase();
+        events = events.filter((e) =>
+          (`${e.text}\n${e.description ?? ""}\n${e.category ?? ""}`).toLowerCase().includes(q)
+        );
+      }
+
       // Event-name filter (case-insensitive substring against title).
       if (opts.eventNames && opts.eventNames.length) {
         const needles = opts.eventNames.map((s) => s.toLowerCase());
@@ -156,12 +165,13 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
       if (opts.categoryExclude) {
         for (const c of opts.categoryExclude) initialHidden.add(c);
       }
+      const resolvedViewport = viewport ?? autoViewport(events) ?? null;
       renderTimeline({
         container: el,
         events,
         categories: doc.categories,
-        eras: doc.eras,
-        viewport: viewport ?? autoViewport(events),
+        eras: doc.eras ? filterErasToViewport(doc.eras, resolvedViewport) : undefined,
+        viewport: resolvedViewport ?? undefined,
         options: opts,
         onOpenEvent: (id) => ctx.onEventClick(id),
         onOpenEra: (id) => ctx.onEraClick(id),
@@ -170,6 +180,11 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         filterKey: opts.source || "default",
         isMobile: Platform.isMobile,
         filterPrecision: settings.globalFilterPrecision,
+        // Persist filter state directly into the block YAML so it survives a
+        // note reload and travels with the note across devices. Falls back to
+        // the localStorage state if the file write fails (e.g. the block
+        // lives in an embedded note we can't locate).
+        onFilterChange: makeBlockPersister(ctx, md.sourcePath, source),
       });
     } catch (e) {
       renderError(el, (e as Error).message);
@@ -239,6 +254,7 @@ export function parseBlockOptions(
     if (Array.isArray(labels.exclude))
       opt.labelsExclude = labels.exclude.filter((x): x is string => typeof x === "string");
   }
+  if (typeof parsed.search === "string") opt.search = parsed.search;
   const cats = parsed.categories as Record<string, unknown> | undefined;
   if (cats && typeof cats === "object") {
     if (Array.isArray(cats.include))
@@ -312,6 +328,111 @@ function expandDegenerateViewport(
     start: { ...vp.start, year: vp.start.year - pad },
     end: { ...vp.end, year: vp.end.year + pad },
   };
+}
+
+/**
+ * Returns a debounced callback that, on each rich-filter-state change, writes
+ * the equivalent YAML back into the block's source in the file. The matched
+ * block is identified by its current body — we keep a mutable ref to the
+ * last-written body so subsequent edits chain correctly.
+ */
+function makeBlockPersister(
+  ctx: PostProcessorContext,
+  sourcePath: string,
+  originalSource: string
+): (state: import("../renderer/filter-bar").RichFilterState) => void {
+  let currentBody = originalSource;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pendingState: import("../renderer/filter-bar").RichFilterState | null = null;
+
+  const flush = async () => {
+    timer = null;
+    const state = pendingState;
+    pendingState = null;
+    if (!state) return;
+    if (!sourcePath) return;
+    const file = ctx.app.vault.getAbstractFileByPath(sourcePath);
+    if (!(file instanceof TFile)) return;
+    const nextBody = serializeBlockBody(currentBody, state);
+    if (nextBody === currentBody) return;
+    const oldFence = "```timeline\n" + currentBody + "\n```";
+    const newFence = "```timeline\n" + nextBody + "\n```";
+    try {
+      await ctx.app.vault.process(file, (raw) => {
+        if (!raw.includes(oldFence)) return raw;
+        return raw.replace(oldFence, newFence);
+      });
+      currentBody = nextBody;
+    } catch {
+      // localStorage in filter-bar already has the state — view stays correct.
+    }
+  };
+
+  return (state) => {
+    pendingState = state;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(flush, 600);
+  };
+}
+
+/**
+ * Build the new block YAML by parsing the existing body, overlaying the
+ * filter state, and re-serialising. Preserves any other options the user
+ * may have typed (mode, zoom, orientation, source, etc).
+ */
+function serializeBlockBody(
+  body: string,
+  state: import("../renderer/filter-bar").RichFilterState
+): string {
+  let doc: Record<string, unknown> = {};
+  try {
+    const p = YAML.parse(body);
+    if (p && typeof p === "object" && !Array.isArray(p)) doc = p as Record<string, unknown>;
+  } catch {
+    // ignore — start clean
+  }
+
+  // search
+  if (state.search && state.search.trim()) doc.search = state.search.trim();
+  else delete doc.search;
+
+  // labels.include
+  const labelsExisting =
+    (doc.labels && typeof doc.labels === "object" && !Array.isArray(doc.labels)
+      ? (doc.labels as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+  if (state.labels.length) labelsExisting.include = state.labels;
+  else delete labelsExisting.include;
+  if (Object.keys(labelsExisting).length === 0) delete doc.labels;
+  else doc.labels = labelsExisting;
+
+  // categories.exclude
+  const catsExisting =
+    (doc.categories && typeof doc.categories === "object" && !Array.isArray(doc.categories)
+      ? (doc.categories as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+  const hidden = Array.from(state.hiddenCategories);
+  if (hidden.length) catsExisting.exclude = hidden;
+  else delete catsExisting.exclude;
+  if (Object.keys(catsExisting).length === 0) delete doc.categories;
+  else doc.categories = catsExisting;
+
+  // range
+  if (state.start && state.end) doc.range = [state.start.year, state.end.year];
+  else delete doc.range;
+
+  return YAML.stringify(doc, { lineWidth: 0 }).trimEnd();
+}
+
+/** Drop eras whose range doesn't overlap the visible viewport. */
+function filterErasToViewport(
+  eras: NonNullable<ReturnType<() => import("../timeline/model").TimelineDoc["eras"]>>,
+  vp: ViewportRange | null
+): typeof eras {
+  if (!vp || !eras) return eras;
+  return eras.filter(
+    (e) => e.start.year <= vp.end.year && e.end.year >= vp.start.year
+  );
 }
 
 function autoViewport(events: TimelineEvent[]): ViewportRange | undefined {

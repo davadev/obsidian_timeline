@@ -41,6 +41,8 @@ export interface RenderOptions {
   labelsInclude?: string[];
   /** Hide events that carry any of these labels. */
   labelsExclude?: string[];
+  /** Free-text search over title / description / category. */
+  search?: string;
 }
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {

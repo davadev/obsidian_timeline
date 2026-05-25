@@ -16,6 +16,7 @@
       <progress_color>240,180,140</progress_color>
       <done_color>150,80,40</done_color>
       <font_color>0,0,0</font_color>
+      <parent>Prophecies</parent>
     </category>
   </categories>
   <events>
@@ -28,6 +29,7 @@
       <fuzzy>False</fuzzy>
       <locked>False</locked>
       <ends_today>False</ends_today>
+      <labels>important key</labels>
     </event>
     <event id="medo-persia">
       <start>-0539-01-01 00:00:00</start>
@@ -38,6 +40,7 @@
       <fuzzy>False</fuzzy>
       <locked>False</locked>
       <ends_today>False</ends_today>
+      <hyperlink>https://example.org/medo-persia</hyperlink>
     </event>
     <event id="point-event">
       <start>0033-04-03 00:00:00</start>
@@ -48,13 +51,45 @@
       <fuzzy>False</fuzzy>
       <locked>False</locked>
       <ends_today>False</ends_today>
+      <progress>0</progress>
+      <default_color>180,180,180</default_color>
+    </event>
+    <event id="rich-event">
+      <start>1700-01-01 00:00:00</start>
+      <end>1800-12-31 00:00:00</end>
+      <text>Rich event with CDATA &amp; entities</text>
+      <category>Kingdoms</category>
+      <description><![CDATA[Multi-line description.
+Includes <bracketed> text & entities like &amp; and &lt; that should
+round-trip through CDATA without entity expansion.]]></description>
+      <fuzzy>True</fuzzy>
+      <locked>True</locked>
+      <ends_today>False</ends_today>
+      <icon>iVBORw0KGgo=</icon>
+      <custom_extension preserve="yes">opaque payload</custom_extension>
     </event>
   </events>
+  <eras>
+    <era>
+      <name>Antiquity</name>
+      <start>-3000-01-01 00:00:00</start>
+      <end>0500-01-01 00:00:00</end>
+      <color>200,160,80</color>
+    </era>
+    <era>
+      <name>Modern</name>
+      <start>1500-01-01 00:00:00</start>
+      <end>2100-01-01 00:00:00</end>
+      <color>120,120,180</color>
+    </era>
+  </eras>
   <view>
     <displayed_period>
       <start>-0500-01-01 00:00:00</start>
       <end>0100-01-01 00:00:00</end>
     </displayed_period>
-    <hidden_categories/>
+    <hidden_categories>
+      <name>Kingdoms</name>
+    </hidden_categories>
   </view>
 </timeline>

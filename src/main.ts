@@ -1,4 +1,12 @@
-import { Notice, Platform, Plugin, TAbstractFile, TFile, normalizePath } from "obsidian";
+import {
+  MarkdownView,
+  Notice,
+  Platform,
+  Plugin,
+  TAbstractFile,
+  TFile,
+  normalizePath,
+} from "obsidian";
 import {
   DEFAULT_SETTINGS,
   EVENT_NOTE_SCHEMA_VERSION,
@@ -126,6 +134,35 @@ export default class TimelineXmlSyncPlugin extends Plugin {
    * Click router for era bands / chips / list entries. Mirrors onEventClick:
    * inspector by default (now with a dedicated era form), open-note fallback.
    */
+  /** Launch the add-era modal, write its MD note, open inspector. */
+  async createEraInteractive(): Promise<void> {
+    try {
+      await this.templates.createNewEraInteractive(this.vault, async (eraId) => {
+        await new Promise((r) => setTimeout(r, 200));
+        this.cache.invalidateMdDoc();
+        await this.activateInspector();
+        const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_INSPECTOR)[0];
+        const view = leaf?.view instanceof InspectorView ? leaf.view : null;
+        if (view) await view.loadEra(eraId);
+        this.refreshTimelineViews();
+      });
+    } catch (e) {
+      new Notice(`Era create failed: ${(e as Error).message}`);
+    }
+  }
+
+  /** Insert a default ```timeline block at the cursor of the active editor. */
+  insertTimelineBlock(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) {
+      new Notice("Open a note first.");
+      return;
+    }
+    const editor = view.editor;
+    const snippet = "```timeline\nmode: hybrid\nsource: main\n```\n";
+    editor.replaceSelection(snippet);
+  }
+
   onEraClick(eraId: string): void {
     const eraNotePath = `${this.settings.eventNotesDir}/_eras/${eraId}.md`;
     const openFile = () => {
@@ -246,6 +283,22 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     });
     this.addRibbonIcon("plus-circle", "New timeline event", () => {
       void this.commandsCtx.createEventInteractive();
+    });
+    this.addRibbonIcon("hourglass", "New era", () => {
+      void this.createEraInteractive();
+    });
+    this.addRibbonIcon("clock", "Insert timeline view block", () => {
+      this.insertTimelineBlock();
+    });
+    this.addCommand({
+      id: "txs-create-era",
+      name: "New era (prompt + open inspector)",
+      callback: () => void this.createEraInteractive(),
+    });
+    this.addCommand({
+      id: "txs-insert-block",
+      name: "Insert timeline view block at cursor",
+      callback: () => this.insertTimelineBlock(),
     });
     this.addCommand({
       id: "txs-open-view",

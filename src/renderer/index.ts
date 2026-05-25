@@ -30,6 +30,12 @@ export interface RenderArgs {
   filterPrecision?: "year" | "day" | "time";
   /** Optional click router for era bands / chips / list entries. */
   onOpenEra?: (eraId: string) => void;
+  /**
+   * Called whenever the rich filter state changes so the caller (post-
+   * processor) can serialise it back into the block's YAML and write it
+   * to the source file — making filter state persistent across reloads.
+   */
+  onFilterChange?: (state: import("./filter-bar").RichFilterState) => void;
 }
 
 export function renderTimeline(args: RenderArgs): void {
@@ -87,7 +93,10 @@ export function renderTimeline(args: RenderArgs): void {
       categoryColors: args.categoryColors,
       precision: args.filterPrecision ?? "year",
       defaultOpen: false, // inline blocks always collapsed by default
-      onChange: (state) => drawEvents(applyRichFilter(args.events, state)),
+      onChange: (state) => {
+        drawEvents(applyRichFilter(args.events, state));
+        args.onFilterChange?.(state);
+      },
     });
     // First paint uses persisted-or-seeded state from the panel.
     drawEvents(applyRichFilter(args.events, handle.state));
