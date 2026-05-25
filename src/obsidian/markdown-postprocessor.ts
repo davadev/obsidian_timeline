@@ -26,6 +26,7 @@ export interface PostProcessorContext {
   getSettings: () => TimelineXmlSyncSettings;
   /** Single click router — plugin decides whether to open the note or inspector. */
   onEventClick: (id: string) => void;
+  onEraClick: (id: string) => void;
 }
 
 /**
@@ -163,6 +164,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         viewport: viewport ?? autoViewport(events),
         options: opts,
         onOpenEvent: (id) => ctx.onEventClick(id),
+        onOpenEra: (id) => ctx.onEraClick(id),
         categoryColors: settings.categoryColors,
         initialHidden: Array.from(initialHidden),
         filterKey: opts.source || "default",

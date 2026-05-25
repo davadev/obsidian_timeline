@@ -44,6 +44,8 @@ export interface BarRenderArgs {
   isMobile: boolean;
   /** Optional eras to paint as coloured background bands under all events. */
   eras?: TimelineEra[];
+  /** Click handler for era bands / labels. */
+  onOpenEra?: (eraId: string) => void;
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -88,7 +90,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
 
   // Eras paint FIRST so they sit behind stripes + axis grid + events.
   if (args.eras && args.eras.length) {
-    drawEras(svg, args.eras, viewport, isVertical, width, height);
+    drawEras(svg, args.eras, viewport, isVertical, width, height, args.onOpenEra);
   }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
   drawAxis(svg, viewport, isVertical, width, height);
@@ -217,7 +219,8 @@ function drawEras(
   viewport: ViewportRange,
   isVertical: boolean,
   width: number,
-  height: number
+  height: number,
+  onOpenEra?: (id: string) => void
 ): void {
   const timeSize = isVertical ? height : width;
   for (const era of eras) {
@@ -251,7 +254,18 @@ function drawEras(
       }
       rect.setAttribute("fill", fill);
       rect.setAttribute("opacity", "0.18");
-      rect.setAttribute("pointer-events", "none");
+      // Eras are clickable when a handler is supplied so the inspector can be
+      // opened on them; otherwise the rect ignores pointer events so it
+      // doesn't intercept clicks on the event bars sitting on top.
+      if (onOpenEra) {
+        rect.setAttribute("cursor", "pointer");
+        rect.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onOpenEra(era.id);
+        });
+      } else {
+        rect.setAttribute("pointer-events", "none");
+      }
       svg.appendChild(rect);
 
       // Era label, only when there's room.
@@ -269,6 +283,13 @@ function drawEras(
         }
         label.setAttribute("class", "txs-era-label");
         label.textContent = era.name;
+        if (onOpenEra) {
+          label.setAttribute("cursor", "pointer");
+          label.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onOpenEra(era.id);
+          });
+        }
         svg.appendChild(label);
       }
     }

@@ -64,6 +64,69 @@
   pointer-events: none;
 }
 
+.txs-era-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  font-size: var(--font-ui-smaller);
+}
+
+.txs-era-strip-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.txs-era-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  text-decoration: none;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.txs-era-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.txs-era-chip-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.txs-era-list-heading {
+  margin: 8px 0 4px;
+  font-size: 1em;
+  color: var(--text-muted);
+}
+
+.txs-era-list {
+  margin: 0 0 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.txs-era-list-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .txs-era-label {
   fill: var(--text-muted);
   font-size: 11px;

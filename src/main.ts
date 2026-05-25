@@ -123,6 +123,27 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   }
 
   /**
+   * Click router for era bands / chips / list entries. Mirrors onEventClick:
+   * inspector by default (now with a dedicated era form), open-note fallback.
+   */
+  onEraClick(eraId: string): void {
+    const eraNotePath = `${this.settings.eventNotesDir}/_eras/${eraId}.md`;
+    const openFile = () => {
+      if (this.app.vault.getAbstractFileByPath(eraNotePath)) {
+        void this.app.workspace.openLinkText(eraNotePath, "", false);
+      }
+    };
+    if (this.settings.clickBehavior === "open-note") {
+      openFile();
+      return;
+    }
+    void this.activateInspector().then((view) => {
+      if (view) void view.loadEra(eraId);
+      else openFile();
+    });
+  }
+
+  /**
    * Runs once after the very first install. Tries to point the plugin at any
    * pre-existing .timeline XML and Markdown event notes the user already has,
    * so the global view + render blocks start working immediately. If multiple
@@ -203,6 +224,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
           cache: this.cache,
           getSettings: () => this.settings,
           onEventClick: (id) => this.onEventClick(id),
+          onEraClick: (id) => this.onEraClick(id),
         }),
         "render"
       )
@@ -216,6 +238,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       cache: this.cache,
       getSettings: () => this.settings,
       onEventClick: (id: string) => this.onEventClick(id),
+      onEraClick: (id: string) => this.onEraClick(id),
     };
     this.registerView(VIEW_TYPE_TIMELINE, (leaf) => new TimelineView(leaf, viewArgs));
     this.addRibbonIcon("calendar-range", "Open Timeline view", () => {

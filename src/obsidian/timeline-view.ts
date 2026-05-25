@@ -13,6 +13,7 @@ export interface TimelineViewArgs {
   cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
   onEventClick: (id: string) => void;
+  onEraClick: (id: string) => void;
 }
 
 interface ViewFilters {
@@ -273,6 +274,7 @@ export class TimelineView extends ItemView {
         showFilterUI: false,
       },
       onOpenEvent: (id) => this.args.onEventClick(id),
+      onOpenEra: (id) => this.args.onEraClick(id),
       categoryColors: settings.categoryColors,
       // Already filtered by our hiddenCategories above — don't double-filter.
       initialHidden: [],

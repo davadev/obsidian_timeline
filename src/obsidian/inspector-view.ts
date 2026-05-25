@@ -12,7 +12,7 @@ import type { TimelineCache } from "./cache";
 import type { VaultAdapter } from "./vault-adapter";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
-import type { TimelineEvent } from "../timeline/model";
+import type { TimelineEra, TimelineEvent } from "../timeline/model";
 import {
   arrayBufferToBase64,
   guessImageExtension,
@@ -39,6 +39,7 @@ export interface InspectorArgs {
  */
 export class InspectorView extends ItemView {
   private current?: TimelineEvent;
+  private currentEra?: TimelineEra;
   private currentPath?: string;
   private dirty = false;
 
@@ -64,8 +65,38 @@ export class InspectorView extends ItemView {
     this.contentEl.empty();
   }
 
+  /**
+   * Load an era for inspection. The era is sourced from cache.getRenderDoc()
+   * so it picks up XML eras + any future MD overlay. The form is read-only
+   * for fields the plugin can't yet round-trip back into XML (saving an era
+   * is a TODO — for now the inspector shows the data and an Open era note
+   * link).
+   */
+  async loadEra(eraId: string): Promise<void> {
+    this.current = undefined;
+    this.currentEra = undefined;
+    try {
+      const doc = await this.args.cache.getRenderDoc();
+      const era = doc.eras?.find((e) => e.id === eraId);
+      if (!era) {
+        this.renderEmpty(`No era found with id "${eraId}".`);
+        return;
+      }
+      this.currentEra = era;
+      const eraPath = `${this.args.getSettings().eventNotesDir}/_eras/${eraId}.md`;
+      this.currentPath = this.app.vault.getAbstractFileByPath(eraPath)
+        ? eraPath
+        : undefined;
+      this.dirty = false;
+      this.renderEraForm();
+    } catch (e) {
+      this.renderEmpty((e as Error).message);
+    }
+  }
+
   /** Loaded by the plugin's selectEvent() bus when a render block fires. */
   async loadEvent(eventId: string): Promise<void> {
+    this.currentEra = undefined;
     const path = this.args.cache.resolvePath(eventId);
     if (!path) {
       this.renderEmpty(`No note found for event id "${eventId}".`);
@@ -87,6 +118,64 @@ export class InspectorView extends ItemView {
       this.renderForm();
     } catch (e) {
       this.renderEmpty((e as Error).message);
+    }
+  }
+
+  private renderEraForm(): void {
+    const era = this.currentEra;
+    if (!era) return this.renderEmpty();
+    this.contentEl.empty();
+    this.contentEl.addClass("txs-inspector-root");
+
+    const header = this.contentEl.createDiv({ cls: "txs-inspector-header" });
+    header.createEl("h3", { text: `${era.name} — (era)` });
+    if (this.currentPath) {
+      const openBtn = header.createEl("button", {
+        cls: "mod-cta",
+        text: "Open era note",
+      });
+      openBtn.addEventListener("click", () => {
+        if (this.currentPath) {
+          this.app.workspace.openLinkText(this.currentPath, "", false);
+        }
+      });
+    }
+
+    const body = this.contentEl.createDiv({ cls: "txs-inspector-body" });
+
+    body.createDiv({
+      cls: "txs-inspector-meta",
+      text:
+        "Era data is currently sourced from the .timeline XML. Edit the era in Timeline Project (or directly in the XML) and reimport — the inspector here is read-only for eras for now.",
+    });
+
+    const nameRow = body.createDiv({ cls: "txs-inspector-row" });
+    nameRow.createEl("label", { text: "Name" });
+    const nameIn = nameRow.createEl("input", { type: "text" }) as HTMLInputElement;
+    nameIn.value = era.name;
+    nameIn.readOnly = true;
+
+    const startRow = body.createDiv({ cls: "txs-inspector-row" });
+    startRow.createEl("label", { text: "Start" });
+    startRow.createEl("code", { text: stringifyEraDate(era.start) });
+
+    const endRow = body.createDiv({ cls: "txs-inspector-row" });
+    endRow.createEl("label", { text: "End" });
+    endRow.createEl("code", { text: stringifyEraDate(era.end) });
+
+    if (era.color) {
+      const colorRow = body.createDiv({ cls: "txs-inspector-row" });
+      colorRow.createEl("label", { text: "Color" });
+      const sw = document.createElement("span");
+      sw.style.display = "inline-block";
+      sw.style.width = "16px";
+      sw.style.height = "16px";
+      sw.style.border = "1px solid var(--background-modifier-border)";
+      sw.style.borderRadius = "3px";
+      sw.style.background = rgbCss(era.color);
+      sw.style.marginRight = "6px";
+      colorRow.appendChild(sw);
+      colorRow.createEl("code", { text: era.color });
     }
   }
 
@@ -408,6 +497,16 @@ function toIsoDate(d: { year: number; month?: number; day?: number }): string {
   const m = d.month ?? 1;
   const day = d.day ?? 1;
   return `${String(d.year).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function stringifyEraDate(d: { year: number; month?: number; day?: number }): string {
+  const pad = (n?: number) => (n == null ? "01" : String(n).padStart(2, "0"));
+  return `${d.year}-${pad(d.month)}-${pad(d.day)}`;
+}
+
+function rgbCss(s: string): string {
+  const m = s.match(/^(\d+),(\d+),(\d+)$/);
+  return m ? `rgb(${m[1]},${m[2]},${m[3]})` : s;
 }
 
 function debounce(fn: () => void, ms: number): () => void {

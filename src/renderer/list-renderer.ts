@@ -1,4 +1,4 @@
-import type { TimelineEvent } from "../timeline/model";
+import type { TimelineEra, TimelineEvent } from "../timeline/model";
 import { compare, toFrontmatterString } from "../timeline/date";
 import type { RenderOptions } from "./render-options";
 
@@ -12,10 +12,49 @@ export interface ListRenderArgs {
   isMobile?: boolean;
   /** Category palette so the inline category badge can use the real color. */
   categoryColors?: Record<string, string>;
+  eras?: TimelineEra[];
+  onOpenEra?: (eraId: string) => void;
 }
 
 export function renderList(args: ListRenderArgs): HTMLElement {
-  const { container, events, options, onOpenEvent, isMobile } = args;
+  const { container, events, options, onOpenEvent, isMobile, eras, onOpenEra } = args;
+
+  // Eras section — separate list above the events. Each entry shows the
+  // era name, date range, color swatch and an explicit "Open era" link.
+  if (eras && eras.length) {
+    container.createEl("h4", { cls: "txs-era-list-heading", text: "Eras" });
+    const eraUl = container.createEl("ul", { cls: "txs-era-list" });
+    const sortedEras = eras
+      .slice()
+      .sort((a, b) =>
+        a.start.year !== b.start.year
+          ? a.start.year - b.start.year
+          : (a.start.month ?? 1) - (b.start.month ?? 1)
+      );
+    for (const era of sortedEras) {
+      const li = eraUl.createEl("li", { cls: "txs-era-list-item" });
+      const sw = document.createElement("span");
+      sw.className = "txs-era-chip-sw";
+      sw.style.background = eraSwatchColor(era.color);
+      li.appendChild(sw);
+      const range = li.createSpan({ cls: "txs-date" });
+      range.textContent = `${toFrontmatterString(era.start)} → ${toFrontmatterString(era.end)}`;
+      const titleEl = li.createSpan({ cls: "txs-title", text: ` ${era.name}` });
+      titleEl.style.marginLeft = "4px";
+      if (onOpenEra) {
+        const openLink = li.createEl("a", {
+          cls: "txs-open-note",
+          text: " Open era →",
+          href: "#",
+        });
+        openLink.addEventListener("click", (e) => {
+          e.preventDefault();
+          onOpenEra(era.id);
+        });
+      }
+    }
+  }
+
   const sorted = sortEvents(events, options.sort);
   const ul = container.createEl("ul", { cls: "txs-timeline-list" });
   for (const ev of sorted) {
@@ -102,6 +141,12 @@ function sortEvents(
     copy.sort((a, b) => compare(a.start, b.start));
   }
   return copy;
+}
+
+function eraSwatchColor(c?: string): string {
+  if (!c) return "var(--text-muted)";
+  const m = c.match(/^(\d+),(\d+),(\d+)$/);
+  return m ? `rgb(${m[1]},${m[2]},${m[3]})` : c;
 }
 
 function truncate(s: string, max: number): string {
