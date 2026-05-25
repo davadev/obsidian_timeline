@@ -10,6 +10,8 @@ export interface ListRenderArgs {
   /** When true, list-item titles are not auto-navigable — user must tap the
    * explicit "Open note" affordance. Avoids accidental navigation on mobile. */
   isMobile?: boolean;
+  /** Category palette so the inline category badge can use the real color. */
+  categoryColors?: Record<string, string>;
 }
 
 export function renderList(args: ListRenderArgs): HTMLElement {
@@ -40,7 +42,12 @@ export function renderList(args: ListRenderArgs): HTMLElement {
       li.insertBefore(d, titleEl);
     }
     if (showField(options, "category") && ev.category) {
-      li.createSpan({ cls: "txs-category", text: ev.category });
+      const cat = li.createSpan({ cls: "txs-category", text: ev.category });
+      const color = args.categoryColors?.[ev.category];
+      if (color) {
+        cat.style.background = color;
+        cat.style.color = contrastTextColor(color);
+      }
     }
     if (showField(options, "description") && ev.description) {
       const d = li.createSpan({ cls: "txs-desc" });
@@ -100,4 +107,24 @@ function sortEvents(
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+/** Black or white based on color luminance — mirrors bar-renderer logic. */
+function contrastTextColor(fill: string): string {
+  const m = fill.match(/^#([0-9a-f]{6})$/i);
+  let r = 200, g = 200, b = 200;
+  if (m) {
+    r = parseInt(m[1].slice(0, 2), 16);
+    g = parseInt(m[1].slice(2, 4), 16);
+    b = parseInt(m[1].slice(4, 6), 16);
+  } else {
+    const rgb = fill.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (rgb) {
+      r = parseInt(rgb[1], 10);
+      g = parseInt(rgb[2], 10);
+      b = parseInt(rgb[3], 10);
+    }
+  }
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.6 ? "#1a1a1a" : "#ffffff";
 }

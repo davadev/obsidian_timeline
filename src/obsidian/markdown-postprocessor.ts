@@ -109,6 +109,36 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         events = events.filter((e) => !e.category || !exc.has(e.category));
       }
 
+      // Event-name filter (case-insensitive substring against title).
+      if (opts.eventNames && opts.eventNames.length) {
+        const needles = opts.eventNames.map((s) => s.toLowerCase());
+        events = events.filter((e) =>
+          needles.some((n) => e.text.toLowerCase().includes(n))
+        );
+      }
+
+      // Year-range filter — keep events overlapping [from, to].
+      if (opts.rangeYears) {
+        const [from, to] = opts.rangeYears;
+        events = events.filter(
+          (e) => e.start.year <= to && e.end.year >= from
+        );
+      }
+
+      // Label include/exclude.
+      if (opts.labelsInclude && opts.labelsInclude.length) {
+        const inc = new Set(opts.labelsInclude);
+        events = events.filter((e) =>
+          (e.labels ?? []).some((l) => inc.has(l))
+        );
+      }
+      if (opts.labelsExclude && opts.labelsExclude.length) {
+        const exc = new Set(opts.labelsExclude);
+        events = events.filter((e) =>
+          !(e.labels ?? []).some((l) => exc.has(l))
+        );
+      }
+
       // Viewport: from current note frontmatter, or from XML displayed_period
       let viewport = await resolveViewport(ctx, md.sourcePath, doc);
       const padYears = opts.pointPaddingYears ?? settings.pointPaddingYears;
@@ -190,6 +220,24 @@ export function parseBlockOptions(
   }
   if (typeof parsed.showFilterUI === "boolean") {
     opt.showFilterUI = parsed.showFilterUI;
+  }
+  if (Array.isArray(parsed.events)) {
+    opt.eventNames = parsed.events.filter((x): x is string => typeof x === "string");
+  } else if (typeof parsed.event === "string") {
+    opt.eventNames = [parsed.event];
+  }
+  if (Array.isArray(parsed.range) && parsed.range.length === 2) {
+    const [a, b] = parsed.range as [unknown, unknown];
+    if (typeof a === "number" && typeof b === "number") {
+      opt.rangeYears = [Math.min(a, b), Math.max(a, b)];
+    }
+  }
+  const labels = parsed.labels as Record<string, unknown> | undefined;
+  if (labels && typeof labels === "object") {
+    if (Array.isArray(labels.include))
+      opt.labelsInclude = labels.include.filter((x): x is string => typeof x === "string");
+    if (Array.isArray(labels.exclude))
+      opt.labelsExclude = labels.exclude.filter((x): x is string => typeof x === "string");
   }
   const cats = parsed.categories as Record<string, unknown> | undefined;
   if (cats && typeof cats === "object") {

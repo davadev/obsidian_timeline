@@ -56,6 +56,7 @@ export function renderTimeline(args: RenderArgs): void {
         options: args.options,
         onOpenEvent: args.onOpenEvent,
         isMobile: args.isMobile,
+        categoryColors: args.categoryColors,
       });
     }
     if (visibleEvents.length === 0) {

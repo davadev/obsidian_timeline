@@ -70,6 +70,25 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_TIMELINE);
   }
 
+  /**
+   * Runs once after the very first install. Tries to point the plugin at any
+   * pre-existing .timeline XML and Markdown event notes the user already has,
+   * so the global view + render blocks start working immediately. If multiple
+   * candidates are found the user is asked to pick one.
+   */
+  private async runFirstInstall(): Promise<void> {
+    try {
+      const { autoDetectXml, autoDetectEventNotes } = await import("./obsidian/commands");
+      await autoDetectXml(this.commandsCtx);
+      await autoDetectEventNotes(this.commandsCtx);
+    } catch (e) {
+      console.warn("[Timeline XML Sync] first-install auto-detect failed:", e);
+    } finally {
+      this.settings.firstRunCompleted = true;
+      await this.persistAll();
+    }
+  }
+
   async activateTimelineView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE);
     if (existing.length) {
@@ -182,6 +201,13 @@ export default class TimelineXmlSyncPlugin extends Plugin {
 
     // Pre-warm the id index so the first render is fast.
     this.cache.buildIndex();
+
+    // First-install auto-detect: find XML + event notes dir, store, run import
+    // if both look fresh. Runs once — gated by settings.firstRunCompleted.
+    if (!this.settings.firstRunCompleted) {
+      // Defer so onload returns quickly — the work happens in the background.
+      setTimeout(() => void this.runFirstInstall(), 800);
+    }
 
     // One-shot notice if the on-disk notes were written by an older schema.
     if (

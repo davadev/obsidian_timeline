@@ -29,6 +29,18 @@ export interface RenderOptions {
   pointPaddingYears?: number;
   /** Show the in-rendered filter chip bar above the timeline. */
   showFilterUI: boolean;
+  /**
+   * Render only the events whose text matches one of these strings (case-insensitive
+   * substring). Useful when embedding a timeline in a note that isn't itself an
+   * event — e.g. a topic note that should display a curated subset.
+   */
+  eventNames?: string[];
+  /** Render only events that overlap [rangeYears[0], rangeYears[1]] (inclusive). */
+  rangeYears?: [number, number];
+  /** Render only events that carry one of these labels. */
+  labelsInclude?: string[];
+  /** Hide events that carry any of these labels. */
+  labelsExclude?: string[];
 }
 
 export const DEFAULT_RENDER_OPTIONS: RenderOptions = {

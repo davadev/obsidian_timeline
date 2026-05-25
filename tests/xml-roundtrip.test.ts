@@ -45,6 +45,26 @@ describe("XML round-trip", () => {
     expect(doc.view?.displayedPeriod?.end.year).toBe(100);
   });
 
+  it("captures description inside a CDATA section", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events>
+    <event id="e1">
+      <start>2000-01-01 00:00:00</start>
+      <end>2001-01-01 00:00:00</end>
+      <text>Hello</text>
+      <description><![CDATA[He was a king. He ruled for 40 years.]]></description>
+    </event>
+  </events>
+</timeline>`;
+    const doc = parseTimelineXml(xml);
+    expect(doc.events[0].description).toContain("He was a king");
+    expect(doc.events[0].description).toContain("40 years");
+  });
+
   it("captures full description text across inline elements (br/b/i/a)", () => {
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <timeline>

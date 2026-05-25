@@ -52,6 +52,8 @@ export interface TimelineXmlSyncSettings {
    * have Markdown notes synced (no Timeline Project XML available).
    */
   eventSource: "xml" | "md" | "auto";
+  /** Set on first successful install. Suppresses the first-run auto-detect. */
+  firstRunCompleted: boolean;
 }
 
 /**
@@ -80,4 +82,5 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   pointPaddingYears: 100,
   hiddenCategories: [],
   eventSource: "auto",
+  firstRunCompleted: false,
 };

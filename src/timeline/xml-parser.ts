@@ -27,6 +27,10 @@ export const PARSER_OPTIONS = {
   processEntities: true,
   // keep XML declaration nodes
   ignoreDeclaration: false,
+  // Preserve CDATA sections under a dedicated key so deepTextOf can pull
+  // their content out — Timeline Project sometimes wraps descriptions /
+  // hyperlinks in CDATA which would otherwise vanish in the default config.
+  cdataPropName: "#cdata",
 } as const;
 
 /** preserveOrder=true: each node is a single-key object; attributes live on ":@" sibling. */

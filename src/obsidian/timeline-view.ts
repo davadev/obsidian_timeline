@@ -17,12 +17,14 @@ interface ViewFilters {
   search: string;
   startYear: number | null;
   endYear: number | null;
+  labels: string[]; // hide any event NOT carrying at least one of these labels
 }
 
 const EMPTY_FILTERS: ViewFilters = {
   search: "",
   startYear: null,
   endYear: null,
+  labels: [],
 };
 
 /**
@@ -131,12 +133,27 @@ export class TimelineView extends ItemView {
       this.bodyRender();
     });
 
+    const labelsInput = filterRow.createEl("input", {
+      cls: "txs-view-labels",
+      type: "text",
+      placeholder: "labels (comma separated)",
+    });
+    labelsInput.value = this.filters.labels.join(",");
+    labelsInput.addEventListener("input", () => {
+      this.filters.labels = labelsInput.value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      this.bodyRender();
+    });
+
     const clearBtn = filterRow.createEl("button", { text: "Clear" });
     clearBtn.addEventListener("click", () => {
       this.filters = { ...EMPTY_FILTERS };
       searchInput.value = "";
       startInput.value = "";
       endInput.value = "";
+      labelsInput.value = "";
       this.bodyRender();
     });
 
@@ -227,6 +244,11 @@ function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] 
     }
     if (f.endYear != null) {
       if (compare(e.start, { year: f.endYear, month: 12, day: 31 }) > 0) return false;
+    }
+    if (f.labels.length) {
+      const need = new Set(f.labels.map((s) => s.toLowerCase()));
+      const have = (e.labels ?? []).map((s) => s.toLowerCase());
+      if (!have.some((l) => need.has(l))) return false;
     }
     return true;
   });

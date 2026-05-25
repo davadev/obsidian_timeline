@@ -88,6 +88,70 @@ export function registerCommands(ctx: CommandsContext): void {
     name: "Auto-detect event notes (scan vault)",
     callback: () => autoDetectEventNotes(ctx).catch(reportErr),
   });
+
+  plugin.addCommand({
+    id: "txs-auto-detect-xml",
+    name: "Auto-detect .timeline XML file (scan vault)",
+    callback: () => autoDetectXml(ctx).catch(reportErr),
+  });
+}
+
+/**
+ * Walks the vault for `.timeline` files and picks one.
+ * - exactly 1 match: silently stores it as sourceXmlPath.
+ * - multiple matches: opens a quick chooser modal so the user picks.
+ * - 0 matches: no-op with a notice (the plugin can still render from MD).
+ */
+export async function autoDetectXml(ctx: CommandsContext): Promise<string | null> {
+  const all = ctx.app.vault.getFiles().filter((f) => f.extension === "timeline");
+  if (!all.length) {
+    new Notice("No .timeline file found in vault. The plugin can still render from Markdown.");
+    return null;
+  }
+  const s = ctx.getSettings();
+  if (all.length === 1) {
+    s.sourceXmlPath = all[0].path;
+    await ctx.saveSettings();
+    new Notice(`Detected XML: ${all[0].path}`);
+    return all[0].path;
+  }
+  // multiple — prompt
+  const choice = await pickFromList(
+    ctx.app,
+    "Multiple .timeline files found — pick the one to sync with",
+    all.map((f) => f.path)
+  );
+  if (!choice) return null;
+  s.sourceXmlPath = choice;
+  await ctx.saveSettings();
+  new Notice(`Using XML: ${choice}`);
+  return choice;
+}
+
+function pickFromList(app: App, title: string, items: string[]): Promise<string | null> {
+  // Minimal native chooser: a one-shot Notice + Promise resolved via a modal-like
+  // setup using FuzzySuggestModal isn't worth the dependency surface here.
+  // Use SuggestModal-style: a temporary modal built from Obsidian's Modal.
+  return new Promise((resolve) => {
+    // Lazy import to avoid pulling Modal-related types into pure logic modules.
+    import("obsidian").then(({ Modal, Setting }) => {
+      const modal = new Modal(app);
+      modal.titleEl.setText(title);
+      let picked: string | null = null;
+      for (const item of items) {
+        new Setting(modal.contentEl)
+          .setName(item)
+          .addButton((b) =>
+            b.setButtonText("Use").setCta().onClick(() => {
+              picked = item;
+              modal.close();
+            })
+          );
+      }
+      modal.onClose = () => resolve(picked);
+      modal.open();
+    });
+  });
 }
 
 /**
