@@ -7,7 +7,13 @@ import {
 } from "obsidian";
 import { parseTimelineXml } from "../timeline/xml-parser";
 import { parseEventNote } from "../timeline/markdown-parser";
-import type { TimelineCategory, TimelineDoc, TimelineEvent } from "../timeline/model";
+import { parseEraNote } from "../timeline/era-md";
+import type {
+  TimelineCategory,
+  TimelineDoc,
+  TimelineEra,
+  TimelineEvent,
+} from "../timeline/model";
 import type { TimelineXmlSyncSettings } from "../settings";
 
 /**
@@ -149,17 +155,17 @@ export class TimelineCache {
     const s = this.getSettings();
     const dir = s.eventNotesDir;
     const events: TimelineEvent[] = [];
+    const eras: TimelineEra[] = [];
     const categories = new Map<string, TimelineCategory>();
     if (dir) {
       const files = this.vault.getMarkdownFiles().filter(
         (f) => f.path === dir || f.path.startsWith(dir + "/")
       );
-      // Yield to the UI every BATCH files so we never block the main thread
-      // for long on iOS / large vaults.
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         try {
           const raw = await this.vault.cachedRead(f);
+          // Event?
           const p = parseEventNote(raw, { path: f.path, mirrorNames: s.mirrorNames });
           if (p.note) {
             events.push(p.note.event);
@@ -167,7 +173,13 @@ export class TimelineCache {
             if (cat && !categories.has(cat)) {
               categories.set(cat, { name: cat, color: s.categoryColors[cat] });
             }
+            continue;
           }
+          // Era? Notes under _eras/ are the convention; we also try anything
+          // with `timeline.role: era` regardless of folder.
+          const fallbackId = f.basename;
+          const era = parseEraNote(raw, fallbackId);
+          if (era) eras.push(era);
         } catch {
           // skip unreadable files
         }
@@ -179,6 +191,7 @@ export class TimelineCache {
       timetype: "gregoriantime",
       categories: Array.from(categories.values()),
       events,
+      eras: eras.length ? eras : undefined,
     };
     this.mdDocBuiltAt = now;
     return this.mdDoc;
@@ -235,10 +248,21 @@ function overlayMdOnXml(xml: TimelineDoc, md: TimelineDoc): TimelineDoc {
       catNames.add(c.name);
     }
   }
+  // Era overlay: same id-keyed merge so inspector edits (which write to MD)
+  // show in the rendered view immediately. The XML's <eras> remain the
+  // base; MD entries replace or extend.
+  let eras: TimelineEra[] | undefined = xml.eras ? xml.eras.slice() : undefined;
+  if (md.eras && md.eras.length) {
+    const eraById = new Map<string, TimelineEra>();
+    for (const e of eras ?? []) eraById.set(e.id, e);
+    for (const e of md.eras) eraById.set(e.id, e);
+    eras = Array.from(eraById.values());
+  }
   return {
     ...xml,
     categories: cats,
     events: Array.from(byId.values()),
+    eras,
   };
 }
 

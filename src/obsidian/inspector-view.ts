@@ -146,36 +146,80 @@ export class InspectorView extends ItemView {
     body.createDiv({
       cls: "txs-inspector-meta",
       text:
-        "Era data is currently sourced from the .timeline XML. Edit the era in Timeline Project (or directly in the XML) and reimport — the inspector here is read-only for eras for now.",
+        "Edits save to the era's Markdown note. The XML <eras> is updated on the next sync (auto-sync if enabled, or Regenerate XML from Markdown). XML is not written directly from here so per-device sync settings are respected.",
     });
 
     const nameRow = body.createDiv({ cls: "txs-inspector-row" });
     nameRow.createEl("label", { text: "Name" });
     const nameIn = nameRow.createEl("input", { type: "text" }) as HTMLInputElement;
     nameIn.value = era.name;
-    nameIn.readOnly = true;
+    nameIn.addEventListener("input", () => {
+      era.name = nameIn.value;
+      this.markDirty();
+    });
 
-    const startRow = body.createDiv({ cls: "txs-inspector-row" });
-    startRow.createEl("label", { text: "Start" });
-    startRow.createEl("code", { text: stringifyEraDate(era.start) });
+    const startGroup = eraDateGroup(body, "Start", era.start);
+    startGroup.onChange = () => this.markDirty();
+    const endGroup = eraDateGroup(body, "End", era.end);
+    endGroup.onChange = () => this.markDirty();
 
-    const endRow = body.createDiv({ cls: "txs-inspector-row" });
-    endRow.createEl("label", { text: "End" });
-    endRow.createEl("code", { text: stringifyEraDate(era.end) });
+    const colorRow = body.createDiv({ cls: "txs-inspector-row" });
+    colorRow.createEl("label", { text: "Color" });
+    const colorWrap = colorRow.createDiv();
+    colorWrap.style.display = "flex";
+    colorWrap.style.gap = "6px";
+    colorWrap.style.alignItems = "center";
+    const picker = colorWrap.createEl("input", { type: "color" }) as HTMLInputElement;
+    picker.value = colorToHex(era.color ?? "#888888");
+    const colorIn = colorWrap.createEl("input", { type: "text" }) as HTMLInputElement;
+    colorIn.value = era.color ?? "";
+    colorIn.style.flex = "1 1 0";
+    colorIn.placeholder = "r,g,b or #hex";
+    picker.addEventListener("input", () => {
+      // Store as the Timeline-XML-friendly "r,g,b" form so the round-trip
+      // stays close to the original.
+      const v = picker.value;
+      const rgb = hexToRgbTriple(v);
+      const stored = rgb ? `${rgb[0]},${rgb[1]},${rgb[2]}` : v;
+      era.color = stored;
+      colorIn.value = stored;
+      this.markDirty();
+    });
+    colorIn.addEventListener("input", () => {
+      era.color = colorIn.value.trim() || undefined;
+      const hex = colorToHex(era.color ?? "#888888");
+      picker.value = hex;
+      this.markDirty();
+    });
 
-    if (era.color) {
-      const colorRow = body.createDiv({ cls: "txs-inspector-row" });
-      colorRow.createEl("label", { text: "Color" });
-      const sw = document.createElement("span");
-      sw.style.display = "inline-block";
-      sw.style.width = "16px";
-      sw.style.height = "16px";
-      sw.style.border = "1px solid var(--background-modifier-border)";
-      sw.style.borderRadius = "3px";
-      sw.style.background = rgbCss(era.color);
-      sw.style.marginRight = "6px";
-      colorRow.appendChild(sw);
-      colorRow.createEl("code", { text: era.color });
+    const actions = this.contentEl.createDiv({ cls: "txs-inspector-actions" });
+    const saveBtn = actions.createEl("button", { cls: "mod-cta", text: "Save era" });
+    saveBtn.addEventListener("click", () => void this.saveEra());
+    const revertBtn = actions.createEl("button", { text: "Reload from note" });
+    revertBtn.addEventListener("click", () => void this.loadEra(era.id));
+  }
+
+  /** Persist current era edits as a Markdown note in `<eventNotesDir>/_eras/`. */
+  private async saveEra(): Promise<void> {
+    const era = this.currentEra;
+    if (!era) return;
+    const settings = this.args.getSettings();
+    try {
+      const { renderEraMarkdown } = await import("../timeline/era-md");
+      const md = renderEraMarkdown(era, settings.timelineId, settings.sourceXmlPath);
+      const path = `${settings.eventNotesDir}/_eras/${era.id}.md`;
+      await this.args.vault.ensureFolder(`${settings.eventNotesDir}/_eras`);
+      await this.args.withSelfWrite(async () => {
+        await this.args.vault.writeText(path, md);
+      });
+      this.currentPath = path;
+      this.args.cache.invalidateMdDoc();
+      this.args.cache.updateFile(path);
+      this.dirty = false;
+      this.args.onEventSaved?.();
+      new Notice("Era saved to Markdown. XML updates on next sync.");
+    } catch (e) {
+      new Notice(`Era save failed: ${(e as Error).message}`);
     }
   }
 
@@ -499,14 +543,70 @@ function toIsoDate(d: { year: number; month?: number; day?: number }): string {
   return `${String(d.year).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function stringifyEraDate(d: { year: number; month?: number; day?: number }): string {
-  const pad = (n?: number) => (n == null ? "01" : String(n).padStart(2, "0"));
-  return `${d.year}-${pad(d.month)}-${pad(d.day)}`;
+interface EraDateGroupRef {
+  onChange?: () => void;
 }
 
-function rgbCss(s: string): string {
-  const m = s.match(/^(\d+),(\d+),(\d+)$/);
-  return m ? `rgb(${m[1]},${m[2]},${m[3]})` : s;
+function eraDateGroup(
+  parent: HTMLElement,
+  label: string,
+  date: { year: number; month?: number; day?: number }
+): EraDateGroupRef {
+  const ref: EraDateGroupRef = {};
+  const row = parent.createDiv({ cls: "txs-inspector-row txs-date-row" });
+  row.createEl("label", { text: label });
+  const ymd = row.createDiv({ cls: "txs-date-fields" });
+  const mk = (placeholder: string, value: number | undefined): HTMLInputElement => {
+    const i = ymd.createEl("input", { type: "number", placeholder }) as HTMLInputElement;
+    if (value != null) i.value = String(value);
+    return i;
+  };
+  const yIn = mk("year", date.year);
+  const moIn = mk("mm", date.month);
+  const dIn = mk("dd", date.day);
+  yIn.addEventListener("input", () => {
+    const v = parseInt(yIn.value, 10);
+    if (Number.isFinite(v)) {
+      date.year = v;
+      ref.onChange?.();
+    }
+  });
+  moIn.addEventListener("input", () => {
+    const v = parseInt(moIn.value, 10);
+    date.month = Number.isFinite(v) ? v : undefined;
+    ref.onChange?.();
+  });
+  dIn.addEventListener("input", () => {
+    const v = parseInt(dIn.value, 10);
+    date.day = Number.isFinite(v) ? v : undefined;
+    ref.onChange?.();
+  });
+  return ref;
+}
+
+function colorToHex(raw: string): string {
+  const s = raw.trim();
+  if (/^#[0-9a-f]{6}$/i.test(s)) return s.toLowerCase();
+  const m3 = s.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if (m3) return `#${m3[1]}${m3[1]}${m3[2]}${m3[2]}${m3[3]}${m3[3]}`.toLowerCase();
+  const rgb = s.match(/^(\d+),(\d+),(\d+)$/) || s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgb) {
+    const h = (n: string) =>
+      Math.max(0, Math.min(255, parseInt(n, 10))).toString(16).padStart(2, "0");
+    return `#${h(rgb[1])}${h(rgb[2])}${h(rgb[3])}`;
+  }
+  return "#888888";
+}
+
+function hexToRgbTriple(hex: string): [number, number, number] | null {
+  const m = hex.trim().match(/^#([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const v = m[1];
+  return [
+    parseInt(v.slice(0, 2), 16),
+    parseInt(v.slice(2, 4), 16),
+    parseInt(v.slice(4, 6), 16),
+  ];
 }
 
 function debounce(fn: () => void, ms: number): () => void {

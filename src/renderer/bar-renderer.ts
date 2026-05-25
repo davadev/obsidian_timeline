@@ -268,20 +268,26 @@ function drawEras(
       }
       svg.appendChild(rect);
 
-      // Era label, only when there's room.
-      if (era.name && span > 60) {
+      // Era name — centered inside the band at the TOP of the canvas (just
+      // under the axis line) so it doesn't collide with event bars below
+      // and is consistent with how Timeline Project itself paints it.
+      // Color uses the era's own RGB at full saturation; the background
+      // band already gives the subtle wash.
+      if (era.name && span > 30) {
         const label = document.createElementNS(SVG_NS, "text");
         if (isVertical) {
-          label.setAttribute("x", String(width - 6));
+          label.setAttribute("x", "6");
           label.setAttribute("y", String((a1 + a2) / 2));
-          label.setAttribute("text-anchor", "end");
+          label.setAttribute("text-anchor", "start");
           label.setAttribute("dominant-baseline", "middle");
         } else {
           label.setAttribute("x", String((a1 + a2) / 2));
-          label.setAttribute("y", String(height - 2));
+          label.setAttribute("y", String(AXIS_PAD + 4));
           label.setAttribute("text-anchor", "middle");
+          label.setAttribute("dominant-baseline", "hanging");
         }
         label.setAttribute("class", "txs-era-label");
+        label.setAttribute("fill", saturateForLabel(era));
         label.textContent = era.name;
         if (onOpenEra) {
           label.setAttribute("cursor", "pointer");
@@ -294,6 +300,14 @@ function drawEras(
       }
     }
   }
+}
+
+function saturateForLabel(era: TimelineEra): string {
+  // Use the era's CSS color if it parses, otherwise the deterministic hash
+  // color. Either way we drop opacity back to 1 so the label stands out
+  // against the 0.18-opacity background band.
+  const c = rgbToCss(era.color ?? "");
+  return c ?? hashColor(era.name || "era");
 }
 
 function clamp01(v: number): number {

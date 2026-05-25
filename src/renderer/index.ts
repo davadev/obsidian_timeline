@@ -41,28 +41,8 @@ export function renderTimeline(args: RenderArgs): void {
 
   const drawEvents = (events: typeof args.events) => {
     body.empty();
-    // Era chip strip — clickable shortcuts above the bar / list, mirroring
-    // the colored bands so the user can edit an era without having to find
-    // its band on the canvas.
-    if (args.eras && args.eras.length && args.onOpenEra) {
-      const strip = body.createDiv({ cls: "txs-era-strip" });
-      strip.createEl("span", { cls: "txs-era-strip-label", text: "Eras:" });
-      for (const era of args.eras) {
-        const chip = strip.createEl("a", {
-          cls: "txs-era-chip",
-          text: era.name,
-          href: "#",
-        });
-        const sw = document.createElement("span");
-        sw.className = "txs-era-chip-sw";
-        sw.style.background = eraChipColor(era.color);
-        chip.prepend(sw);
-        chip.addEventListener("click", (e) => {
-          e.preventDefault();
-          args.onOpenEra!(era.id);
-        });
-      }
-    }
+    // (Era chip strip removed — the era name is now centered inside the band
+    // at the top of the bar render itself; see bar-renderer.drawEras.)
     const { mode } = args.options;
     if (mode === "bar" || mode === "hybrid") {
       renderBar({
@@ -96,11 +76,6 @@ export function renderTimeline(args: RenderArgs): void {
     }
   };
 
-  function eraChipColor(c?: string): string {
-    if (!c) return "var(--text-muted)";
-    const m = c.match(/^(\d+),(\d+),(\d+)$/);
-    return m ? `rgb(${m[1]},${m[2]},${m[3]})` : c;
-  }
 
   const cats = distinctCategories(args.events, args.categories);
   if (args.options.showFilterUI) {

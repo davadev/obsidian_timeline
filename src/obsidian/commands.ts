@@ -14,6 +14,7 @@ import {
   base64ToArrayBuffer,
   guessImageExtension,
 } from "../timeline/base64";
+import { renderEraMarkdown } from "../timeline/era-md";
 
 export interface CommandsContext {
   app: App;
@@ -247,6 +248,9 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   if (!ctx.vault.exists(s.sourceXmlPath)) {
     throw new Error(`XML not found: ${s.sourceXmlPath}`);
   }
+  // Long-running on big vaults — let the user know we started so they don't
+  // wonder whether the button click did anything.
+  new Notice("Starting wipe + reimport…", 4000);
   // Backup XML first — extra paranoia, the user could still recover.
   if (s.backupEnabled) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
@@ -337,6 +341,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     });
   }
 
+
   ctx.cache.resetIndex();
   new Notice(
     `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
@@ -345,53 +350,6 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   );
 }
 
-function renderEraMarkdown(
-  era: { id: string; name: string; start: { year: number; month?: number; day?: number }; end: { year: number; month?: number; day?: number }; color?: string },
-  timelineId: string,
-  sourceXmlPath: string
-): string {
-  const pad = (n?: number, w = 2) => (n == null ? "" : String(n).padStart(w, "0"));
-  const startStr = `${era.start.year}-${pad(era.start.month) || "01"}-${pad(era.start.day) || "01"}`;
-  const endStr = `${era.end.year}-${pad(era.end.month) || "01"}-${pad(era.end.day) || "01"}`;
-  return `---
-title: ${era.name}
-tags:
-  - Timeline
-  - Era
-
-timeline:
-  enabled: true
-  id: ${timelineId}
-  era_id: ${era.id}
-  role: era
-  source_xml: ${sourceXmlPath}
-  color: ${era.color ?? ""}
-  start:
-    year: ${era.start.year}
-    month: ${era.start.month ?? "null"}
-    day: ${era.start.day ?? "null"}
-  end:
-    year: ${era.end.year}
-    month: ${era.end.month ?? "null"}
-    day: ${era.end.day ?? "null"}
-
-timeline_era_start: ${startStr}
-timeline_era_end: ${endStr}
-timeline_era_color: ${era.color ?? ""}
-timeline_role: era
----
-
-# ${era.name}
-
-> Era / background band — managed by Timeline Project. Edits here are
-> read-only for now: the XML \`<era>\` is the source of truth. Open the
-> Timeline view to see this era rendered as a coloured underlay across
-> the event bars.
-
-- Range: \`${startStr}\` → \`${endStr}\`
-${era.color ? `- Color: \`${era.color}\`` : ""}
-`;
-}
 
 function ingestCategories(
   s: TimelineXmlSyncSettings,
@@ -468,7 +426,9 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
 
   let doc;
   if (ctx.vault.exists(s.sourceXmlPath)) {
-    doc = await ctx.cache.getXml(s.sourceXmlPath);
+    // Use the merged render doc so era edits made via the inspector (which
+    // only write to the era MD note) propagate into the regenerated XML.
+    doc = await ctx.cache.getRenderDoc();
   } else {
     doc = {
       version: "2.11.0",
