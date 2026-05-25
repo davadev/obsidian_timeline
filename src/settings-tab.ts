@@ -163,11 +163,26 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Create/Update event note template")
+      .setName("New timeline event")
+      .setDesc(
+        "Recommended path. Prompts for a title, creates the note in the event notes folder, opens it, and reveals the Timeline inspector so you can fill in dates / category / description right away."
+      )
       .addButton((b) =>
-        b.setButtonText("Write template").onClick(() =>
-          this.plugin.runCommand("txs-create-template")
-        )
+        b
+          .setButtonText("New event")
+          .setCta()
+          .onClick(() => this.plugin.runCommand("txs-create-event"))
+      );
+
+    new Setting(containerEl)
+      .setName("Create/Update Obsidian Templates plugin file (advanced)")
+      .setDesc(
+        "Writes a template that the core Templates plugin can insert. Deprecated for normal use — prefer the New event button above."
+      )
+      .addButton((b) =>
+        b
+          .setButtonText("Write template")
+          .onClick(() => this.plugin.runCommand("txs-create-template"))
       );
 
     new Setting(containerEl)

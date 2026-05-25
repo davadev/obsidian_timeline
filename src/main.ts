@@ -159,6 +159,20 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       setDiagnostics: (lines) => {
         this.diagnostics = lines;
       },
+      createEventInteractive: () =>
+        this.templates.createNewEventInteractive(
+          async (path) => {
+            await this.app.workspace.openLinkText(path, "", false);
+          },
+          async (eventId, path) => {
+            // The note write is processed by Obsidian asynchronously — wait
+            // a tick for the metadataCache to index it before the inspector
+            // tries to resolve the id, then prime the cache directly.
+            await new Promise((r) => setTimeout(r, 200));
+            this.cache.updateFile(path);
+            await this.activateInspector(eventId);
+          }
+        ),
     };
 
     registerCommands(this.commandsCtx);
@@ -189,6 +203,9 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     this.registerView(VIEW_TYPE_TIMELINE, (leaf) => new TimelineView(leaf, viewArgs));
     this.addRibbonIcon("calendar-range", "Open Timeline view", () => {
       void this.activateTimelineView();
+    });
+    this.addRibbonIcon("plus-circle", "New timeline event", () => {
+      void this.commandsCtx.createEventInteractive();
     });
     this.addCommand({
       id: "txs-open-view",

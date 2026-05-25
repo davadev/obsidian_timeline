@@ -1,5 +1,6 @@
 import {
   ItemView,
+  MarkdownRenderer,
   Notice,
   Platform,
   TFile,
@@ -185,14 +186,47 @@ export class InspectorView extends ItemView {
       });
     }
 
-    // Description
-    const descArea = field(body, "Description", "textarea") as HTMLTextAreaElement;
+    // Description — textarea on top, live preview below. MarkdownRenderer
+    // honors Obsidian wikilinks ([[Note]]) and transclusions (![[Note]]).
+    const descRow = body.createDiv({ cls: "txs-inspector-row" });
+    descRow.createEl("label", { text: "Description (Markdown / wikilinks / ![[embeds]])" });
+    const descArea = descRow.createEl("textarea") as HTMLTextAreaElement;
     descArea.rows = 6;
     descArea.value = ev.description ?? "";
+    const previewToggle = descRow.createEl("label", {
+      cls: "txs-inspector-preview-toggle",
+    });
+    const previewCheck = previewToggle.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+    previewCheck.checked = true;
+    previewToggle.createEl("span", { text: " Preview" });
+    const previewEl = descRow.createDiv({ cls: "txs-inspector-preview" });
+    const renderPreview = () => {
+      previewEl.empty();
+      if (!previewCheck.checked) return;
+      const text = descArea.value.trim();
+      if (!text) {
+        previewEl.createDiv({
+          cls: "txs-inspector-meta",
+          text: "(preview will render Markdown, [[wikilinks]], and ![[embeds]])",
+        });
+        return;
+      }
+      void MarkdownRenderer.render(
+        this.app,
+        text,
+        previewEl,
+        this.currentPath ?? "",
+        this
+      );
+    };
+    const debouncedRender = debounce(renderPreview, 200);
     descArea.addEventListener("input", () => {
       ev.description = descArea.value;
       this.markDirty();
+      debouncedRender();
     });
+    previewCheck.addEventListener("change", renderPreview);
+    renderPreview();
 
     // Labels (UI accepts comma OR space OR semicolon — Timeline 2.11 XML uses
     // space-separated tokens, the writer converts on save).
@@ -367,6 +401,17 @@ function toIsoDate(d: { year: number; month?: number; day?: number }): string {
   const m = d.month ?? 1;
   const day = d.day ?? 1;
   return `${String(d.year).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function debounce(fn: () => void, ms: number): () => void {
+  let t: ReturnType<typeof setTimeout> | null = null;
+  return () => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      t = null;
+      fn();
+    }, ms);
+  };
 }
 
 function fromIsoDate(s: string): { year: number; month: number; day: number } | null {

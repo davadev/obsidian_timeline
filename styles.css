@@ -396,6 +396,33 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
+.txs-inspector-preview-toggle {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.txs-inspector-preview {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  max-height: 240px;
+  overflow: auto;
+  font-size: var(--font-ui-small);
+}
+
+.txs-inspector-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
 .txs-inspector-thumb {
   /* Keep intrinsic aspect ratio — Obsidian's base stylesheet sets img to
    * width: 100% which squeezed the inspector thumbnail. */

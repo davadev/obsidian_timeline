@@ -27,6 +27,8 @@ export interface CommandsContext {
   withSelfWrite: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Replace stored diagnostics. */
   setDiagnostics: (lines: string[]) => void;
+  /** Interactive "new event" flow: prompt title, create note, open inspector. */
+  createEventInteractive: () => Promise<void>;
 }
 
 export function registerCommands(ctx: CommandsContext): void {
@@ -62,12 +64,8 @@ export function registerCommands(ctx: CommandsContext): void {
 
   plugin.addCommand({
     id: "txs-create-event",
-    name: "Create new timeline event note",
-    callback: () =>
-      ctx.templates
-        .createNewEventNote("New timeline event")
-        .then((p) => new Notice(`Created: ${p}`))
-        .catch(reportErr),
+    name: "New timeline event (prompt + open inspector)",
+    callback: () => ctx.createEventInteractive().catch(reportErr),
   });
 
   plugin.addCommand({
