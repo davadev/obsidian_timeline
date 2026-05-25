@@ -72,6 +72,21 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
   }
 
+  /**
+   * Tell every open TimelineView to re-load `cachedDoc` and re-render the
+   * body. Triggered after the inspector saves, after the new-event flow
+   * creates a note, and similar mutations — keeps the global view's filter
+   * (e.g. a search for "Test") from missing freshly added events.
+   */
+  refreshTimelineViews(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof TimelineView) {
+        void leaf.view.refreshFromCache();
+      }
+    }
+  }
+
   async activateInspector(eventId?: string): Promise<InspectorView | null> {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_INSPECTOR)[0];
     if (!leaf) {
@@ -170,7 +185,9 @@ export default class TimelineXmlSyncPlugin extends Plugin {
             // tries to resolve the id, then prime the cache directly.
             await new Promise((r) => setTimeout(r, 200));
             this.cache.updateFile(path);
+            this.cache.invalidateMdDoc();
             await this.activateInspector(eventId);
+            this.refreshTimelineViews();
           }
         ),
     };
@@ -220,6 +237,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       vault: this.vault,
       getSettings: () => this.settings,
       withSelfWrite: <T,>(fn: () => Promise<T>) => this.withSelfWrite(fn),
+      onEventSaved: () => this.refreshTimelineViews(),
     };
     this.registerView(
       VIEW_TYPE_INSPECTOR,

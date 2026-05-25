@@ -66,6 +66,34 @@ export class TimelineView extends ItemView {
     this.contentEl.empty();
   }
 
+  /**
+   * Reload `cachedDoc` from the cache and re-render the body without
+   * destroying the filter panel state. Called by the plugin whenever event
+   * notes change (inspector save, new-event flow, external file write).
+   */
+  async refreshFromCache(): Promise<void> {
+    const { cache, getSettings, app } = this.args;
+    const settings = getSettings();
+    try {
+      const xmlPath = settings.sourceXmlPath;
+      const xmlAvailable =
+        !!xmlPath && app.vault.getAbstractFileByPath(xmlPath) !== null;
+      if (settings.eventSource === "xml") {
+        if (!xmlAvailable) return;
+        this.cachedDoc = await cache.getXml(xmlPath);
+      } else if (settings.eventSource === "md") {
+        this.cachedDoc = await cache.getMdDoc();
+      } else {
+        this.cachedDoc = xmlAvailable
+          ? await cache.getXml(xmlPath)
+          : await cache.getMdDoc();
+      }
+    } catch {
+      return;
+    }
+    this.bodyRender();
+  }
+
   private async fullRender(): Promise<void> {
     const { cache, getSettings, app } = this.args;
     const settings = getSettings();

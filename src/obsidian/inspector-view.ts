@@ -26,6 +26,8 @@ export interface InspectorArgs {
   vault: VaultAdapter;
   getSettings: () => TimelineXmlSyncSettings;
   withSelfWrite: <T>(fn: () => Promise<T>) => Promise<T>;
+  /** Called after the user saves edits in the inspector. */
+  onEventSaved?: () => void;
 }
 
 /**
@@ -327,7 +329,12 @@ export class InspectorView extends ItemView {
         await this.args.vault.writeText(this.currentPath!, md);
       });
       this.args.cache.invalidateMdDoc();
+      // Make sure the id index sees the latest event_id (in case the user
+      // edited a note that was just created — metadataCache may not have
+      // re-indexed yet).
+      this.args.cache.updateFile(this.currentPath);
       this.dirty = false;
+      this.args.onEventSaved?.();
       new Notice("Event note saved.");
     } catch (e) {
       new Notice(`Save failed: ${(e as Error).message}`);
