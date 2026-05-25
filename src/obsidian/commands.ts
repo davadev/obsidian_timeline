@@ -322,10 +322,75 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       else created++;
     }
   });
+  // Era notes — one Markdown file per <era>, written into _eras/ so they
+  // sit next to but not mingled with the editable event notes. These notes
+  // are read-only references; era data is sourced from the XML.
+  if (doc.eras && doc.eras.length) {
+    const erasDir = `${s.eventNotesDir}/_eras`;
+    await ctx.vault.ensureFolder(erasDir);
+    await ctx.withSelfWrite(async () => {
+      for (const era of doc.eras!) {
+        const md = renderEraMarkdown(era, s.timelineId, s.sourceXmlPath);
+        const path = `${erasDir}/${era.id}.md`;
+        await ctx.vault.writeText(path, md);
+      }
+    });
+  }
+
   ctx.cache.resetIndex();
   new Notice(
-    `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total.`
+    `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
+      doc.eras?.length ? `, ${doc.eras.length} era(s)` : ""
+    }.`
   );
+}
+
+function renderEraMarkdown(
+  era: { id: string; name: string; start: { year: number; month?: number; day?: number }; end: { year: number; month?: number; day?: number }; color?: string },
+  timelineId: string,
+  sourceXmlPath: string
+): string {
+  const pad = (n?: number, w = 2) => (n == null ? "" : String(n).padStart(w, "0"));
+  const startStr = `${era.start.year}-${pad(era.start.month) || "01"}-${pad(era.start.day) || "01"}`;
+  const endStr = `${era.end.year}-${pad(era.end.month) || "01"}-${pad(era.end.day) || "01"}`;
+  return `---
+title: ${era.name}
+tags:
+  - Timeline
+  - Era
+
+timeline:
+  enabled: true
+  id: ${timelineId}
+  era_id: ${era.id}
+  role: era
+  source_xml: ${sourceXmlPath}
+  color: ${era.color ?? ""}
+  start:
+    year: ${era.start.year}
+    month: ${era.start.month ?? "null"}
+    day: ${era.start.day ?? "null"}
+  end:
+    year: ${era.end.year}
+    month: ${era.end.month ?? "null"}
+    day: ${era.end.day ?? "null"}
+
+timeline_era_start: ${startStr}
+timeline_era_end: ${endStr}
+timeline_era_color: ${era.color ?? ""}
+timeline_role: era
+---
+
+# ${era.name}
+
+> Era / background band — managed by Timeline Project. Edits here are
+> read-only for now: the XML \`<era>\` is the source of truth. Open the
+> Timeline view to see this era rendered as a coloured underlay across
+> the event bars.
+
+- Range: \`${startStr}\` → \`${endStr}\`
+${era.color ? `- Color: \`${era.color}\`` : ""}
+`;
 }
 
 function ingestCategories(

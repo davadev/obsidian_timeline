@@ -3,6 +3,7 @@ import { toXmlString, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
   TimelineDoc,
+  TimelineEra,
   TimelineEvent,
   TimelineView,
 } from "./model";
@@ -45,6 +46,8 @@ const KNOWN_CATEGORY_TAGS = new Set([
   "font_color",
   "parent",
 ]);
+
+const KNOWN_ERA_TAGS = new Set(["name", "start", "end", "color"]);
 
 // Builder needs entity encoding ON so leaf text containing &, <, > round-trips
 // to valid XML — the parser disables processEntities to dodge fast-xml-parser's
@@ -189,6 +192,22 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
   return elem("category", children, attrs);
 }
 
+function buildEraNode(era: TimelineEra): RawNode {
+  const children: RawNode[] = [];
+  children.push(leaf("name", era.name));
+  children.push(dateLeaf("start", era.start));
+  children.push(dateLeaf("end", era.end));
+  const col = maybeLeaf("color", era.color);
+  if (col) children.push(col);
+  for (const u of unknownChildren(era.raw, KNOWN_ERA_TAGS)) children.push(u);
+  const attrs: Record<string, string> = {};
+  if (era.raw && typeof era.raw === "object") {
+    const rawAttrs = ((era.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
+  }
+  return elem("era", children, attrs);
+}
+
 function buildViewNode(view: TimelineView): RawNode {
   const children: RawNode[] = [];
   if (view.displayedPeriod) {
@@ -229,13 +248,23 @@ export function writeTimelineXml(doc: TimelineDoc): string {
       doc.events.map(buildEventNode)
     )
   );
+  if (doc.eras && doc.eras.length) {
+    timelineChildren.push(elem("eras", doc.eras.map(buildEraNode)));
+  }
   if (doc.view) timelineChildren.push(buildViewNode(doc.view));
 
   // Preserve top-level unknown children (anything that wasn't version/timetype/categories/events/view)
   if (doc.raw && Array.isArray(doc.raw)) {
     const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
     if (rawRoot) {
-      const known = new Set(["version", "timetype", "categories", "events", "view"]);
+      const known = new Set([
+        "version",
+        "timetype",
+        "categories",
+        "events",
+        "eras",
+        "view",
+      ]);
       for (const u of unknownChildren(rawRoot, known)) {
         timelineChildren.push(u);
       }

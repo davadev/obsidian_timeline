@@ -260,6 +260,7 @@ export class TimelineView extends ItemView {
       container: body,
       events: filtered,
       categories: this.cachedDoc.categories,
+      eras: this.cachedDoc.eras,
       viewport: fullViewport,
       options: {
         ...settings.renderDefaults,

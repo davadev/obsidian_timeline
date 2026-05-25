@@ -3,6 +3,7 @@ import { parseXmlDate, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
   TimelineDoc,
+  TimelineEra,
   TimelineEvent,
   TimelineView,
 } from "./model";
@@ -266,6 +267,30 @@ export function parseTimelineXml(xml: string): TimelineDoc {
     }
   }
 
+  // Eras (Timeline Project's coloured background bands)
+  const erasNode = findChild(root, "eras");
+  const eras: TimelineEra[] = [];
+  const usedEraIds = new Set<string>();
+  if (erasNode) {
+    for (const eraNode of findAllChildren(nodeChildren(erasNode), "era")) {
+      const ch = nodeChildren(eraNode);
+      const name = readText(ch, "name") ?? "";
+      const start = readDate(ch, "start");
+      const end = readDate(ch, "end");
+      if (!start || !end) continue;
+      const baseId = slugify(name || "era");
+      const id = uniqueSlug(baseId, usedEraIds);
+      eras.push({
+        id,
+        name,
+        start,
+        end,
+        color: readText(ch, "color"),
+        raw: eraNode,
+      });
+    }
+  }
+
   // View
   const viewNode = findChild(root, "view");
   let view: TimelineView | undefined;
@@ -294,6 +319,7 @@ export function parseTimelineXml(xml: string): TimelineDoc {
     timetype,
     categories,
     events,
+    eras,
     view,
     raw: tree,
   };

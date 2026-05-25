@@ -1,4 +1,4 @@
-import type { TimelineCategory, TimelineEvent } from "../timeline/model";
+import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import type { ViewportRange } from "../timeline/overlap";
 import { assignLanes } from "../timeline/overlap";
 import {
@@ -42,6 +42,8 @@ export interface BarRenderArgs {
    * sniffing is unreliable on macOS where Electron reports maxTouchPoints>0
    * which previously disabled hover tooltips on the desktop. */
   isMobile: boolean;
+  /** Optional eras to paint as coloured background bands under all events. */
+  eras?: TimelineEra[];
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -84,6 +86,10 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   svg.setAttribute("height", String(height));
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
+  // Eras paint FIRST so they sit behind stripes + axis grid + events.
+  if (args.eras && args.eras.length) {
+    drawEras(svg, args.eras, viewport, isVertical, width, height);
+  }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
   drawAxis(svg, viewport, isVertical, width, height);
 
@@ -198,6 +204,86 @@ function attachEvents(
     });
     el.addEventListener("mouseleave", () => hideTooltip());
   }
+}
+
+/**
+ * Paint each era as a low-opacity full-cross-axis rectangle clipped to the
+ * viewport, plus a centered label across the band. Renders behind everything
+ * else so events stay readable.
+ */
+function drawEras(
+  svg: SVGSVGElement,
+  eras: TimelineEra[],
+  viewport: ViewportRange,
+  isVertical: boolean,
+  width: number,
+  height: number
+): void {
+  const timeSize = isVertical ? height : width;
+  for (const era of eras) {
+    if (
+      era.end &&
+      era.start &&
+      // overlap check
+      !(era.start.year > viewport.end.year || era.end.year < viewport.start.year)
+    ) {
+      const a1Frac = clamp01(
+        fractionalPosition(era.start, viewport.start, viewport.end)
+      );
+      const a2Frac = clamp01(
+        fractionalPosition(era.end, viewport.start, viewport.end)
+      );
+      const a1 = a1Frac * timeSize;
+      const a2 = a2Frac * timeSize;
+      const span = Math.max(2, a2 - a1);
+      const fill = eraFill(era);
+      const rect = document.createElementNS(SVG_NS, "rect");
+      if (isVertical) {
+        rect.setAttribute("x", "0");
+        rect.setAttribute("y", String(a1));
+        rect.setAttribute("width", String(width));
+        rect.setAttribute("height", String(span));
+      } else {
+        rect.setAttribute("x", String(a1));
+        rect.setAttribute("y", String(AXIS_PAD - 4));
+        rect.setAttribute("width", String(span));
+        rect.setAttribute("height", String(height - AXIS_PAD - TAIL_PAD + 8));
+      }
+      rect.setAttribute("fill", fill);
+      rect.setAttribute("opacity", "0.18");
+      rect.setAttribute("pointer-events", "none");
+      svg.appendChild(rect);
+
+      // Era label, only when there's room.
+      if (era.name && span > 60) {
+        const label = document.createElementNS(SVG_NS, "text");
+        if (isVertical) {
+          label.setAttribute("x", String(width - 6));
+          label.setAttribute("y", String((a1 + a2) / 2));
+          label.setAttribute("text-anchor", "end");
+          label.setAttribute("dominant-baseline", "middle");
+        } else {
+          label.setAttribute("x", String((a1 + a2) / 2));
+          label.setAttribute("y", String(height - 2));
+          label.setAttribute("text-anchor", "middle");
+        }
+        label.setAttribute("class", "txs-era-label");
+        label.textContent = era.name;
+        svg.appendChild(label);
+      }
+    }
+  }
+}
+
+function clamp01(v: number): number {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+function eraFill(era: TimelineEra): string {
+  const css = rgbToCss(era.color ?? "");
+  return css ?? hashColor(era.name || "era");
 }
 
 function drawLaneStripes(

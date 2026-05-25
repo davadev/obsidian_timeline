@@ -68,6 +68,40 @@ describe("XML round-trip", () => {
     expect((doc.events[0].description ?? "").length).toBeGreaterThan(2000);
   });
 
+  it("parses, preserves, and re-emits <eras>", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events/>
+  <eras>
+    <era>
+      <name>Bronze Age</name>
+      <start>-3300-01-01 00:00:00</start>
+      <end>-1200-01-01 00:00:00</end>
+      <color>200,160,80</color>
+    </era>
+    <era>
+      <name>Iron Age</name>
+      <start>-1200-01-01 00:00:00</start>
+      <end>0476-01-01 00:00:00</end>
+      <color>120,120,140</color>
+    </era>
+  </eras>
+</timeline>`;
+    const doc = parseTimelineXml(xml);
+    expect(doc.eras?.length).toBe(2);
+    expect(doc.eras?.[0].name).toBe("Bronze Age");
+    expect(doc.eras?.[0].start.year).toBe(-3300);
+    expect(doc.eras?.[1].color).toBe("120,120,140");
+    const out = writeTimelineXml(doc);
+    expect(out).toContain("<eras>");
+    expect(out).toContain("Bronze Age");
+    expect(out).toContain("Iron Age");
+    expect(out).toContain("200,160,80");
+  });
+
   it("captures description inside a CDATA section", () => {
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <timeline>

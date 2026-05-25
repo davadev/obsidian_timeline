@@ -55,6 +55,20 @@ export interface TimelineEvent {
   raw?: unknown;
 }
 
+/**
+ * Timeline Project's `<era>` element — a coloured background band that spans
+ * a date range and renders behind the event bars. Not the same as an event.
+ */
+export interface TimelineEra {
+  id: string;
+  name: string;
+  start: TimelineDate;
+  end: TimelineDate;
+  color?: Color;
+  /** Preserved raw `<era>` subtree for unknown sub-elements. */
+  raw?: unknown;
+}
+
 export interface DisplayedPeriod {
   start: TimelineDate;
   end: TimelineDate;
@@ -71,6 +85,7 @@ export interface TimelineDoc {
   timetype?: string;
   categories: TimelineCategory[];
   events: TimelineEvent[];
+  eras?: TimelineEra[];
   view?: TimelineView;
   /** Full original parsed tree (preserveOrder=true). Used as canonical skeleton. */
   raw?: unknown;

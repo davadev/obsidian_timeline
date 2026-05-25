@@ -159,6 +159,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         container: el,
         events,
         categories: doc.categories,
+        eras: doc.eras,
         viewport: viewport ?? autoViewport(events),
         options: opts,
         onOpenEvent: (id) => ctx.onEventClick(id),

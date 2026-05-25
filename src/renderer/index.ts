@@ -1,4 +1,4 @@
-import type { TimelineCategory, TimelineEvent } from "../timeline/model";
+import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import type { ViewportRange } from "../timeline/overlap";
 import { renderBar } from "./bar-renderer";
 import { renderList } from "./list-renderer";
@@ -15,6 +15,7 @@ export interface RenderArgs {
   container: HTMLElement;
   events: TimelineEvent[];
   categories: TimelineCategory[];
+  eras?: TimelineEra[];
   viewport: ViewportRange | undefined;
   options: RenderOptions;
   onOpenEvent: (id: string) => void;
@@ -50,6 +51,7 @@ export function renderTimeline(args: RenderArgs): void {
         zoom: args.options.zoom,
         orientation: args.options.orientation,
         isMobile: args.isMobile,
+        eras: args.eras,
       });
     }
     if (mode === "list" || mode === "hybrid") {
