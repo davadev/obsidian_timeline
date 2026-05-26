@@ -2,6 +2,12 @@
 
 Every event note has normal Obsidian YAML frontmatter. The nested `timeline:` object is the **source of truth**; the top-level `timeline_*` keys are mirrors for Dataview compatibility.
 
+<p align="center">
+  <img src="images/inspector.png" alt="Right-sidebar Inspector — title, category, BCE-safe year/month/day inputs, description with live preview, labels, hyperlink, image upload" width="400" />
+</p>
+
+You rarely need to edit the YAML by hand. The right-sidebar **Inspector** (above) edits every field on the schema directly — including the year/month/day inputs that handle BCE dates the native date picker can't.
+
 ```yaml
 ---
 title: Caesar crosses the Rubicon

@@ -11,6 +11,10 @@ source: main
 
 The plugin renders the block in place. Embedded notes work too — `![[Some Note]]` carries the host's frontmatter viewport with it.
 
+<p align="center">
+  <img src="images/hero.png" alt="Inline timeline block in a note — collapsed filter bar, bar chart with stacked lanes, eras list, event list" width="640" />
+</p>
+
 ## Options
 
 | Option | Type | Default | Notes |

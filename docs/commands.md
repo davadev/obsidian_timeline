@@ -2,6 +2,12 @@
 
 All commands are prefixed `Timeline XML Sync:` in the command palette.
 
+<p align="center">
+  <img src="images/global-view.png" alt="Workspace Timeline view opened in a tab — file tree on the left, filter chips and parallel event bars in the centre, Inspector on the right" width="900" />
+</p>
+
+The workspace **Timeline view** (above) is opened via the ribbon icon or the **Open Timeline view** command. The right-sidebar **Inspector** is opened by clicking an event in any bar/list, or via **Open Timeline inspector**.
+
 | Command | Effect |
 | --- | --- |
 | Import XML to Markdown event notes | First import or re-import. Skips notes locally edited since the last XML-driven write (the `last_synced_xml_mtime` stamp). |

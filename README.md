@@ -5,7 +5,7 @@
 Built mobile-first: only uses the Obsidian Vault API. Same plugin runs on desktop, iPad, iPhone.
 
 <p align="center">
-  <img src="docs/images/hero.png" alt="Inline timeline rendered in a Markdown note" width="800" />
+  <img src="docs/images/global-view.png" alt="Timeline workspace view with filter chips, parallel event bars, and right-sidebar Inspector" width="900" />
 </p>
 
 ---
@@ -20,13 +20,11 @@ Built mobile-first: only uses the Obsidian Vault API. Same plugin runs on deskto
 
 ## Screenshots
 
-| Inline ` ```timeline ` block (hybrid mode) | Global Timeline view |
-| --- | --- |
-| ![hybrid block](docs/images/hero.png) | ![global view](docs/images/global-view.png) |
+| Inline timeline block in any note | Right-sidebar Inspector | Mobile (iPhone / iPad) |
+| --- | --- | --- |
+| <img src="docs/images/hero.png" alt="Inline timeline block rendered in a Markdown note" width="320" /> | <img src="docs/images/inspector.png" alt="Right-sidebar Inspector editing an event" width="240" /> | <img src="docs/images/mobile.png" alt="Mobile view of the inline timeline" width="200" /> |
 
-| Right-sidebar Inspector | Mobile (iPad / iPhone) |
-| --- | --- |
-| ![inspector](docs/images/inspector.png) | ![mobile](docs/images/mobile.png) |
+The top banner (above) shows the full **Timeline workspace view** — filter chips, parallel event bars across multiple lanes, eras as background bands, and the Inspector docked on the right.
 
 ---
 

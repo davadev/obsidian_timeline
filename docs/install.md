@@ -35,6 +35,10 @@ Two good options, no full-config sync needed:
 
 > The plugin uses only the Obsidian Vault API and browser DOM/SVG — no Node, no Electron, no native modules — so it works on iOS the same way it does on desktop.
 
+<p align="center">
+  <img src="images/mobile.png" alt="Inline timeline rendered in Obsidian Mobile — collapsed filter bar, parallel event lanes, eras list" width="280" />
+</p>
+
 ## From source
 
 ```bash
