@@ -496,26 +496,26 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
-    const periodSel = triBoolField(body, "Period", ev.period, (v) => {
+    const periodCheck = boolField(body, "Period", ev.period ?? false, (v) => {
       ev.period = v;
       this.markDirty();
     });
-    const showTimeSel = triBoolField(body, "Show time", ev.showTime, (v) => {
+    const showTimeCheck = boolField(body, "Show time", ev.showTime ?? false, (v) => {
       ev.showTime = v;
       this.markDirty();
     });
-    const fuzzyStartSel = triBoolField(body, "Fuzzy start", ev.fuzzyStart, (v) => {
+    const fuzzyStartCheck = boolField(body, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
       ev.fuzzyStart = v;
       this.markDirty();
     });
-    const fuzzyEndSel = triBoolField(body, "Fuzzy end", ev.fuzzyEnd, (v) => {
+    const fuzzyEndCheck = boolField(body, "Fuzzy end", ev.fuzzyEnd ?? false, (v) => {
       ev.fuzzyEnd = v;
       this.markDirty();
     });
-    void periodSel;
-    void showTimeSel;
-    void fuzzyStartSel;
-    void fuzzyEndSel;
+    void periodCheck;
+    void showTimeCheck;
+    void fuzzyStartCheck;
+    void fuzzyEndCheck;
 
     const enabledCheck = boolField(body, "Enabled", ev.timelineEnabled ?? true, (v) => {
       ev.timelineEnabled = v;
@@ -796,23 +796,6 @@ function boolField(
   return input;
 }
 
-function triBoolField(
-  parent: HTMLElement,
-  label: string,
-  value: boolean | undefined,
-  onChange: (next: boolean | undefined) => void
-): HTMLSelectElement {
-  const sel = field(parent, label, "select") as HTMLSelectElement;
-  sel.createEl("option", { value: "", text: "null" });
-  sel.createEl("option", { value: "true", text: "true" });
-  sel.createEl("option", { value: "false", text: "false" });
-  sel.value = value == null ? "" : String(value);
-  sel.addEventListener("change", () => {
-    if (sel.value === "") onChange(undefined);
-    else onChange(sel.value === "true");
-  });
-  return sel;
-}
 
 function toIsoDate(d: { year: number; month?: number; day?: number }): string {
   const m = d.month ?? 1;

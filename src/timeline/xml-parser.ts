@@ -203,9 +203,9 @@ function readDeepText(parent: RawNode[], tag: string): string | undefined {
 function readBool(parent: RawNode[], tag: string): boolean | undefined {
   const v = readText(parent, tag);
   if (v == null) return undefined;
-  const s = v.trim().toLowerCase();
-  if (s === "true") return true;
-  if (s === "false") return false;
+  const s = v.replace(/\u00a0/g, " ").trim().toLowerCase();
+  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
   return undefined;
 }
 

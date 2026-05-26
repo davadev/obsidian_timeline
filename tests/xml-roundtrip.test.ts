@@ -156,6 +156,38 @@ describe("XML round-trip", () => {
     expect(doc.events[0].description?.startsWith("He")).toBe(true);
   });
 
+  it("parses boolean flags from Timeline-style values", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events>
+    <event id="e1">
+      <start>2000-01-01 00:00:00</start>
+      <end>2001-01-01 00:00:00</end>
+      <text>Hello</text>
+      <period>1</period>
+      <show_time>0</show_time>
+      <fuzzy_start>True</fuzzy_start>
+      <fuzzy_end>False </fuzzy_end>
+      <fuzzy>yes</fuzzy>
+      <locked>off</locked>
+      <ends_today>no</ends_today>
+    </event>
+  </events>
+</timeline>`;
+    const doc = parseTimelineXml(xml);
+    const ev = doc.events[0];
+    expect(ev.period).toBe(true);
+    expect(ev.showTime).toBe(false);
+    expect(ev.fuzzyStart).toBe(true);
+    expect(ev.fuzzyEnd).toBe(false);
+    expect(ev.fuzzy).toBe(true);
+    expect(ev.locked).toBe(false);
+    expect(ev.endsToday).toBe(false);
+  });
+
   it("preserves unknown XML child elements through a round-trip", () => {
     const xml = `<?xml version="1.0" encoding="utf-8"?>
 <timeline>
