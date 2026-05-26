@@ -496,8 +496,12 @@
 }
 
 .txs-inspector-toggle-row input[type="checkbox"] {
-  width: auto;
+  width: 18px;
+  height: 18px;
   margin: 0;
+  accent-color: var(--interactive-accent);
+  cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .txs-date-fields {
