@@ -77,6 +77,8 @@ export interface TimelineXmlSyncSettings {
   syncLogEnabled: boolean;
   /** Keep most recent N backups (XML .bak-* siblings AND _backups/<label>-* folders). */
   backupRetention: number;
+  /** Trim leading/trailing whitespace in event descriptions when writing notes. */
+  trimDescriptionOnWrite: boolean;
 }
 
 /**
@@ -113,4 +115,5 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   selfWriteTtlMs: 5_000,
   syncLogEnabled: true,
   backupRetention: 5,
+  trimDescriptionOnWrite: true,
 };

@@ -451,12 +451,16 @@ export class InspectorView extends ItemView {
         path: this.currentPath,
         mirrorNames: settings.mirrorNames,
       });
+      const extraFrontmatter = { ...(parsed.note?.extraFrontmatter ?? {}) };
+      extraFrontmatter.title = this.current.text;
+      const body = patchEventBody(parsed.note?.body ?? "", this.current);
       const md = renderEventMarkdown(this.current, {
         sourceXmlPath: settings.sourceXmlPath,
         timelineId: settings.timelineId,
         mirrorNames: settings.mirrorNames,
-        extraFrontmatter: parsed.note?.extraFrontmatter,
-        body: parsed.note?.body,
+        extraFrontmatter,
+        body,
+        trimDescription: settings.trimDescriptionOnWrite,
       });
       await this.args.withSelfWrite(async () => {
         await this.args.vault.writeText(this.currentPath!, md);
@@ -473,6 +477,54 @@ export class InspectorView extends ItemView {
       new Notice(`Save failed: ${(e as Error).message}`);
     }
   }
+}
+
+function patchEventBody(body: string, ev: TimelineEvent): string {
+  const withTitle = replaceOrInsertSection(body, /^\s*#\s+.*$/m, `# ${ev.text}`);
+  const withText = replaceNamedSection(withTitle, "Text", ev.text);
+  const desc = ev.description ?? "";
+  return replaceNamedSection(withText, "Description", desc);
+}
+
+function replaceOrInsertSection(body: string, pattern: RegExp, replacement: string): string {
+  if (pattern.test(body)) return body.replace(pattern, replacement);
+  return `${replacement}\n\n${body}`;
+}
+
+function replaceNamedSection(body: string, name: string, value: string): string {
+  const heading = new RegExp(`^##\\s+${escapeRe(name)}(?:\\s+#+)?\\s*$`, "im");
+  const lines = body.split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (heading.test(lines[i])) {
+      start = i;
+      break;
+    }
+  }
+  if (start === -1) {
+    return `${body.trimEnd()}\n\n## ${name}\n\n${value}\n`;
+  }
+  let end = lines.length;
+  let inFence = false;
+  for (let i = start + 1; i < lines.length; i++) {
+    const ln = lines[i].trimStart();
+    if (ln.startsWith("```") || ln.startsWith("~~~")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && /^#{1,6}\s+/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  const before = lines.slice(0, start + 1).join("\n");
+  const after = lines.slice(end).join("\n");
+  const middle = `\n${value}`;
+  return `${before}${middle}${after ? `\n${after}` : ""}`;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function field(

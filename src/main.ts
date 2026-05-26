@@ -280,6 +280,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       eventNotesDir: this.settings.eventNotesDir,
       timelineId: this.settings.timelineId,
       sourceXmlPath: this.settings.sourceXmlPath,
+      trimDescriptionOnWrite: this.settings.trimDescriptionOnWrite,
     }));
 
     this.commandsCtx = {

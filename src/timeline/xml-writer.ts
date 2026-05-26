@@ -26,10 +26,15 @@ const KNOWN_EVENT_TAGS = new Set([
   "end",
   "text",
   "category",
+  "container",
   "description",
   "hyperlink",
   "labels",
   "progress",
+  "period",
+  "show_time",
+  "fuzzy_start",
+  "fuzzy_end",
   "fuzzy",
   "locked",
   "ends_today",
@@ -126,10 +131,15 @@ const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
   "end",
   "text",
   "category",
+  "container",
   "description",
   "hyperlink",
   "labels",
   "progress",
+  "period",
+  "show_time",
+  "fuzzy_start",
+  "fuzzy_end",
   "fuzzy",
   "locked",
   "ends_today",
@@ -184,9 +194,34 @@ function buildEventNode(ev: TimelineEvent): RawNode {
     const rawAttrs = ((ev.raw as RawNode)[":@"] || {}) as Record<string, string>;
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
+  for (const [k, v] of Object.entries(ev.xmlAttrs ?? {})) {
+    attrs[k] = v;
+  }
   if (!attrs["@_id"]) attrs["@_id"] = ev.id;
 
+  if (!(ev.raw && typeof ev.raw === "object")) {
+    for (const n of parseExtraNodes(ev.xmlExtraNodes)) {
+      children.push(n);
+    }
+  }
+
   return elem("event", children, attrs);
+}
+
+function parseExtraNodes(rawNodes: string[] | undefined): RawNode[] {
+  if (!rawNodes || !rawNodes.length) return [];
+  const out: RawNode[] = [];
+  for (const s of rawNodes) {
+    try {
+      const parsed = JSON.parse(s) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        out.push(parsed as RawNode);
+      }
+    } catch {
+      // Ignore malformed payloads.
+    }
+  }
+  return out;
 }
 
 function synthesizeEventChild(
@@ -203,6 +238,8 @@ function synthesizeEventChild(
       return leaf("text", ev.text);
     case "category":
       return maybeLeaf("category", ev.category);
+    case "container":
+      return maybeLeaf("container", ev.container);
     case "description":
       if (ev.description == null) return null;
       return wantsCData
@@ -217,6 +254,14 @@ function synthesizeEventChild(
     }
     case "progress":
       return numLeaf("progress", ev.progress);
+    case "period":
+      return boolLeaf("period", ev.period);
+    case "show_time":
+      return boolLeaf("show_time", ev.showTime);
+    case "fuzzy_start":
+      return boolLeaf("fuzzy_start", ev.fuzzyStart);
+    case "fuzzy_end":
+      return boolLeaf("fuzzy_end", ev.fuzzyEnd);
     case "fuzzy":
       return boolLeaf("fuzzy", ev.fuzzy);
     case "locked":
@@ -325,6 +370,12 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
     const rawAttrs = ((c.raw as RawNode)[":@"] || {}) as Record<string, string>;
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
+  for (const [k, v] of Object.entries(c.xmlAttrs ?? {})) {
+    attrs[k] = v;
+  }
+  if (!(c.raw && typeof c.raw === "object")) {
+    for (const n of parseExtraNodes(c.xmlExtraNodes)) children.push(n);
+  }
   return elem("category", children, attrs);
 }
 
@@ -340,6 +391,12 @@ function buildEraNode(era: TimelineEra): RawNode {
   if (era.raw && typeof era.raw === "object") {
     const rawAttrs = ((era.raw as RawNode)[":@"] || {}) as Record<string, string>;
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
+  }
+  for (const [k, v] of Object.entries(era.xmlAttrs ?? {})) {
+    attrs[k] = v;
+  }
+  if (!(era.raw && typeof era.raw === "object")) {
+    for (const n of parseExtraNodes(era.xmlExtraNodes)) children.push(n);
   }
   return elem("era", children, attrs);
 }
@@ -362,7 +419,22 @@ function buildViewNode(view: TimelineView): RawNode {
       )
     );
   }
-  return elem("view", children);
+  const attrs: Record<string, string> = {};
+  if (view.raw && typeof view.raw === "object") {
+    const rawAttrs = ((view.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
+  }
+  for (const [k, v] of Object.entries(view.xmlAttrs ?? {})) {
+    attrs[k] = v;
+  }
+  if (view.raw && typeof view.raw === "object") {
+    for (const u of unknownChildren(view.raw, new Set(["displayed_period", "hidden_categories"]))) {
+      children.push(u);
+    }
+  } else {
+    for (const n of parseExtraNodes(view.xmlExtraNodes)) children.push(n);
+  }
+  return elem("view", children, attrs);
 }
 
 export function writeTimelineXml(doc: TimelineDoc): string {
@@ -406,6 +478,9 @@ export function writeTimelineXml(doc: TimelineDoc): string {
       }
     }
   }
+  if (!(doc.raw && Array.isArray(doc.raw))) {
+    for (const n of parseExtraNodes(doc.xmlExtraNodes)) timelineChildren.push(n);
+  }
 
   // Build outer tree: declaration + timeline
   const tree: RawNode[] = [];
@@ -423,7 +498,16 @@ export function writeTimelineXml(doc: TimelineDoc): string {
       ":@": { "@_version": "1.0", "@_encoding": "utf-8" },
     });
   }
-  tree.push(elem("timeline", timelineChildren));
+  const timelineAttrs: Record<string, string> = {};
+  if (doc.raw && Array.isArray(doc.raw)) {
+    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
+    if (rawRoot) {
+      const rawAttrs = ((rawRoot as RawNode)[":@"] || {}) as Record<string, string>;
+      for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
+    }
+  }
+  for (const [k, v] of Object.entries(doc.xmlAttrs ?? {})) timelineAttrs[k] = v;
+  tree.push(elem("timeline", timelineChildren, timelineAttrs));
 
   return builder.build(tree) as string;
 }

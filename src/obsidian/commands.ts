@@ -18,7 +18,8 @@ import {
   base64ToArrayBuffer,
   guessImageExtension,
 } from "../timeline/base64";
-import { renderEraMarkdown } from "../timeline/era-md";
+import { parseEraNote, renderEraMarkdown } from "../timeline/era-md";
+import { parseTimelineMetaNote, renderTimelineMetaNote } from "../timeline/meta-note";
 
 export interface CommandsContext {
   app: App;
@@ -386,6 +387,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
         timelineId: s.timelineId,
         mirrorNames: s.mirrorNames,
         sourceMtime: xmlMtime,
+        trimDescription: s.trimDescriptionOnWrite,
       });
       const existed = !!onDisk;
       await ctx.vault.writeText(path, md);
@@ -433,6 +435,14 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     }, []);
     void eraWrittenPaths; // reserved for future per-path self-write scoping
   }
+
+  const metaDir = `${s.eventNotesDir}/_timeline`;
+  const metaPath = `${metaDir}/timeline-metadata.md`;
+  await ctx.vault.ensureFolder(metaDir);
+  const metaMd = renderTimelineMetaNote(doc, s.sourceXmlPath);
+  await ctx.withSelfWrite(async () => {
+    await ctx.vault.writeText(metaPath, metaMd);
+  }, [metaPath]);
 
 
   // Persist the XML mtime so external-change detection has a baseline.
@@ -486,14 +496,27 @@ function normalizeColor(raw: string): string {
 
 export async function loadAllNotes(ctx: CommandsContext): Promise<{
   notes: EventNote[];
+  metaPatch?: Partial<import("../timeline/model").TimelineDoc>;
   errors: { path: string; message: string }[];
 }> {
   const s = ctx.getSettings();
   const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
   const notes: EventNote[] = [];
+  const eras: import("../timeline/model").TimelineEra[] = [];
+  let metaPatch: Partial<import("../timeline/model").TimelineDoc> | undefined;
   const errors: { path: string; message: string }[] = [];
   for (const f of files) {
     const raw = await ctx.vault.readText(f.path);
+    const meta = parseTimelineMetaNote(raw);
+    if (meta) {
+      metaPatch = meta.docPatch;
+      continue;
+    }
+    const era = parseEraNote(raw, f.basename);
+    if (era) {
+      eras.push(era);
+      continue;
+    }
     const parsed = parseEventNote(raw, {
       path: f.path,
       mirrorNames: s.mirrorNames,
@@ -503,7 +526,10 @@ export async function loadAllNotes(ctx: CommandsContext): Promise<{
     }
     if (parsed.note) notes.push(parsed.note);
   }
-  return { notes, errors };
+  if (eras.length) {
+    metaPatch = { ...(metaPatch ?? {}), eras };
+  }
+  return { notes, metaPatch, errors };
 }
 
 export async function validateNotes(ctx: CommandsContext): Promise<void> {
@@ -533,7 +559,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     ? ctx.vault.getMtime(s.sourceXmlPath)
     : null;
 
-  const { notes, errors: parseErrors } = await loadAllNotes(ctx);
+  const { notes, metaPatch, errors: parseErrors } = await loadAllNotes(ctx);
   const result = validateAll(notes);
   const all = [...parseErrors, ...result.errors];
   if (all.length) {
@@ -546,9 +572,9 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
 
   let doc;
   if (ctx.vault.exists(s.sourceXmlPath)) {
-    // Use the merged render doc so era edits made via the inspector (which
-    // only write to the era MD note) propagate into the regenerated XML.
-    doc = await ctx.cache.getRenderDoc();
+    // Always use the parsed XML as the merge baseline so unknown XML fields
+    // and attributes survive regeneration.
+    doc = await ctx.cache.getXml(s.sourceXmlPath);
   } else {
     doc = {
       version: "2.11.0",
@@ -605,6 +631,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   }
 
   const merged = mergeNotesIntoDoc(doc, notes);
+  if (metaPatch) {
+    merged.version = metaPatch.version ?? merged.version;
+    merged.timetype = metaPatch.timetype ?? merged.timetype;
+    if (metaPatch.categories) merged.categories = metaPatch.categories;
+    if (metaPatch.eras) merged.eras = metaPatch.eras;
+    if (metaPatch.view) merged.view = metaPatch.view;
+  }
   const xml = writeTimelineXml(merged);
   await ctx.withSelfWrite(async () => {
     await ctx.vault.writeText(s.sourceXmlPath, xml);

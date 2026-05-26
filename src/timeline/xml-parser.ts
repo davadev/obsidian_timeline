@@ -80,6 +80,37 @@ export function decodeEntities(s: string): string {
 
 /** preserveOrder=true: each node is a single-key object; attributes live on ":@" sibling. */
 type RawNode = Record<string, unknown> & { ":@"?: Record<string, string> };
+const KNOWN_EVENT_TAGS = new Set([
+  "start",
+  "end",
+  "text",
+  "category",
+  "container",
+  "description",
+  "hyperlink",
+  "labels",
+  "progress",
+  "period",
+  "show_time",
+  "fuzzy_start",
+  "fuzzy_end",
+  "fuzzy",
+  "locked",
+  "ends_today",
+  "default_color",
+  "icon",
+  "alert",
+]);
+const KNOWN_CATEGORY_TAGS = new Set([
+  "name",
+  "color",
+  "progress_color",
+  "done_color",
+  "font_color",
+  "parent",
+]);
+const KNOWN_ERA_TAGS = new Set(["name", "start", "end", "color"]);
+const KNOWN_VIEW_TAGS = new Set(["displayed_period", "hidden_categories"]);
 
 const TEXT_KEY = "#text";
 
@@ -218,6 +249,8 @@ export function parseTimelineXml(xml: string): TimelineDoc {
         doneColor: readText(ch, "done_color"),
         fontColor: readText(ch, "font_color"),
         parent: readText(ch, "parent"),
+        xmlAttrs: extractXmlAttrs(c),
+        xmlExtraNodes: extractUnknownNodes(c, KNOWN_CATEGORY_TAGS),
         raw: c,
       };
       categories.push(cat);
@@ -251,16 +284,23 @@ export function parseTimelineXml(xml: string): TimelineDoc {
           start.minute === end.minute &&
           start.second === end.second,
         category: readText(ch, "category"),
+        container: readText(ch, "container"),
         description: readDeepText(ch, "description"),
         hyperlink: readText(ch, "hyperlink"),
         labels: parseLabels(readText(ch, "labels")),
         progress: readNumber(ch, "progress"),
+        period: readBool(ch, "period"),
+        showTime: readBool(ch, "show_time"),
+        fuzzyStart: readBool(ch, "fuzzy_start"),
+        fuzzyEnd: readBool(ch, "fuzzy_end"),
         fuzzy: readBool(ch, "fuzzy"),
         locked: readBool(ch, "locked"),
         endsToday: readBool(ch, "ends_today"),
         defaultColor: readText(ch, "default_color"),
         icon: readText(ch, "icon"),
         alert: readText(ch, "alert"),
+        xmlAttrs: extractXmlAttrs(e),
+        xmlExtraNodes: extractUnknownEventNodes(e),
         raw: e,
       };
       events.push(ev);
@@ -286,6 +326,8 @@ export function parseTimelineXml(xml: string): TimelineDoc {
         start,
         end,
         color: readText(ch, "color"),
+        xmlAttrs: extractXmlAttrs(eraNode),
+        xmlExtraNodes: extractUnknownNodes(eraNode, KNOWN_ERA_TAGS),
         raw: eraNode,
       });
     }
@@ -311,7 +353,13 @@ export function parseTimelineXml(xml: string): TimelineDoc {
         textOf(nodeChildren(n))
       );
     }
-    view = { displayedPeriod, hiddenCategories, raw: viewNode };
+    view = {
+      displayedPeriod,
+      hiddenCategories,
+      xmlAttrs: extractXmlAttrs(viewNode),
+      xmlExtraNodes: extractUnknownNodes(viewNode, KNOWN_VIEW_TAGS),
+      raw: viewNode,
+    };
   }
 
   return {
@@ -321,8 +369,38 @@ export function parseTimelineXml(xml: string): TimelineDoc {
     events,
     eras,
     view,
+    xmlAttrs: extractXmlAttrs(timelineNode),
+    xmlExtraNodes: extractUnknownNodes(
+      timelineNode,
+      new Set(["version", "timetype", "categories", "events", "eras", "view"])
+    ),
     raw: tree,
   };
+}
+
+function extractUnknownEventNodes(node: RawNode): string[] | undefined {
+  return extractUnknownNodes(node, KNOWN_EVENT_TAGS);
+}
+
+function extractXmlAttrs(node: RawNode): Record<string, string> | undefined {
+  const attrs = (node[":@"] ?? {}) as Record<string, string>;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "@_id") continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function extractUnknownNodes(node: RawNode, knownTags: Set<string>): string[] | undefined {
+  const out: string[] = [];
+  for (const child of nodeChildren(node)) {
+    const name = nodeName(child);
+    if (!name || name === "#text") continue;
+    if (knownTags.has(name)) continue;
+    out.push(JSON.stringify(child));
+  }
+  return out.length ? out : undefined;
 }
 
 /**

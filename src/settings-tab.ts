@@ -546,6 +546,18 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
         })
       );
 
+    new Setting(containerEl)
+      .setName("Trim description whitespace on note write")
+      .setDesc(
+        "Enabled by default for cleaner notes. Disable if you need XML -> Markdown -> XML round-trips to preserve description edge whitespace more exactly."
+      )
+      .addToggle((t) =>
+        t.setValue(s.trimDescriptionOnWrite).onChange(async (v) => {
+          s.trimDescriptionOnWrite = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
     containerEl.createEl("h3", { text: "Multi-device sync (advanced)" });
     containerEl.createEl("div", {
       cls: "setting-item-description",

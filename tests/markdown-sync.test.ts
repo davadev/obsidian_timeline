@@ -3,9 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
 import { writeTimelineXml } from "../src/timeline/xml-writer";
-import {
-  renderEventMarkdown,
-} from "../src/timeline/markdown-writer";
+import { renderEventMarkdown } from "../src/timeline/markdown-writer";
 import { parseEventNote } from "../src/timeline/markdown-parser";
 import { validateAll } from "../src/timeline/validator";
 import { mergeNotesIntoDoc } from "../src/timeline/sync-engine";
@@ -24,7 +22,7 @@ function noteFor(ev: TimelineEvent): EventNote {
 }
 
 describe("Markdown sync", () => {
-  it("XML → MD → MD-parse reproduces the same events", () => {
+  it("XML -> MD -> MD-parse reproduces the same events", () => {
     const xml = readFileSync(fixturePath, "utf-8");
     const doc = parseTimelineXml(xml);
     const notes: EventNote[] = [];
@@ -70,7 +68,6 @@ timeline:
     expect(parsed.note).toBeTruthy();
     const v = validateAll([parsed.note!]);
     expect(v.ok).toBe(false);
-    // Should error on bad month AND start > end
     expect(v.errors.some((e) => e.message.includes("month must be 1..12"))).toBe(true);
     expect(v.errors.some((e) => e.message.includes("start must be <= timeline.end"))).toBe(true);
   });
@@ -94,7 +91,6 @@ timeline:
     expect(out).toContain("new-event");
     expect(out).toContain("Newly added");
     expect(out).toContain("NewCategory");
-    // Old events still present
     expect(out).toContain("seventy-weeks");
   });
 
@@ -137,6 +133,39 @@ mode: hybrid
     expect(desc).toContain("29 years");
   });
 
+  it("preserves leading and trailing description whitespace through MD round-trip", () => {
+    const xml = `<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories/>
+  <events>
+    <event id="ws1">
+      <start>2000-01-01 00:00:00</start>
+      <end>2001-01-01 00:00:00</end>
+      <text>Whitespace</text>
+      <description><![CDATA[
+  Leading space line
+Middle line
+Trailing space line  
+]]></description>
+    </event>
+  </events>
+</timeline>`;
+
+    const doc = parseTimelineXml(xml);
+    const ev = doc.events[0];
+    const md = renderEventMarkdown(ev, {
+      sourceXmlPath: "timelines/main.timeline",
+      timelineId: "main",
+      trimDescription: false,
+    });
+    const parsed = parseEventNote(md, { path: "events/ws1.md" });
+
+    expect(parsed.note).toBeTruthy();
+    expect(parsed.note!.event.description).toBe(ev.description);
+  });
+
   it("renders MD with both nested timeline and mirror props", () => {
     const ev: TimelineEvent = {
       id: "abc",
@@ -154,5 +183,62 @@ mode: hybrid
     expect(md).toMatch(/timeline_end: 0050-01-01/);
     expect(md).toMatch(/timeline:/);
     expect(md).toMatch(/event_id: abc/);
+  });
+
+  it("parses description section heading case-insensitively", () => {
+    const md = `---
+title: A
+timeline:
+  enabled: true
+  id: main
+  event_id: a
+  role: event
+  source_xml: x.timeline
+  start: { year: 2000, month: 1, day: 1 }
+  end: { year: 2000, month: 1, day: 1 }
+---
+
+# A
+
+## description ##
+
+Hello
+
+## Timeline
+`;
+    const parsed = parseEventNote(md, { path: "events/a.md" });
+    expect(parsed.note?.event.description).toBe("Hello");
+  });
+
+  it("does not stop Description at heading inside fenced code", () => {
+    const md = `---
+title: B
+timeline:
+  enabled: true
+  id: main
+  event_id: b
+  role: event
+  source_xml: x.timeline
+  start: { year: 2000, month: 1, day: 1 }
+  end: { year: 2000, month: 1, day: 1 }
+---
+
+# B
+
+## Description
+
+Intro
+
+\`\`\`
+# not a section break
+\`\`\`
+
+Tail
+
+## Timeline
+`;
+    const parsed = parseEventNote(md, { path: "events/b.md" });
+    expect(parsed.note?.event.description).toContain("not a section break");
+    expect(parsed.note?.event.description).toContain("Tail");
   });
 });

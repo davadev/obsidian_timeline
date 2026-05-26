@@ -15,6 +15,10 @@ export interface TimelineCategory {
   doneColor?: Color;
   fontColor?: Color;
   parent?: string;
+  /** Category-level XML attributes. */
+  xmlAttrs?: Record<string, string>;
+  /** Unknown category child nodes serialized as preserveOrder JSON strings. */
+  xmlExtraNodes?: string[];
   /** Original child nodes preserved verbatim for unknown fields. */
   raw?: unknown;
 }
@@ -28,10 +32,15 @@ export interface TimelineEvent {
   /** True when start === end (point/marker event). */
   isPoint: boolean;
   category?: string;
+  container?: string;
   description?: string;
   hyperlink?: string;
   labels?: string[];
   progress?: number;
+  period?: boolean;
+  showTime?: boolean;
+  fuzzyStart?: boolean;
+  fuzzyEnd?: boolean;
   fuzzy?: boolean;
   locked?: boolean;
   endsToday?: boolean;
@@ -47,6 +56,10 @@ export interface TimelineEvent {
   /** Vault-relative path to the icon attachment (set during MD render). */
   iconAttachmentPath?: string;
   alert?: string;
+  /** Event-level XML attributes (excluding id which is represented by `id`). */
+  xmlAttrs?: Record<string, string>;
+  /** Unknown event child nodes serialized as preserveOrder JSON strings. */
+  xmlExtraNodes?: string[];
   /**
    * Preserved raw event subtree (preserveOrder structure). Used to re-emit
    * unknown child nodes/attributes when no semantic edit was made.
@@ -65,6 +78,10 @@ export interface TimelineEra {
   start: TimelineDate;
   end: TimelineDate;
   color?: Color;
+  /** Era-level XML attributes. */
+  xmlAttrs?: Record<string, string>;
+  /** Unknown era child nodes serialized as preserveOrder JSON strings. */
+  xmlExtraNodes?: string[];
   /** Preserved raw `<era>` subtree for unknown sub-elements. */
   raw?: unknown;
   /**
@@ -83,6 +100,10 @@ export interface DisplayedPeriod {
 export interface TimelineView {
   displayedPeriod?: DisplayedPeriod;
   hiddenCategories?: string[];
+  /** View-level XML attributes. */
+  xmlAttrs?: Record<string, string>;
+  /** Unknown view child nodes serialized as preserveOrder JSON strings. */
+  xmlExtraNodes?: string[];
   raw?: unknown;
 }
 
@@ -93,6 +114,10 @@ export interface TimelineDoc {
   events: TimelineEvent[];
   eras?: TimelineEra[];
   view?: TimelineView;
+  /** Root <timeline> XML attributes. */
+  xmlAttrs?: Record<string, string>;
+  /** Unknown root-level timeline child nodes serialized as preserveOrder JSON strings. */
+  xmlExtraNodes?: string[];
   /** Full original parsed tree (preserveOrder=true). Used as canonical skeleton. */
   raw?: unknown;
   /** Original XML declaration/processing instructions, preserved as-is. */

@@ -22,6 +22,8 @@ export interface WriteOptions {
    * locally edited notes (file mtime > stamp) and skip them.
    */
   sourceMtime?: number | null;
+  /** Whether to trim leading/trailing whitespace in Description section text. */
+  trimDescription?: boolean;
 }
 
 const SECTION_TEXT = "## Text";
@@ -50,6 +52,9 @@ export function renderEventMarkdown(
     role: "event",
     source_xml: opts.sourceXmlPath,
     category: ev.category ?? "Uncategorized",
+    container: ev.container ?? null,
+    period: ev.period ?? null,
+    show_time: ev.showTime ?? null,
     render: true,
     ends_today: ev.endsToday ?? false,
     hyperlink: ev.hyperlink ?? null,
@@ -70,6 +75,8 @@ export function renderEventMarkdown(
       second: ev.end.second ?? 0,
     },
     ...(ev.labels && ev.labels.length ? { labels: ev.labels } : {}),
+    fuzzy_start: ev.fuzzyStart ?? null,
+    fuzzy_end: ev.fuzzyEnd ?? null,
     ...(ev.fuzzy != null ? { fuzzy: ev.fuzzy } : {}),
     ...(ev.locked != null ? { locked: ev.locked } : {}),
     ...(ev.progress != null ? { progress: ev.progress } : {}),
@@ -80,6 +87,10 @@ export function renderEventMarkdown(
         ? { icon: ev.icon }
         : {}),
     ...(ev.alert != null ? { alert: ev.alert } : {}),
+    ...(ev.xmlAttrs ? { xml_attrs: ev.xmlAttrs } : {}),
+    ...(ev.xmlExtraNodes && ev.xmlExtraNodes.length
+      ? { xml_extra_nodes: ev.xmlExtraNodes }
+      : {}),
     ...(opts.sourceMtime != null
       ? { last_synced_xml_mtime: opts.sourceMtime }
       : {}),
@@ -93,12 +104,12 @@ export function renderEventMarkdown(
   front[mirrors.render] = true;
   front[mirrors.role] = "event";
 
-  const body = opts.body ?? defaultBody(ev);
+  const body = opts.body ?? defaultBody(ev, optsTrimDescription(opts));
   const yaml = YAML.stringify(front, { lineWidth: 0 });
   return `---\n${yaml}---\n\n${body}`;
 }
 
-function defaultBody(ev: TimelineEvent): string {
+function defaultBody(ev: TimelineEvent, trimDescription: boolean): string {
   const lines: string[] = [`# ${ev.text}`, ""];
   if (ev.iconAttachmentPath) {
     lines.push("## Image", "", `![[${ev.iconAttachmentPath}]]`, "");
@@ -115,7 +126,7 @@ function defaultBody(ev: TimelineEvent): string {
     "",
     SECTION_DESC,
     "",
-    (ev.description ?? "").trim(),
+    trimDescription ? (ev.description ?? "").trim() : (ev.description ?? ""),
     "",
     "## Timeline",
     "",
@@ -127,6 +138,11 @@ function defaultBody(ev: TimelineEvent): string {
     ""
   );
   return lines.join("\n");
+}
+
+function optsTrimDescription(opts: WriteOptions | undefined): boolean {
+  if (!opts) return true;
+  return opts.trimDescription !== false;
 }
 
 /** Re-render an EventNote, preserving its existing body and extra frontmatter. */

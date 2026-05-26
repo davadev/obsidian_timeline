@@ -27,6 +27,7 @@ export class TemplateService {
       eventNotesDir: string;
       timelineId: string;
       sourceXmlPath: string;
+      trimDescriptionOnWrite: boolean;
     }
   ) {}
 
@@ -51,7 +52,8 @@ export class TemplateService {
 
   /** Create a new event note even without the core Templates plugin. */
   async createNewEventNote(title: string): Promise<CreatedEvent> {
-    const { eventNotesDir, sourceXmlPath, timelineId } = this.getSettings();
+    const { eventNotesDir, sourceXmlPath, timelineId, trimDescriptionOnWrite } =
+      this.getSettings();
     if (!eventNotesDir) {
       throw new Error("Event notes directory not configured.");
     }
@@ -73,6 +75,7 @@ export class TemplateService {
     const md = renderEventMarkdown(skeleton, {
       sourceXmlPath,
       timelineId,
+      trimDescription: trimDescriptionOnWrite,
     });
     const filename = `${slugify(title) || "new-event"}.md`;
     const path = normalizePath(`${eventNotesDir}/${filename}`);

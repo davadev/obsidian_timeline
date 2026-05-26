@@ -7,7 +7,7 @@ Open **Settings → Timeline XML Sync**.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | XML save file path | `timelines/main.timeline` | Vault-relative path to the `.timeline` file. |
-| Event notes directory | `Timeline events` | Folder where one MD note per event lives. Era notes go under `<dir>/_eras/`, attachments under `<dir>/_attachments/`. |
+| Event notes directory | `Timeline events` | Folder where one MD note per event lives. Era notes go under `<dir>/_eras/`, timeline metadata note under `<dir>/_timeline/`, attachments under `<dir>/_attachments/`. |
 | Templates directory | `Templates` | Where the plugin writes its event template (legacy — prefer "New timeline event"). |
 | Timeline id | `main` | Stored as `timeline.id` in every event note. Lets multiple `.timeline` files coexist in one vault. |
 
@@ -35,6 +35,7 @@ Categories discovered on import are listed here with a color picker + text field
 | Auto-sync on this device | (use global) | `localStorage` — does NOT sync with the vault. Set to **Off** on devices that shouldn't write XML. |
 | Auto-sync debounce (ms) | 60000 | MD edits coalesce into one regenerate after this many idle ms. |
 | Backup XML before overwriting | on | Saves `.timeline.bak-<timestamp>` next to the source. |
+| Trim description whitespace on note write | on | Cleans leading/trailing whitespace in `## Description` when writing notes. Disable for stricter XML⇄MD⇄XML description edge-whitespace fidelity. |
 | Log level | info | Console verbosity. |
 
 ## Multi-device sync (advanced)

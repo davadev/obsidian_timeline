@@ -29,3 +29,6 @@ npm-debug.log*
 # Test artifacts
 coverage/
 .nyc_output/
+
+# Local-only personal data integration tests
+tests/local/

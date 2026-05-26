@@ -82,10 +82,15 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     isPoint: sameInstant(start, end),
     category:
       strOrUndef(timeline.category) ?? strOrUndef(front[mirrors.category]),
+    container: strOrUndef(timeline.container),
     description: extractSection(body, "Description") || undefined,
     hyperlink: timeline.hyperlink == null ? undefined : String(timeline.hyperlink),
     labels: arrayOfStrings(timeline.labels),
     progress: numOrUndef(timeline.progress),
+    period: boolOrUndef(timeline.period),
+    showTime: boolOrUndef(timeline.show_time),
+    fuzzyStart: boolOrUndef(timeline.fuzzy_start),
+    fuzzyEnd: boolOrUndef(timeline.fuzzy_end),
     fuzzy: boolOrUndef(timeline.fuzzy),
     locked: boolOrUndef(timeline.locked),
     endsToday: boolOrUndef(timeline.ends_today),
@@ -93,8 +98,9 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     icon: strOrUndef(timeline.icon),
     iconAttachmentPath: strOrUndef(timeline.icon_path),
     alert: strOrUndef(timeline.alert),
+    xmlAttrs: mapOfStrings(timeline.xml_attrs),
+    xmlExtraNodes: arrayOfStrings(timeline.xml_extra_nodes),
   };
-
   // Split extra frontmatter (everything that isn't ours)
   const extraFrontmatter: Record<string, unknown> = {};
   const reservedTop = new Set<string>([
@@ -196,6 +202,15 @@ function arrayOfStrings(v: unknown): string[] | undefined {
   return arr.length ? arr : undefined;
 }
 
+function mapOfStrings(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof val === "string") out[k] = val;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function sameInstant(a: TimelineDate, b: TimelineDate): boolean {
   return (
     a.year === b.year &&
@@ -222,7 +237,7 @@ function extractH1(body: string): string | undefined {
  * etc. imported as just the prefix before the first z.
  */
 export function extractSection(body: string, name: string): string {
-  const headingRe = new RegExp(`^##\\s+${escapeRe(name)}\\s*$`);
+  const headingRe = new RegExp(`^##\\s+${escapeRe(name)}(?:\\s+#+)?\\s*$`, "i");
   const stopRe = /^#{1,6}\s+/;
   const lines = body.split(/\r?\n/);
   let start = -1;
@@ -234,13 +249,24 @@ export function extractSection(body: string, name: string): string {
   }
   if (start === -1) return "";
   let end = lines.length;
+  let inFence = false;
   for (let i = start; i < lines.length; i++) {
-    if (stopRe.test(lines[i])) {
+    const ln = lines[i].trimStart();
+    if (ln.startsWith("```") || ln.startsWith("~~~")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && stopRe.test(lines[i])) {
       end = i;
       break;
     }
   }
-  return lines.slice(start, end).join("\n").trim();
+  let raw = lines.slice(start, end).join("\n");
+  if (raw.startsWith("\n")) raw = raw.slice(1);
+  // Drop exactly one separator newline that belongs to the next heading gap,
+  // not to the section payload itself.
+  if (end < lines.length && raw.endsWith("\n")) raw = raw.slice(0, -1);
+  return raw;
 }
 
 function escapeRe(s: string): string {
