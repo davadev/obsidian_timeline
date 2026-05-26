@@ -275,6 +275,16 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
+    const eventIdInput = field(body, "Event ID", "input");
+    (eventIdInput as HTMLInputElement).value = ev.id;
+    eventIdInput.addEventListener("input", () => {
+      const v = (eventIdInput as HTMLInputElement).value.trim();
+      if (v) {
+        ev.id = v;
+        this.markDirty();
+      }
+    });
+
     // Dates
     const startGroup = dateGroup(body, "Start", ev.start);
     startGroup.onChange = () => this.markDirty();
@@ -383,6 +393,123 @@ export class InspectorView extends ItemView {
       ev.hyperlink = v || undefined;
       this.markDirty();
     });
+
+    const containerInput = field(body, "Container", "input");
+    (containerInput as HTMLInputElement).value = ev.container ?? "";
+    containerInput.addEventListener("input", () => {
+      const v = (containerInput as HTMLInputElement).value.trim();
+      ev.container = v || undefined;
+      this.markDirty();
+    });
+
+    const defaultColorInput = field(body, "Default color", "input");
+    (defaultColorInput as HTMLInputElement).value = ev.defaultColor ?? "";
+    defaultColorInput.addEventListener("input", () => {
+      const v = (defaultColorInput as HTMLInputElement).value.trim();
+      ev.defaultColor = v || undefined;
+      this.markDirty();
+    });
+
+    const timelineIdInput = field(body, "Timeline ID (timeline.id)", "input");
+    (timelineIdInput as HTMLInputElement).value = ev.timelineId ?? settings.timelineId;
+    timelineIdInput.addEventListener("input", () => {
+      const v = (timelineIdInput as HTMLInputElement).value.trim();
+      ev.timelineId = v || undefined;
+      this.markDirty();
+    });
+
+    const roleInput = field(body, "Role", "input");
+    (roleInput as HTMLInputElement).value = ev.role ?? "event";
+    roleInput.addEventListener("input", () => {
+      const v = (roleInput as HTMLInputElement).value.trim();
+      ev.role = v || undefined;
+      this.markDirty();
+    });
+
+    const sourceXmlInput = field(body, "Source XML", "input");
+    (sourceXmlInput as HTMLInputElement).value = ev.sourceXml ?? settings.sourceXmlPath;
+    sourceXmlInput.addEventListener("input", () => {
+      const v = (sourceXmlInput as HTMLInputElement).value.trim();
+      ev.sourceXml = v || undefined;
+      this.markDirty();
+    });
+
+    const progressInput = field(body, "Progress", "input") as HTMLInputElement;
+    progressInput.type = "number";
+    progressInput.step = "0.01";
+    progressInput.value = ev.progress != null ? String(ev.progress) : "";
+    progressInput.addEventListener("input", () => {
+      const raw = progressInput.value.trim();
+      if (!raw) {
+        ev.progress = undefined;
+      } else {
+        const n = Number(raw);
+        if (Number.isFinite(n)) ev.progress = n;
+      }
+      this.markDirty();
+    });
+
+    const stampInput = field(body, "Last synced XML mtime", "input") as HTMLInputElement;
+    stampInput.type = "number";
+    stampInput.step = "1";
+    stampInput.value = ev.lastSyncedXmlMtime != null ? String(ev.lastSyncedXmlMtime) : "";
+    stampInput.addEventListener("input", () => {
+      const raw = stampInput.value.trim();
+      if (!raw) {
+        ev.lastSyncedXmlMtime = undefined;
+      } else {
+        const n = Number(raw);
+        if (Number.isFinite(n)) ev.lastSyncedXmlMtime = Math.trunc(n);
+      }
+      this.markDirty();
+    });
+
+    const periodSel = triBoolField(body, "Period", ev.period, (v) => {
+      ev.period = v;
+      this.markDirty();
+    });
+    const showTimeSel = triBoolField(body, "Show time", ev.showTime, (v) => {
+      ev.showTime = v;
+      this.markDirty();
+    });
+    const fuzzyStartSel = triBoolField(body, "Fuzzy start", ev.fuzzyStart, (v) => {
+      ev.fuzzyStart = v;
+      this.markDirty();
+    });
+    const fuzzyEndSel = triBoolField(body, "Fuzzy end", ev.fuzzyEnd, (v) => {
+      ev.fuzzyEnd = v;
+      this.markDirty();
+    });
+    void periodSel;
+    void showTimeSel;
+    void fuzzyStartSel;
+    void fuzzyEndSel;
+
+    const enabledCheck = boolField(body, "Enabled", ev.timelineEnabled ?? true, (v) => {
+      ev.timelineEnabled = v;
+      this.markDirty();
+    });
+    const renderCheck = boolField(body, "Render", ev.render ?? true, (v) => {
+      ev.render = v;
+      this.markDirty();
+    });
+    const endsTodayCheck = boolField(body, "Ends today", ev.endsToday ?? false, (v) => {
+      ev.endsToday = v;
+      this.markDirty();
+    });
+    const fuzzyCheck = boolField(body, "Fuzzy", ev.fuzzy ?? false, (v) => {
+      ev.fuzzy = v;
+      this.markDirty();
+    });
+    const lockedCheck = boolField(body, "Locked", ev.locked ?? false, (v) => {
+      ev.locked = v;
+      this.markDirty();
+    });
+    void enabledCheck;
+    void renderCheck;
+    void endsTodayCheck;
+    void fuzzyCheck;
+    void lockedCheck;
 
     // Image
     const imageRow = body.createDiv({ cls: "txs-inspector-row" });
@@ -546,7 +673,7 @@ interface DateGroupRef {
 function dateGroup(
   parent: HTMLElement,
   label: string,
-  date: { year: number; month?: number; day?: number }
+  date: { year: number; month?: number; day?: number; hour?: number; minute?: number; second?: number }
 ): DateGroupRef {
   const ref: DateGroupRef = {};
   const row = parent.createDiv({ cls: "txs-inspector-row txs-date-row" });
@@ -586,7 +713,73 @@ function dateGroup(
     date.day = Number.isFinite(v) ? v : undefined;
     ref.onChange?.();
   });
+  const hIn = ymd.createEl("input", {
+    type: "number",
+    placeholder: "hh",
+    attr: { min: "0", max: "23" },
+  }) as HTMLInputElement;
+  if (date.hour != null) hIn.value = String(date.hour);
+  hIn.addEventListener("input", () => {
+    const v = parseInt(hIn.value, 10);
+    date.hour = Number.isFinite(v) ? v : undefined;
+    ref.onChange?.();
+  });
+  const minIn = ymd.createEl("input", {
+    type: "number",
+    placeholder: "min",
+    attr: { min: "0", max: "59" },
+  }) as HTMLInputElement;
+  if (date.minute != null) minIn.value = String(date.minute);
+  minIn.addEventListener("input", () => {
+    const v = parseInt(minIn.value, 10);
+    date.minute = Number.isFinite(v) ? v : undefined;
+    ref.onChange?.();
+  });
+  const sIn = ymd.createEl("input", {
+    type: "number",
+    placeholder: "sec",
+    attr: { min: "0", max: "59" },
+  }) as HTMLInputElement;
+  if (date.second != null) sIn.value = String(date.second);
+  sIn.addEventListener("input", () => {
+    const v = parseInt(sIn.value, 10);
+    date.second = Number.isFinite(v) ? v : undefined;
+    ref.onChange?.();
+  });
   return ref;
+}
+
+function boolField(
+  parent: HTMLElement,
+  label: string,
+  value: boolean,
+  onChange: (next: boolean) => void
+): HTMLInputElement {
+  const row = parent.createDiv({ cls: "txs-inspector-row" });
+  const wrap = row.createEl("label");
+  const input = wrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+  input.checked = value;
+  wrap.createSpan({ text: ` ${label}` });
+  input.addEventListener("change", () => onChange(input.checked));
+  return input;
+}
+
+function triBoolField(
+  parent: HTMLElement,
+  label: string,
+  value: boolean | undefined,
+  onChange: (next: boolean | undefined) => void
+): HTMLSelectElement {
+  const sel = field(parent, label, "select") as HTMLSelectElement;
+  sel.createEl("option", { value: "", text: "null" });
+  sel.createEl("option", { value: "true", text: "true" });
+  sel.createEl("option", { value: "false", text: "false" });
+  sel.value = value == null ? "" : String(value);
+  sel.addEventListener("change", () => {
+    if (sel.value === "") onChange(undefined);
+    else onChange(sel.value === "true");
+  });
+  return sel;
 }
 
 function toIsoDate(d: { year: number; month?: number; day?: number }): string {

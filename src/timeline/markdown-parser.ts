@@ -98,8 +98,14 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     icon: strOrUndef(timeline.icon),
     iconAttachmentPath: strOrUndef(timeline.icon_path),
     alert: strOrUndef(timeline.alert),
+    timelineEnabled: boolOrUndef(timeline.enabled),
+    timelineId: strOrUndef(timeline.id),
+    role: strOrUndef(timeline.role),
+    sourceXml: strOrUndef(timeline.source_xml),
+    render: boolOrUndef(timeline.render),
     xmlAttrs: mapOfStrings(timeline.xml_attrs),
     xmlExtraNodes: arrayOfStrings(timeline.xml_extra_nodes),
+    lastSyncedXmlMtime: numOrUndef(timeline.last_synced_xml_mtime),
   };
   // Split extra frontmatter (everything that isn't ours)
   const extraFrontmatter: Record<string, unknown> = {};
@@ -126,7 +132,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     if (key in front) mirrorsSeen[key] = front[key];
   }
 
-  const lastSyncedXmlMtime = numOrUndef(timeline.last_synced_xml_mtime);
+  const lastSyncedXmlMtime = ev.lastSyncedXmlMtime;
 
   return {
     note: {

@@ -46,16 +46,16 @@ export function renderEventMarkdown(
   if (!("tags" in front)) front.tags = ["Timeline"];
 
   front.timeline = {
-    enabled: true,
-    id: opts.timelineId,
+    enabled: ev.timelineEnabled ?? true,
+    id: ev.timelineId ?? opts.timelineId,
     event_id: ev.id,
-    role: "event",
-    source_xml: opts.sourceXmlPath,
+    role: ev.role ?? "event",
+    source_xml: ev.sourceXml ?? opts.sourceXmlPath,
     category: ev.category ?? "Uncategorized",
     container: ev.container ?? null,
     period: ev.period ?? null,
     show_time: ev.showTime ?? null,
-    render: true,
+    render: ev.render ?? true,
     ends_today: ev.endsToday ?? false,
     hyperlink: ev.hyperlink ?? null,
     start: {
@@ -91,9 +91,11 @@ export function renderEventMarkdown(
     ...(ev.xmlExtraNodes && ev.xmlExtraNodes.length
       ? { xml_extra_nodes: ev.xmlExtraNodes }
       : {}),
-    ...(opts.sourceMtime != null
-      ? { last_synced_xml_mtime: opts.sourceMtime }
-      : {}),
+    ...(ev.lastSyncedXmlMtime != null
+      ? { last_synced_xml_mtime: ev.lastSyncedXmlMtime }
+      : opts.sourceMtime != null
+        ? { last_synced_xml_mtime: opts.sourceMtime }
+        : {}),
   };
 
   // Top-level mirror props
@@ -101,8 +103,8 @@ export function renderEventMarkdown(
   front[mirrors.end] = toFrontmatterString(ev.end);
   front[mirrors.category] = ev.category ?? "Uncategorized";
   front[mirrors.eventId] = ev.id;
-  front[mirrors.render] = true;
-  front[mirrors.role] = "event";
+  front[mirrors.render] = ev.render ?? true;
+  front[mirrors.role] = ev.role ?? "event";
 
   const body = opts.body ?? defaultBody(ev, optsTrimDescription(opts));
   const yaml = YAML.stringify(front, { lineWidth: 0 });

@@ -56,6 +56,16 @@ export interface TimelineEvent {
   /** Vault-relative path to the icon attachment (set during MD render). */
   iconAttachmentPath?: string;
   alert?: string;
+  /** Mirrors timeline.enabled in note frontmatter. */
+  timelineEnabled?: boolean;
+  /** Mirrors timeline.id in note frontmatter. */
+  timelineId?: string;
+  /** Mirrors timeline.role in note frontmatter. */
+  role?: string;
+  /** Mirrors timeline.source_xml in note frontmatter. */
+  sourceXml?: string;
+  /** Mirrors timeline.render in note frontmatter. */
+  render?: boolean;
   /** Event-level XML attributes (excluding id which is represented by `id`). */
   xmlAttrs?: Record<string, string>;
   /** Unknown event child nodes serialized as preserveOrder JSON strings. */
@@ -66,6 +76,8 @@ export interface TimelineEvent {
    * Stored as opaque — sync-engine decides whether to use it.
    */
   raw?: unknown;
+  /** Mirrors timeline.last_synced_xml_mtime in note frontmatter. */
+  lastSyncedXmlMtime?: number;
 }
 
 /**

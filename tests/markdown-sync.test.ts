@@ -241,4 +241,87 @@ Tail
     expect(parsed.note?.event.description).toContain("not a section break");
     expect(parsed.note?.event.description).toContain("Tail");
   });
+
+  it("round-trips advanced timeline frontmatter fields", () => {
+    const md = `---
+title: Advanced
+timeline:
+  enabled: true
+  id: custom-tl
+  event_id: adv-1
+  role: event
+  source_xml: custom/path.timeline
+  category: TestCat
+  container: folder-a
+  period: true
+  show_time: false
+  render: false
+  ends_today: true
+  hyperlink: https://example.com
+  start:
+    year: 2020
+    month: 1
+    day: 2
+    hour: 3
+    minute: 4
+    second: 5
+  end:
+    year: 2021
+    month: 6
+    day: 7
+    hour: 8
+    minute: 9
+    second: 10
+  fuzzy_start: true
+  fuzzy_end: false
+  fuzzy: true
+  locked: true
+  progress: 42.5
+  default_color: 10,20,30
+  last_synced_xml_mtime: 123456
+---
+
+# Advanced
+
+## Description
+
+Body
+`;
+    const parsed = parseEventNote(md, { path: "events/adv-1.md" });
+    expect(parsed.note).toBeTruthy();
+
+    const rendered = renderEventMarkdown(parsed.note!.event, {
+      sourceXmlPath: "fallback.timeline",
+      timelineId: "fallback",
+      extraFrontmatter: parsed.note!.extraFrontmatter,
+      body: parsed.note!.body,
+    });
+    const parsedAgain = parseEventNote(rendered, { path: "events/adv-1.md" });
+    expect(parsedAgain.note).toBeTruthy();
+    const ev = parsedAgain.note!.event;
+    expect(ev.timelineEnabled).toBe(true);
+    expect(ev.timelineId).toBe("custom-tl");
+    expect(ev.id).toBe("adv-1");
+    expect(ev.role).toBe("event");
+    expect(ev.sourceXml).toBe("custom/path.timeline");
+    expect(ev.render).toBe(false);
+    expect(ev.container).toBe("folder-a");
+    expect(ev.period).toBe(true);
+    expect(ev.showTime).toBe(false);
+    expect(ev.endsToday).toBe(true);
+    expect(ev.hyperlink).toBe("https://example.com");
+    expect(ev.start.hour).toBe(3);
+    expect(ev.start.minute).toBe(4);
+    expect(ev.start.second).toBe(5);
+    expect(ev.end.hour).toBe(8);
+    expect(ev.end.minute).toBe(9);
+    expect(ev.end.second).toBe(10);
+    expect(ev.fuzzyStart).toBe(true);
+    expect(ev.fuzzyEnd).toBe(false);
+    expect(ev.fuzzy).toBe(true);
+    expect(ev.locked).toBe(true);
+    expect(ev.progress).toBe(42.5);
+    expect(ev.defaultColor).toBe("10,20,30");
+    expect(ev.lastSyncedXmlMtime).toBe(123456);
+  });
 });
