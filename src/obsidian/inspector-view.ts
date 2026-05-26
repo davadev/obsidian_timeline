@@ -307,6 +307,44 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
+    const behaviorWrap = body.createDiv({ cls: "txs-inspector-flags" });
+    behaviorWrap.createDiv({ cls: "txs-inspector-section-title", text: "Date behavior" });
+    const inferredPeriod = !(
+      ev.start.year === ev.end.year &&
+      ev.start.month === ev.end.month &&
+      ev.start.day === ev.end.day &&
+      ev.start.hour === ev.end.hour &&
+      ev.start.minute === ev.end.minute &&
+      ev.start.second === ev.end.second
+    );
+    const periodEnabled = ev.period ?? inferredPeriod;
+    const showTimeEnabled =
+      ev.showTime ??
+      !!(ev.start.hour || ev.start.minute || ev.start.second || ev.end.hour || ev.end.minute || ev.end.second);
+    ev.period = periodEnabled;
+    ev.showTime = showTimeEnabled;
+    boolField(behaviorWrap, "Period (range event)", periodEnabled, (v) => {
+      ev.period = v;
+      if (!v) {
+        ev.end = { ...ev.start };
+      }
+      this.markDirty();
+      this.renderForm();
+    });
+    boolField(behaviorWrap, "Show time", showTimeEnabled, (v) => {
+      ev.showTime = v;
+      if (!v) {
+        ev.start.hour = 0;
+        ev.start.minute = 0;
+        ev.start.second = 0;
+        ev.end.hour = 0;
+        ev.end.minute = 0;
+        ev.end.second = 0;
+      }
+      this.markDirty();
+      this.renderForm();
+    });
+
     const eventIdInput = field(body, "Event ID", "input");
     (eventIdInput as HTMLInputElement).value = ev.id;
     eventIdInput.addEventListener("input", () => {
@@ -318,10 +356,22 @@ export class InspectorView extends ItemView {
     });
 
     // Dates
-    const startGroup = dateGroup(body, "Start", ev.start);
+    const startGroup = dateGroup(body, ev.period ? "Start" : "Date", ev.start, {
+      includeTime: ev.showTime === true,
+    });
     startGroup.onChange = () => this.markDirty();
-    const endGroup = dateGroup(body, "End", ev.end);
-    endGroup.onChange = () => this.markDirty();
+    if (ev.period) {
+      const endGroup = dateGroup(body, "End", ev.end, {
+        includeTime: ev.showTime === true,
+      });
+      endGroup.onChange = () => this.markDirty();
+    } else {
+      body.createDiv({
+        cls: "txs-inspector-meta",
+        text: "Point event: end date/time follows start.",
+      });
+      ev.end = { ...ev.start };
+    }
 
     // Native date picker. Hidden when either date is BCE — `<input type=date>`
     // can't represent year < 1, and showing it empty was a foot-gun on mobile:
@@ -333,13 +383,15 @@ export class InspectorView extends ItemView {
       const pickerWrap = body.createDiv({ cls: "txs-inspector-row" });
       pickerWrap.createEl("label", { text: "Quick picker (CE only)" });
       const sp = pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement;
-      const ep = pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement;
+      const ep = ev.period
+        ? (pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement)
+        : null;
       const startIso = toIsoDate(ev.start);
       const endIso = toIsoDate(ev.end);
       sp.defaultValue = startIso;
-      ep.defaultValue = endIso;
+      if (ep) ep.defaultValue = endIso;
       sp.value = startIso;
-      ep.value = endIso;
+      if (ep) ep.value = endIso;
       sp.addEventListener("change", () => {
         const d = fromIsoDate(sp.value);
         if (d && (d.year !== ev.start.year || d.month !== ev.start.month || d.day !== ev.start.day)) {
@@ -348,8 +400,8 @@ export class InspectorView extends ItemView {
           this.renderForm();
         }
       });
-      ep.addEventListener("change", () => {
-        const d = fromIsoDate(ep.value);
+      ep?.addEventListener("change", () => {
+        const d = fromIsoDate(ep!.value);
         if (d && (d.year !== ev.end.year || d.month !== ev.end.month || d.day !== ev.end.day)) {
           ev.end = d;
           this.markDirty();
@@ -497,16 +549,8 @@ export class InspectorView extends ItemView {
     });
 
     const flagsWrap = body.createDiv({ cls: "txs-inspector-flags" });
-    flagsWrap.createDiv({ cls: "txs-inspector-section-title", text: "Timeline flags" });
+    flagsWrap.createDiv({ cls: "txs-inspector-section-title", text: "Other flags" });
 
-    const periodCheck = boolField(flagsWrap, "Period", ev.period ?? false, (v) => {
-      ev.period = v;
-      this.markDirty();
-    });
-    const showTimeCheck = boolField(flagsWrap, "Show time", ev.showTime ?? false, (v) => {
-      ev.showTime = v;
-      this.markDirty();
-    });
     const fuzzyStartCheck = boolField(flagsWrap, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
       ev.fuzzyStart = v;
       this.markDirty();
@@ -515,8 +559,6 @@ export class InspectorView extends ItemView {
       ev.fuzzyEnd = v;
       this.markDirty();
     });
-    void periodCheck;
-    void showTimeCheck;
     void fuzzyStartCheck;
     void fuzzyEndCheck;
 
@@ -708,7 +750,8 @@ interface DateGroupRef {
 function dateGroup(
   parent: HTMLElement,
   label: string,
-  date: { year: number; month?: number; day?: number; hour?: number; minute?: number; second?: number }
+  date: { year: number; month?: number; day?: number; hour?: number; minute?: number; second?: number },
+  opts?: { includeTime?: boolean }
 ): DateGroupRef {
   const ref: DateGroupRef = {};
   const row = parent.createDiv({ cls: "txs-inspector-row txs-date-row" });
@@ -748,39 +791,41 @@ function dateGroup(
     date.day = Number.isFinite(v) ? v : undefined;
     ref.onChange?.();
   });
-  const hIn = ymd.createEl("input", {
-    type: "number",
-    placeholder: "hh",
-    attr: { min: "0", max: "23" },
-  }) as HTMLInputElement;
-  if (date.hour != null) hIn.value = String(date.hour);
-  hIn.addEventListener("input", () => {
-    const v = parseInt(hIn.value, 10);
-    date.hour = Number.isFinite(v) ? v : undefined;
-    ref.onChange?.();
-  });
-  const minIn = ymd.createEl("input", {
-    type: "number",
-    placeholder: "min",
-    attr: { min: "0", max: "59" },
-  }) as HTMLInputElement;
-  if (date.minute != null) minIn.value = String(date.minute);
-  minIn.addEventListener("input", () => {
-    const v = parseInt(minIn.value, 10);
-    date.minute = Number.isFinite(v) ? v : undefined;
-    ref.onChange?.();
-  });
-  const sIn = ymd.createEl("input", {
-    type: "number",
-    placeholder: "sec",
-    attr: { min: "0", max: "59" },
-  }) as HTMLInputElement;
-  if (date.second != null) sIn.value = String(date.second);
-  sIn.addEventListener("input", () => {
-    const v = parseInt(sIn.value, 10);
-    date.second = Number.isFinite(v) ? v : undefined;
-    ref.onChange?.();
-  });
+  if (opts?.includeTime) {
+    const hIn = ymd.createEl("input", {
+      type: "number",
+      placeholder: "hh",
+      attr: { min: "0", max: "23" },
+    }) as HTMLInputElement;
+    if (date.hour != null) hIn.value = String(date.hour);
+    hIn.addEventListener("input", () => {
+      const v = parseInt(hIn.value, 10);
+      date.hour = Number.isFinite(v) ? v : undefined;
+      ref.onChange?.();
+    });
+    const minIn = ymd.createEl("input", {
+      type: "number",
+      placeholder: "min",
+      attr: { min: "0", max: "59" },
+    }) as HTMLInputElement;
+    if (date.minute != null) minIn.value = String(date.minute);
+    minIn.addEventListener("input", () => {
+      const v = parseInt(minIn.value, 10);
+      date.minute = Number.isFinite(v) ? v : undefined;
+      ref.onChange?.();
+    });
+    const sIn = ymd.createEl("input", {
+      type: "number",
+      placeholder: "sec",
+      attr: { min: "0", max: "59" },
+    }) as HTMLInputElement;
+    if (date.second != null) sIn.value = String(date.second);
+    sIn.addEventListener("input", () => {
+      const v = parseInt(sIn.value, 10);
+      date.second = Number.isFinite(v) ? v : undefined;
+      ref.onChange?.();
+    });
+  }
   return ref;
 }
 
