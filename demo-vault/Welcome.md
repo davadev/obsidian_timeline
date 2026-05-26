@@ -27,7 +27,7 @@ The whole Roman timeline rendered inline below — both the bar chart and the li
 ```timeline
 mode: hybrid
 source: main
-zoom: 3
+zoom: 4
 ```
 
 ## More demo notes
