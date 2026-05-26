@@ -192,6 +192,100 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
     expect(bodyText(container)).toContain("No events to display");
   });
 
+  it("renders fuzzy edges as a linearGradient fill on the bar", () => {
+    const container = withContainer();
+    const e = ev("fuzz", 100, 200);
+    e.fuzzyStart = true;
+    e.fuzzyEnd = true;
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      categoryColors: { undefined: "#888" },
+      initialHidden: [],
+      filterKey: "test:fuzzy-both",
+      isMobile: false,
+    });
+    const svg = container.querySelector("svg")!;
+    const grads = svg.querySelectorAll("linearGradient");
+    expect(grads.length).toBeGreaterThanOrEqual(1);
+    const stops = grads[0].querySelectorAll("stop");
+    // Both fuzzy: 3 stops, opacity 0 / 1 / 0.
+    expect(stops.length).toBe(3);
+    expect(stops[0].getAttribute("stop-opacity")).toBe("0");
+    expect(stops[1].getAttribute("stop-opacity")).toBe("1");
+    expect(stops[2].getAttribute("stop-opacity")).toBe("0");
+    const bar = svg.querySelector("rect.txs-event-bar")!;
+    expect(bar.getAttribute("fill")).toMatch(/^url\(#txs-fuzzy-/);
+  });
+
+  it("renders fuzzy-start-only as 0→40%→100% gradient with opacities 0,1,1", () => {
+    const container = withContainer();
+    const e = ev("fuzz-s", 100, 200);
+    e.fuzzyStart = true;
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      categoryColors: {},
+      initialHidden: [],
+      filterKey: "test:fuzzy-s",
+      isMobile: false,
+    });
+    const svg = container.querySelector("svg")!;
+    const stops = svg.querySelectorAll("stop");
+    expect(stops.length).toBe(3);
+    expect(stops[0].getAttribute("stop-opacity")).toBe("0");
+    expect(stops[2].getAttribute("stop-opacity")).toBe("1");
+  });
+
+  it("renders fuzzy point event with radial gradient", () => {
+    const container = withContainer();
+    const e = ev("pt", 150, 150);
+    e.fuzzyStart = true;
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      categoryColors: {},
+      initialHidden: [],
+      filterKey: "test:fuzzy-pt",
+      isMobile: false,
+    });
+    const grads = container.querySelectorAll("radialGradient");
+    expect(grads.length).toBe(1);
+    const circle = container.querySelector("circle.txs-event-point")!;
+    expect(circle.getAttribute("fill")).toMatch(/^url\(#txs-fuzzy-/);
+  });
+
+  it("skips gradient defs when no fuzzy flags", () => {
+    const container = withContainer();
+    renderTimeline({
+      container,
+      events: [ev("a", 100, 200)],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      categoryColors: {},
+      initialHidden: [],
+      filterKey: "test:nofuzzy",
+      isMobile: false,
+    });
+    expect(container.querySelectorAll("linearGradient").length).toBe(0);
+    const bar = container.querySelector("rect.txs-event-bar")!;
+    expect(bar.getAttribute("fill")).not.toMatch(/url\(/);
+  });
+
   it("hybrid mode renders both bar and list bodies", () => {
     const container = withContainer();
     renderTimeline({

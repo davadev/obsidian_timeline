@@ -439,10 +439,27 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   const metaDir = `${s.eventNotesDir}/_timeline`;
   const metaPath = `${metaDir}/timeline-metadata.md`;
   await ctx.vault.ensureFolder(metaDir);
-  const metaMd = renderTimelineMetaNote(doc, s.sourceXmlPath);
-  await ctx.withSelfWrite(async () => {
-    await ctx.vault.writeText(metaPath, metaMd);
-  }, [metaPath]);
+  const onDiskMeta = ctx.vault.getFile(metaPath);
+  let skipMeta = false;
+  if (onDiskMeta) {
+    try {
+      const raw = await ctx.vault.readText(metaPath);
+      const parsed = parseTimelineMetaNote(raw);
+      if (shouldSkipNoteOverwrite(onDiskMeta.stat.mtime, parsed?.lastSyncedXmlMtime)) {
+        skipMeta = true;
+        skipped.push(metaPath);
+      }
+    } catch {
+      skipMeta = true;
+      skipped.push(metaPath);
+    }
+  }
+  if (!skipMeta) {
+    const metaMd = renderTimelineMetaNote(doc, s.sourceXmlPath, xmlMtime);
+    await ctx.withSelfWrite(async () => {
+      await ctx.vault.writeText(metaPath, metaMd);
+    }, [metaPath]);
+  }
 
 
   // Persist the XML mtime so external-change detection has a baseline.
@@ -497,6 +514,7 @@ function normalizeColor(raw: string): string {
 export async function loadAllNotes(ctx: CommandsContext): Promise<{
   notes: EventNote[];
   metaPatch?: Partial<import("../timeline/model").TimelineDoc>;
+  metaStamp?: number;
   errors: { path: string; message: string }[];
 }> {
   const s = ctx.getSettings();
@@ -504,12 +522,14 @@ export async function loadAllNotes(ctx: CommandsContext): Promise<{
   const notes: EventNote[] = [];
   const eras: import("../timeline/model").TimelineEra[] = [];
   let metaPatch: Partial<import("../timeline/model").TimelineDoc> | undefined;
+  let metaStamp: number | undefined;
   const errors: { path: string; message: string }[] = [];
   for (const f of files) {
     const raw = await ctx.vault.readText(f.path);
     const meta = parseTimelineMetaNote(raw);
     if (meta) {
       metaPatch = meta.docPatch;
+      metaStamp = meta.lastSyncedXmlMtime;
       continue;
     }
     const era = parseEraNote(raw, f.basename);
@@ -529,7 +549,7 @@ export async function loadAllNotes(ctx: CommandsContext): Promise<{
   if (eras.length) {
     metaPatch = { ...(metaPatch ?? {}), eras };
   }
-  return { notes, metaPatch, errors };
+  return { notes, metaPatch, metaStamp, errors };
 }
 
 export async function validateNotes(ctx: CommandsContext): Promise<void> {
@@ -559,7 +579,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     ? ctx.vault.getMtime(s.sourceXmlPath)
     : null;
 
-  const { notes, metaPatch, errors: parseErrors } = await loadAllNotes(ctx);
+  const { notes, metaPatch, metaStamp, errors: parseErrors } = await loadAllNotes(ctx);
   const result = validateAll(notes);
   const all = [...parseErrors, ...result.errors];
   if (all.length) {
@@ -632,11 +652,34 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
 
   const merged = mergeNotesIntoDoc(doc, notes);
   if (metaPatch) {
-    merged.version = metaPatch.version ?? merged.version;
-    merged.timetype = metaPatch.timetype ?? merged.timetype;
-    if (metaPatch.categories) merged.categories = metaPatch.categories;
-    if (metaPatch.eras) merged.eras = metaPatch.eras;
-    if (metaPatch.view) merged.view = metaPatch.view;
+    // Stale meta-note guard: when the meta note's stamp is older than the
+    // current XML mtime, the XML has remote edits the meta note doesn't know
+    // about. Skip overwriting categories/eras/view to avoid clobbering them.
+    // Era edits done via the inspector still propagate because they live in
+    // their own _eras/<id>.md notes (no stamp dependency there).
+    const xmlNow = ctx.vault.getMtime(s.sourceXmlPath);
+    const metaStale =
+      metaStamp != null &&
+      xmlNow != null &&
+      xmlNow > metaStamp + 2000;
+    if (metaStale) {
+      new Notice(
+        "Timeline metadata note is older than the XML — keeping XML's categories/eras/view. Run \"Import XML\" to refresh the metadata note.",
+        10000
+      );
+      void ctx.appendSyncLog(
+        "meta-stale-skip",
+        `${s.eventNotesDir}/_timeline/timeline-metadata.md`,
+        `metaStamp=${metaStamp} xmlMtime=${xmlNow}`
+      );
+      if (metaPatch.eras) merged.eras = metaPatch.eras;
+    } else {
+      merged.version = metaPatch.version ?? merged.version;
+      merged.timetype = metaPatch.timetype ?? merged.timetype;
+      if (metaPatch.categories) merged.categories = metaPatch.categories;
+      if (metaPatch.eras) merged.eras = metaPatch.eras;
+      if (metaPatch.view) merged.view = metaPatch.view;
+    }
   }
   const xml = writeTimelineXml(merged);
   await ctx.withSelfWrite(async () => {

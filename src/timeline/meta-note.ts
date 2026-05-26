@@ -6,23 +6,31 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 export interface TimelineMetaNote {
   docPatch: Partial<TimelineDoc>;
+  /** XML mtime when the meta-note was last written by importXml. */
+  lastSyncedXmlMtime?: number;
 }
 
-export function renderTimelineMetaNote(doc: TimelineDoc, sourceXmlPath: string): string {
+export function renderTimelineMetaNote(
+  doc: TimelineDoc,
+  sourceXmlPath: string,
+  sourceMtime?: number | null
+): string {
+  const tlBlock: Record<string, unknown> = {
+    enabled: true,
+    role: "metadata",
+    source_xml: sourceXmlPath,
+    version: doc.version ?? null,
+    timetype: doc.timetype ?? null,
+    xml_attrs: doc.xmlAttrs ?? {},
+    xml_extra_nodes: doc.xmlExtraNodes ?? [],
+    categories: doc.categories.map(categoryToFrontmatter),
+    eras: (doc.eras ?? []).map(eraToFrontmatter),
+    view: viewToFrontmatter(doc.view),
+  };
+  if (sourceMtime != null) tlBlock.last_synced_xml_mtime = sourceMtime;
   const front: Record<string, unknown> = {
     title: "Timeline metadata",
-    timeline: {
-      enabled: true,
-      role: "metadata",
-      source_xml: sourceXmlPath,
-      version: doc.version ?? null,
-      timetype: doc.timetype ?? null,
-      xml_attrs: doc.xmlAttrs ?? {},
-      xml_extra_nodes: doc.xmlExtraNodes ?? [],
-      categories: doc.categories.map(categoryToFrontmatter),
-      eras: (doc.eras ?? []).map(eraToFrontmatter),
-      view: viewToFrontmatter(doc.view),
-    },
+    timeline: tlBlock,
   };
   const yaml = YAML.stringify(front, { lineWidth: 0 });
   const body = [
@@ -55,6 +63,10 @@ export function parseTimelineMetaNote(raw: string): TimelineMetaNote | undefined
   const eras = arrayOfObjects(timeline.eras)?.map(frontmatterToEra) ?? [];
   const view = frontmatterToView(timeline.view);
 
+  const stamp =
+    typeof timeline.last_synced_xml_mtime === "number"
+      ? (timeline.last_synced_xml_mtime as number)
+      : undefined;
   return {
     docPatch: {
       version: strOrUndef(timeline.version),
@@ -65,6 +77,7 @@ export function parseTimelineMetaNote(raw: string): TimelineMetaNote | undefined
       eras,
       view,
     },
+    lastSyncedXmlMtime: stamp,
   };
 }
 

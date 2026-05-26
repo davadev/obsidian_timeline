@@ -87,6 +87,9 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   svg.setAttribute("width", String(width));
   svg.setAttribute("height", String(height));
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const defs = document.createElementNS(SVG_NS, "defs");
+  svg.appendChild(defs);
+  const gradientId = makeGradientIdFactory();
 
   // Eras paint FIRST so they sit behind stripes + axis grid + events.
   if (args.eras && args.eras.length) {
@@ -112,7 +115,14 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       circle.setAttribute("cx", String(cx));
       circle.setAttribute("cy", String(cy));
       circle.setAttribute("r", String(POINT_RADIUS));
-      circle.setAttribute("fill", color);
+      const pointFuzzy = ev.fuzzyStart === true || ev.fuzzyEnd === true || ev.fuzzy === true;
+      if (pointFuzzy) {
+        const id = gradientId();
+        defs.appendChild(makeRadialFuzzyGradient(id, color));
+        circle.setAttribute("fill", `url(#${id})`);
+      } else {
+        circle.setAttribute("fill", color);
+      }
       circle.setAttribute("stroke", "var(--background-primary)");
       circle.setAttribute("stroke-width", "1");
       circle.classList.add("txs-event-point");
@@ -139,7 +149,17 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       }
       rect.setAttribute("rx", "4");
       rect.setAttribute("ry", "4");
-      rect.setAttribute("fill", color);
+      const fuzzyStart = ev.fuzzyStart === true || (ev.fuzzy === true && ev.fuzzyEnd !== false);
+      const fuzzyEnd = ev.fuzzyEnd === true || (ev.fuzzy === true && ev.fuzzyStart !== false);
+      if (fuzzyStart || fuzzyEnd) {
+        const id = gradientId();
+        defs.appendChild(
+          makeLinearFuzzyGradient(id, color, fuzzyStart, fuzzyEnd, isVertical)
+        );
+        rect.setAttribute("fill", `url(#${id})`);
+      } else {
+        rect.setAttribute("fill", color);
+      }
       rect.classList.add("txs-event-bar");
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
@@ -528,5 +548,61 @@ function truncate(s: string, max: number): string {
   if (max < 4) return "";
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
+}
+
+function makeGradientIdFactory(): () => string {
+  let i = 0;
+  const salt = Math.random().toString(36).slice(2, 8);
+  return () => `txs-fuzzy-${salt}-${i++}`;
+}
+
+function makeLinearFuzzyGradient(
+  id: string,
+  color: string,
+  fuzzyStart: boolean,
+  fuzzyEnd: boolean,
+  isVertical: boolean
+): SVGLinearGradientElement {
+  const g = document.createElementNS(SVG_NS, "linearGradient");
+  g.setAttribute("id", id);
+  g.setAttribute("gradientUnits", "objectBoundingBox");
+  g.setAttribute("x1", "0");
+  g.setAttribute("y1", "0");
+  g.setAttribute("x2", isVertical ? "0" : "1");
+  g.setAttribute("y2", isVertical ? "1" : "0");
+
+  const stops: Array<[string, number]> = [];
+  if (fuzzyStart && fuzzyEnd) {
+    stops.push(["0%", 0], ["50%", 1], ["100%", 0]);
+  } else if (fuzzyStart) {
+    stops.push(["0%", 0], ["40%", 1], ["100%", 1]);
+  } else {
+    stops.push(["0%", 1], ["60%", 1], ["100%", 0]);
+  }
+  for (const [offset, op] of stops) {
+    const s = document.createElementNS(SVG_NS, "stop");
+    s.setAttribute("offset", offset);
+    s.setAttribute("stop-color", color);
+    s.setAttribute("stop-opacity", String(op));
+    g.appendChild(s);
+  }
+  return g;
+}
+
+function makeRadialFuzzyGradient(id: string, color: string): SVGRadialGradientElement {
+  const g = document.createElementNS(SVG_NS, "radialGradient");
+  g.setAttribute("id", id);
+  g.setAttribute("gradientUnits", "objectBoundingBox");
+  g.setAttribute("cx", "0.5");
+  g.setAttribute("cy", "0.5");
+  g.setAttribute("r", "0.5");
+  for (const [offset, op] of [["0%", 1], ["55%", 1], ["100%", 0]] as const) {
+    const s = document.createElementNS(SVG_NS, "stop");
+    s.setAttribute("offset", offset);
+    s.setAttribute("stop-color", color);
+    s.setAttribute("stop-opacity", String(op));
+    g.appendChild(s);
+  }
+  return g;
 }
 

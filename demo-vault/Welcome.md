@@ -13,12 +13,12 @@ A pre-built Obsidian vault showing what this plugin does, using a public-domain 
 1. In Obsidian, **Open another vault → Open folder as vault** → pick this `demo-vault/` folder.
 2. Make sure the **Timeline XML Sync** plugin is installed (see the [main README](../README.md)).
 3. Enable it under **Settings → Community plugins**.
-4. Run the command **Timeline XML Sync: Import XML to Markdown event notes**. The plugin will:
-   - read `timelines/Rome.timeline`
-   - write one Markdown event note per `<event>` under `Timeline events/`
-   - write one MD per `<era>` under `Timeline events/_eras/`
 
-After import you can browse, filter, and edit events as normal Markdown notes. Edits sync back to the XML automatically.
+The event notes under `Timeline events/` are **pre-imported** from `timelines/Rome.timeline`, so the inline timeline below renders immediately — no Import step required on first run.
+
+> If you ever want to start fresh, run **Timeline XML Sync: Wipe event notes and reimport from XML**. The plain **Import XML** command is also available, but on this shipped vault it will report every note as "skipped (local edits)" — that's expected, because the on-disk files are newer than the import stamp baked into the YAML at packaging time.
+
+Edits you make in the notes sync back to the XML automatically (auto-sync is enabled).
 
 ## See it in action
 
