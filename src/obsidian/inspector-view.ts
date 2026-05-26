@@ -360,6 +360,32 @@ export class InspectorView extends ItemView {
       includeTime: ev.showTime === true,
     });
     startGroup.onChange = () => this.markDirty();
+    body.createDiv({
+      cls: "txs-inspector-meta",
+      text: ev.showTime
+        ? "Date fields: yyyy-mm-dd hh:mm:ss"
+        : "Date fields: yyyy-mm-dd (time defaults to 00:00:00)",
+    });
+    const fuzzyDateWrap = body.createDiv({ cls: "txs-inspector-flags" });
+    fuzzyDateWrap.createDiv({ cls: "txs-inspector-section-title", text: "Date certainty" });
+    boolField(fuzzyDateWrap, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
+      ev.fuzzyStart = v;
+      if (!ev.period) ev.fuzzyEnd = v;
+      this.markDirty();
+      this.renderForm();
+    });
+    if (ev.period) {
+      boolField(fuzzyDateWrap, "Fuzzy end", ev.fuzzyEnd ?? false, (v) => {
+        ev.fuzzyEnd = v;
+        this.markDirty();
+      });
+    } else {
+      ev.fuzzyEnd = ev.fuzzyStart ?? false;
+      body.createDiv({
+        cls: "txs-inspector-meta",
+        text: "Point event: fuzzy end mirrors fuzzy start.",
+      });
+    }
     if (ev.period) {
       const endGroup = dateGroup(body, "End", ev.end, {
         includeTime: ev.showTime === true,
@@ -457,24 +483,29 @@ export class InspectorView extends ItemView {
     previewCheck.addEventListener("change", renderPreview);
     renderPreview();
 
-    // Labels (UI accepts comma OR space OR semicolon — Timeline 2.11 XML uses
-    // space-separated tokens, the writer converts on save).
-    const labelsInput = field(body, "Labels (space / comma / ; separated)", "input");
+    // Labels — Timeline Project expects space-delimited tokens.
+    const labelsInput = field(body, "Labels (space-delimited)", "input");
     (labelsInput as HTMLInputElement).value = (ev.labels ?? []).join(" ");
     labelsInput.addEventListener("input", () => {
       ev.labels = (labelsInput as HTMLInputElement).value
-        .split(/[\s,;]+/)
+        .split(/\s+/)
         .map((s) => s.trim())
         .filter(Boolean);
       this.markDirty();
     });
 
-    // Hyperlink
-    const linkInput = field(body, "Hyperlink", "input");
-    (linkInput as HTMLInputElement).value = ev.hyperlink ?? "";
-    linkInput.addEventListener("input", () => {
-      const v = (linkInput as HTMLInputElement).value.trim();
-      ev.hyperlink = v || undefined;
+    // Hyperlinks
+    const linksArea = field(body, "Hyperlinks (one URL per line)", "textarea") as HTMLTextAreaElement;
+    const links = (ev.hyperlinks?.length ? ev.hyperlinks : ev.hyperlink ? [ev.hyperlink] : []).join("\n");
+    linksArea.rows = 4;
+    linksArea.value = links;
+    linksArea.addEventListener("input", () => {
+      const list = linksArea.value
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      ev.hyperlinks = list.length ? list : undefined;
+      ev.hyperlink = list[0] ?? undefined;
       this.markDirty();
     });
 
@@ -486,11 +517,31 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
-    const defaultColorInput = field(body, "Default color", "input");
-    (defaultColorInput as HTMLInputElement).value = ev.defaultColor ?? "";
+    const defaultColorRow = body.createDiv({ cls: "txs-inspector-row" });
+    defaultColorRow.createEl("label", { text: "Default color" });
+    const defaultColorWrap = defaultColorRow.createDiv({ cls: "txs-inspector-inline" });
+    const defaultColorPicker = defaultColorWrap.createEl("input", {
+      type: "color",
+    }) as HTMLInputElement;
+    defaultColorPicker.value = colorToHex(ev.defaultColor ?? "#d3d3d3");
+    const defaultColorInput = defaultColorWrap.createEl("input", {
+      type: "text",
+    }) as HTMLInputElement;
+    defaultColorInput.value = ev.defaultColor ?? "";
+    defaultColorInput.placeholder = "r,g,b or #hex";
+    defaultColorPicker.addEventListener("input", () => {
+      const rgb = hexToRgbTriple(defaultColorPicker.value);
+      const next = rgb
+        ? `${rgb[0]},${rgb[1]},${rgb[2]}`
+        : defaultColorPicker.value;
+      ev.defaultColor = next;
+      defaultColorInput.value = next;
+      this.markDirty();
+    });
     defaultColorInput.addEventListener("input", () => {
-      const v = (defaultColorInput as HTMLInputElement).value.trim();
+      const v = defaultColorInput.value.trim();
       ev.defaultColor = v || undefined;
+      defaultColorPicker.value = colorToHex(ev.defaultColor ?? "#d3d3d3");
       this.markDirty();
     });
 
@@ -550,17 +601,6 @@ export class InspectorView extends ItemView {
 
     const flagsWrap = body.createDiv({ cls: "txs-inspector-flags" });
     flagsWrap.createDiv({ cls: "txs-inspector-section-title", text: "Other flags" });
-
-    const fuzzyStartCheck = boolField(flagsWrap, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
-      ev.fuzzyStart = v;
-      this.markDirty();
-    });
-    const fuzzyEndCheck = boolField(flagsWrap, "Fuzzy end", ev.fuzzyEnd ?? false, (v) => {
-      ev.fuzzyEnd = v;
-      this.markDirty();
-    });
-    void fuzzyStartCheck;
-    void fuzzyEndCheck;
 
     const enabledCheck = boolField(flagsWrap, "Enabled", ev.timelineEnabled ?? true, (v) => {
       ev.timelineEnabled = v;

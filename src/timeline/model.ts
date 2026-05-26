@@ -35,6 +35,8 @@ export interface TimelineEvent {
   container?: string;
   description?: string;
   hyperlink?: string;
+  /** Multiple <hyperlink> entries preserved in order (first mirrors `hyperlink`). */
+  hyperlinks?: string[];
   labels?: string[];
   progress?: number;
   period?: boolean;

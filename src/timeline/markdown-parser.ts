@@ -85,6 +85,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     container: strOrUndef(timeline.container),
     description: extractSection(body, "Description") || undefined,
     hyperlink: timeline.hyperlink == null ? undefined : String(timeline.hyperlink),
+    hyperlinks: arrayOfStrings(timeline.hyperlinks),
     labels: arrayOfStrings(timeline.labels),
     progress: numOrUndef(timeline.progress),
     period: boolOrUndef(timeline.period),
@@ -107,6 +108,8 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     xmlExtraNodes: arrayOfStrings(timeline.xml_extra_nodes),
     lastSyncedXmlMtime: numOrUndef(timeline.last_synced_xml_mtime),
   };
+  if (!ev.hyperlinks?.length && ev.hyperlink) ev.hyperlinks = [ev.hyperlink];
+  if (!ev.hyperlink && ev.hyperlinks?.length) ev.hyperlink = ev.hyperlinks[0];
   // Split extra frontmatter (everything that isn't ours)
   const extraFrontmatter: Record<string, unknown> = {};
   const reservedTop = new Set<string>([

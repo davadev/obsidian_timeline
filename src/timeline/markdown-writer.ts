@@ -38,6 +38,7 @@ export function renderEventMarkdown(
   ev: TimelineEvent,
   opts: WriteOptions
 ): string {
+  const hyperlinks = normalizeHyperlinks(ev);
   const mirrors = opts.mirrorNames ?? DEFAULT_MIRROR_NAMES;
   const front: Record<string, unknown> = { ...(opts.extraFrontmatter ?? {}) };
 
@@ -57,7 +58,7 @@ export function renderEventMarkdown(
     show_time: ev.showTime ?? null,
     render: ev.render ?? true,
     ends_today: ev.endsToday ?? false,
-    hyperlink: ev.hyperlink ?? null,
+    hyperlink: hyperlinks[0] ?? null,
     start: {
       year: ev.start.year,
       month: ev.start.month ?? null,
@@ -75,6 +76,7 @@ export function renderEventMarkdown(
       second: ev.end.second ?? 0,
     },
     ...(ev.labels && ev.labels.length ? { labels: ev.labels } : {}),
+    ...(hyperlinks.length > 1 ? { hyperlinks } : {}),
     fuzzy_start: ev.fuzzyStart ?? null,
     fuzzy_end: ev.fuzzyEnd ?? null,
     ...(ev.fuzzy != null ? { fuzzy: ev.fuzzy } : {}),
@@ -109,6 +111,12 @@ export function renderEventMarkdown(
   const body = opts.body ?? defaultBody(ev, optsTrimDescription(opts));
   const yaml = YAML.stringify(front, { lineWidth: 0 });
   return `---\n${yaml}---\n\n${body}`;
+}
+
+function normalizeHyperlinks(ev: TimelineEvent): string[] {
+  const arr = (ev.hyperlinks ?? []).map((s) => s.trim()).filter(Boolean);
+  if (!arr.length && ev.hyperlink?.trim()) arr.push(ev.hyperlink.trim());
+  return arr;
 }
 
 function defaultBody(ev: TimelineEvent, trimDescription: boolean): string {

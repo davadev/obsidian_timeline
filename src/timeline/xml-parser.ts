@@ -200,6 +200,15 @@ function readDeepText(parent: RawNode[], tag: string): string | undefined {
   return deepTextOf(nodeChildren(node));
 }
 
+function readAllText(parent: RawNode[], tag: string): string[] | undefined {
+  const nodes = findAllChildren(parent, tag);
+  if (!nodes.length) return undefined;
+  const out = nodes
+    .map((n) => textOf(nodeChildren(n)).trim())
+    .filter(Boolean);
+  return out.length ? out : undefined;
+}
+
 function readBool(parent: RawNode[], tag: string): boolean | undefined {
   const v = readText(parent, tag);
   if (v == null) return undefined;
@@ -264,6 +273,7 @@ export function parseTimelineXml(xml: string): TimelineDoc {
   if (eventsNode) {
     for (const e of findAllChildren(nodeChildren(eventsNode), "event")) {
       const ch = nodeChildren(e);
+      const allHyperlinks = readAllText(ch, "hyperlink");
       const text = readText(ch, "text") ?? "";
       const start = readDate(ch, "start");
       const end = readDate(ch, "end");
@@ -286,7 +296,8 @@ export function parseTimelineXml(xml: string): TimelineDoc {
         category: readText(ch, "category"),
         container: readText(ch, "container"),
         description: readDeepText(ch, "description"),
-        hyperlink: readText(ch, "hyperlink"),
+        hyperlinks: allHyperlinks,
+        hyperlink: allHyperlinks?.[0] ?? readText(ch, "hyperlink"),
         labels: parseLabels(readText(ch, "labels")),
         progress: readNumber(ch, "progress"),
         period: readBool(ch, "period"),
@@ -411,7 +422,7 @@ function extractUnknownNodes(node: RawNode, knownTags: Set<string>): string[] | 
 function parseLabels(raw: string | undefined): string[] | undefined {
   if (!raw) return undefined;
   return raw
-    .split(/[\s,;]+/)
+    .split(/\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }

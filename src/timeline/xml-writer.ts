@@ -156,6 +156,8 @@ const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
  */
 function buildEventNode(ev: TimelineEvent): RawNode {
   const wantsCData = descriptionWantsCData(ev);
+  const hyperlinks = normalizeEventHyperlinks(ev);
+  let hyperlinkIdx = 0;
   const synth = (tag: string): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
 
   const children: RawNode[] = [];
@@ -164,6 +166,13 @@ function buildEventNode(ev: TimelineEvent): RawNode {
     for (const child of nodeChildren(ev.raw as RawNode)) {
       const name = nodeName(child);
       if (!name || name === "#text") continue;
+      if (name === "hyperlink") {
+        if (hyperlinkIdx < hyperlinks.length) {
+          children.push(leaf("hyperlink", hyperlinks[hyperlinkIdx++]));
+        }
+        seen.add("hyperlink");
+        continue;
+      }
       if (KNOWN_EVENT_TAGS.has(name)) {
         const synthChild = synth(name);
         if (synthChild) {
@@ -182,11 +191,21 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   // Append any known fields the original didn't have.
   for (const tag of EVENT_DEFAULT_ORDER) {
     if (seen.has(tag)) continue;
+    if (tag === "hyperlink") {
+      if (hyperlinkIdx < hyperlinks.length) {
+        children.push(leaf("hyperlink", hyperlinks[hyperlinkIdx++]));
+        seen.add(tag);
+      }
+      continue;
+    }
     const c = synth(tag);
     if (c) {
       children.push(c);
       seen.add(tag);
     }
+  }
+  while (hyperlinkIdx < hyperlinks.length) {
+    children.push(leaf("hyperlink", hyperlinks[hyperlinkIdx++]));
   }
 
   const attrs: Record<string, string> = {};
@@ -206,6 +225,12 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   }
 
   return elem("event", children, attrs);
+}
+
+function normalizeEventHyperlinks(ev: TimelineEvent): string[] {
+  const out = (ev.hyperlinks ?? []).map((s) => s.trim()).filter(Boolean);
+  if (!out.length && ev.hyperlink?.trim()) out.push(ev.hyperlink.trim());
+  return out;
 }
 
 function parseExtraNodes(rawNodes: string[] | undefined): RawNode[] {
