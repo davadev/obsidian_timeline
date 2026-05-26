@@ -112,12 +112,44 @@ export class InspectorView extends ItemView {
         this.renderEmpty(`Note at "${path}" is not a timeline event.`);
         return;
       }
-      this.current = parsed.note.event;
+      this.current = await this.hydrateMissingEventFieldsFromXml(parsed.note.event);
       this.currentPath = path;
       this.dirty = false;
       this.renderForm();
     } catch (e) {
       this.renderEmpty((e as Error).message);
+    }
+  }
+
+  /**
+   * Some older/locally edited notes can have null timeline booleans even when
+   * XML has explicit values. Fill only missing fields from the source XML so
+   * inspector shows the effective event data without clobbering note values.
+   */
+  private async hydrateMissingEventFieldsFromXml(ev: TimelineEvent): Promise<TimelineEvent> {
+    const needsXmlFallback =
+      ev.period == null ||
+      ev.showTime == null ||
+      ev.fuzzyStart == null ||
+      ev.fuzzyEnd == null;
+    if (!needsXmlFallback) return ev;
+
+    const sourceXml = ev.sourceXml ?? this.args.getSettings().sourceXmlPath;
+    if (!sourceXml) return ev;
+
+    try {
+      const doc = await this.args.cache.getXml(sourceXml);
+      const xmlEv = doc.events.find((e) => e.id === ev.id);
+      if (!xmlEv) return ev;
+      return {
+        ...ev,
+        period: ev.period ?? xmlEv.period,
+        showTime: ev.showTime ?? xmlEv.showTime,
+        fuzzyStart: ev.fuzzyStart ?? xmlEv.fuzzyStart,
+        fuzzyEnd: ev.fuzzyEnd ?? xmlEv.fuzzyEnd,
+      };
+    } catch {
+      return ev;
     }
   }
 
