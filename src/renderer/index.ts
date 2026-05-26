@@ -61,16 +61,28 @@ export function renderTimeline(args: RenderArgs): void {
 
     // Derive the viewport from the current filter state so the time axis,
     // event bars, and era bands all share the same range. Precedence:
-    //   1. explicit filter date range (user typed a from/to)
-    //   2. auto-fit to the currently-filtered events (handles "show events
-    //      in this era" / "events around this single-point note")
-    //   3. fall back to the caller's args.viewport when filter yields nothing
+    //   1. explicit filter date range (user typed a from/to in the panel)
+    //   2. caller-supplied args.viewport — represents caller intent:
+    //      - viewport: true blocks → host note's frontmatter timeline range
+    //        (post-padded by the postprocessor's expandDegenerateViewport)
+    //      - global Timeline view → autoViewport of the currently-filtered
+    //        events (the view re-invokes renderTimeline per filter change)
+    //   3. fall back to deriving from the events we actually have, when no
+    //      caller viewport was supplied (rare — happens when the post-
+    //      processor's resolveViewport returns null and events are empty)
+    //
+    // Important: do NOT derive from `events` before falling back to
+    // args.viewport. For viewport: true blocks the postprocessor already
+    // narrowed `events` to the host event's neighbourhood — if we then
+    // autoViewport(events) we'd collapse to a much narrower viewport (or
+    // zero-width for a single-event note), wiping out the padding and
+    // breaking era visibility.
     const filterRange: ViewportRange | undefined =
       state?.start && state?.end
         ? { start: state.start, end: state.end }
         : undefined;
     const effViewport: ViewportRange | undefined =
-      filterRange ?? autoViewportFromEvents(events) ?? args.viewport;
+      filterRange ?? args.viewport ?? autoViewportFromEvents(events);
     // Eras are background bands — only show the ones overlapping the visible
     // viewport so a narrow viewer doesn't get scaled to span the entire Iron
     // Age. Eras themselves have no category/label metadata so range overlap
@@ -105,7 +117,17 @@ export function renderTimeline(args: RenderArgs): void {
       });
     }
     if (events.length === 0) {
-      body.createDiv({ text: "No events to display." });
+      const msg = body.createDiv({ text: "No events to display." });
+      // Distinguish "renderer received an empty event set from the caller"
+      // (rare — usually a config/setup issue) from "events were filtered
+      // out by the inline filter panel" (most common — and recoverable by
+      // the user via the Clear filters button up top).
+      if (args.events.length > 0) {
+        msg.createEl("div", {
+          text: "Filters are hiding all events. Expand the Filters panel above and click \"Clear filters\" to see them.",
+          cls: "txs-filter-empty-hint",
+        });
+      }
     }
   };
 

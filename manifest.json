@@ -1,7 +1,7 @@
 {
   "id": "timeline-xml-sync",
   "name": "Timeline XML Sync",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "minAppVersion": "1.4.0",
   "description": "Two-way sync between Timeline Project XML save files and Obsidian Markdown event notes. Renders timeline views in bar, list, or hybrid mode.",
   "author": "davadev",
