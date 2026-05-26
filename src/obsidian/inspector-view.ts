@@ -496,19 +496,22 @@ export class InspectorView extends ItemView {
       this.markDirty();
     });
 
-    const periodCheck = boolField(body, "Period", ev.period ?? false, (v) => {
+    const flagsWrap = body.createDiv({ cls: "txs-inspector-flags" });
+    flagsWrap.createDiv({ cls: "txs-inspector-section-title", text: "Timeline flags" });
+
+    const periodCheck = boolField(flagsWrap, "Period", ev.period ?? false, (v) => {
       ev.period = v;
       this.markDirty();
     });
-    const showTimeCheck = boolField(body, "Show time", ev.showTime ?? false, (v) => {
+    const showTimeCheck = boolField(flagsWrap, "Show time", ev.showTime ?? false, (v) => {
       ev.showTime = v;
       this.markDirty();
     });
-    const fuzzyStartCheck = boolField(body, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
+    const fuzzyStartCheck = boolField(flagsWrap, "Fuzzy start", ev.fuzzyStart ?? false, (v) => {
       ev.fuzzyStart = v;
       this.markDirty();
     });
-    const fuzzyEndCheck = boolField(body, "Fuzzy end", ev.fuzzyEnd ?? false, (v) => {
+    const fuzzyEndCheck = boolField(flagsWrap, "Fuzzy end", ev.fuzzyEnd ?? false, (v) => {
       ev.fuzzyEnd = v;
       this.markDirty();
     });
@@ -517,23 +520,23 @@ export class InspectorView extends ItemView {
     void fuzzyStartCheck;
     void fuzzyEndCheck;
 
-    const enabledCheck = boolField(body, "Enabled", ev.timelineEnabled ?? true, (v) => {
+    const enabledCheck = boolField(flagsWrap, "Enabled", ev.timelineEnabled ?? true, (v) => {
       ev.timelineEnabled = v;
       this.markDirty();
     });
-    const renderCheck = boolField(body, "Render", ev.render ?? true, (v) => {
+    const renderCheck = boolField(flagsWrap, "Render", ev.render ?? true, (v) => {
       ev.render = v;
       this.markDirty();
     });
-    const endsTodayCheck = boolField(body, "Ends today", ev.endsToday ?? false, (v) => {
+    const endsTodayCheck = boolField(flagsWrap, "Ends today", ev.endsToday ?? false, (v) => {
       ev.endsToday = v;
       this.markDirty();
     });
-    const fuzzyCheck = boolField(body, "Fuzzy", ev.fuzzy ?? false, (v) => {
+    const fuzzyCheck = boolField(flagsWrap, "Fuzzy", ev.fuzzy ?? false, (v) => {
       ev.fuzzy = v;
       this.markDirty();
     });
-    const lockedCheck = boolField(body, "Locked", ev.locked ?? false, (v) => {
+    const lockedCheck = boolField(flagsWrap, "Locked", ev.locked ?? false, (v) => {
       ev.locked = v;
       this.markDirty();
     });
@@ -787,11 +790,10 @@ function boolField(
   value: boolean,
   onChange: (next: boolean) => void
 ): HTMLInputElement {
-  const row = parent.createDiv({ cls: "txs-inspector-row" });
-  const wrap = row.createEl("label");
-  const input = wrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+  const row = parent.createDiv({ cls: "txs-inspector-toggle-row" });
+  row.createSpan({ text: label });
+  const input = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
   input.checked = value;
-  wrap.createSpan({ text: ` ${label}` });
   input.addEventListener("change", () => onChange(input.checked));
   return input;
 }
