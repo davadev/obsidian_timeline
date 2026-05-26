@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="utf-8"?>
+<timeline>
+  <version>2.11.0</version>
+  <timetype>gregoriantime</timetype>
+  <categories>
+    <category>
+      <name>Kingdom</name>
+      <color>200,160,80</color>
+      <progress_color>230,200,140</progress_color>
+      <done_color>150,110,40</done_color>
+      <font_color>0,0,0</font_color>
+    </category>
+    <category>
+      <name>Republic</name>
+      <color>120,180,90</color>
+      <progress_color>180,220,140</progress_color>
+      <done_color>80,130,50</done_color>
+      <font_color>0,0,0</font_color>
+    </category>
+    <category>
+      <name>Empire</name>
+      <color>180,80,80</color>
+      <progress_color>220,140,140</progress_color>
+      <done_color>130,40,40</done_color>
+      <font_color>255,255,255</font_color>
+    </category>
+    <category>
+      <name>Late Empire</name>
+      <color>120,80,150</color>
+      <progress_color>170,140,200</progress_color>
+      <done_color>80,40,110</done_color>
+      <font_color>255,255,255</font_color>
+    </category>
+    <category>
+      <name>People</name>
+      <color>80,120,180</color>
+      <progress_color>140,180,220</progress_color>
+      <done_color>40,80,140</done_color>
+      <font_color>255,255,255</font_color>
+    </category>
+    <category>
+      <name>Wars</name>
+      <color>180,140,40</color>
+      <progress_color>220,190,100</progress_color>
+      <done_color>130,100,20</done_color>
+      <font_color>0,0,0</font_color>
+    </category>
+  </categories>
+  <events>
+    <event id="founding-of-rome">
+      <start>-0753-04-21 00:00:00</start>
+      <end>-0753-04-21 00:00:00</end>
+      <text>Founding of Rome</text>
+      <category>Kingdom</category>
+      <description>Traditional date for the founding of the city by Romulus.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>legendary key</labels>
+    </event>
+    <event id="seven-kings">
+      <start>-0753-01-01 00:00:00</start>
+      <end>-0509-01-01 00:00:00</end>
+      <text>The Seven Kings of Rome</text>
+      <category>Kingdom</category>
+      <description>Traditional regal period from Romulus to Tarquinius Superbus.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="republic-founded">
+      <start>-0509-01-01 00:00:00</start>
+      <end>-0509-01-01 00:00:00</end>
+      <text>Roman Republic founded</text>
+      <category>Republic</category>
+      <description>Tarquinius Superbus expelled; consuls replace the king.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="twelve-tables">
+      <start>-0450-01-01 00:00:00</start>
+      <end>-0450-01-01 00:00:00</end>
+      <text>Law of the Twelve Tables</text>
+      <category>Republic</category>
+      <description>First codification of Roman law, displayed in the Forum.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="gallic-sack">
+      <start>-0390-07-18 00:00:00</start>
+      <end>-0390-07-18 00:00:00</end>
+      <text>Gauls sack Rome</text>
+      <category>Wars</category>
+      <description>Brennus's Senones sack Rome after the Battle of the Allia.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="punic-1">
+      <start>-0264-01-01 00:00:00</start>
+      <end>-0241-01-01 00:00:00</end>
+      <text>First Punic War</text>
+      <category>Wars</category>
+      <description>Fought primarily at sea around Sicily. Rome gains its first province.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <hyperlink>https://en.wikipedia.org/wiki/First_Punic_War</hyperlink>
+    </event>
+    <event id="punic-2">
+      <start>-0218-01-01 00:00:00</start>
+      <end>-0201-01-01 00:00:00</end>
+      <text>Second Punic War</text>
+      <category>Wars</category>
+      <description><![CDATA[Hannibal Barca crosses the Alps. Cannae (216 BCE) is one of Rome's worst defeats; Scipio Africanus eventually defeats Hannibal at Zama (202 BCE).]]></description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <hyperlink>https://en.wikipedia.org/wiki/Second_Punic_War</hyperlink>
+    </event>
+    <event id="punic-3">
+      <start>-0149-01-01 00:00:00</start>
+      <end>-0146-01-01 00:00:00</end>
+      <text>Third Punic War</text>
+      <category>Wars</category>
+      <description>Ends with the destruction of Carthage. "Carthago delenda est."</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="gracchi">
+      <start>-0133-01-01 00:00:00</start>
+      <end>-0121-01-01 00:00:00</end>
+      <text>Reforms of the Gracchi</text>
+      <category>Republic</category>
+      <description>Tiberius and Gaius Gracchus attempt land reform; both killed.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="caesar-rubicon">
+      <start>-0049-01-10 00:00:00</start>
+      <end>-0049-01-10 00:00:00</end>
+      <text>Caesar crosses the Rubicon</text>
+      <category>People</category>
+      <description>"Alea iacta est." Civil war begins.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="caesar-assassinated">
+      <start>-0044-03-15 00:00:00</start>
+      <end>-0044-03-15 00:00:00</end>
+      <text>Assassination of Julius Caesar</text>
+      <category>People</category>
+      <description>Stabbed by the Liberatores in the Curia of Pompey on the Ides of March.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="actium">
+      <start>-0031-09-02 00:00:00</start>
+      <end>-0031-09-02 00:00:00</end>
+      <text>Battle of Actium</text>
+      <category>Wars</category>
+      <description>Octavian defeats Antony and Cleopatra. End of the Republic in practice.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="augustus">
+      <start>-0027-01-16 00:00:00</start>
+      <end>0014-08-19 00:00:00</end>
+      <text>Reign of Augustus</text>
+      <category>Empire</category>
+      <description>Octavian becomes Augustus. Pax Romana begins.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key emperor</labels>
+    </event>
+    <event id="varus">
+      <start>0009-09-09 00:00:00</start>
+      <end>0009-09-09 00:00:00</end>
+      <text>Battle of Teutoburg Forest</text>
+      <category>Wars</category>
+      <description>Arminius annihilates three Roman legions. "Quintili Vare, legiones redde!"</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="great-fire">
+      <start>0064-07-18 00:00:00</start>
+      <end>0064-07-27 00:00:00</end>
+      <text>Great Fire of Rome</text>
+      <category>Empire</category>
+      <description>Burns for nine days under Nero. He is blamed; he blames Christians.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="vesuvius">
+      <start>0079-10-24 00:00:00</start>
+      <end>0079-10-24 00:00:00</end>
+      <text>Eruption of Vesuvius</text>
+      <category>Empire</category>
+      <description>Buries Pompeii and Herculaneum. Pliny the Elder dies.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="trajan-peak">
+      <start>0117-08-09 00:00:00</start>
+      <end>0117-08-09 00:00:00</end>
+      <text>Empire reaches greatest extent</text>
+      <category>Empire</category>
+      <description>Death of Trajan after conquests of Dacia, Armenia, Mesopotamia.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="five-good-emperors">
+      <start>0096-09-18 00:00:00</start>
+      <end>0180-03-17 00:00:00</end>
+      <text>Five Good Emperors</text>
+      <category>Empire</category>
+      <description>Nerva, Trajan, Hadrian, Antoninus Pius, Marcus Aurelius. Pax Romana at its height.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="marcus-aurelius">
+      <start>0161-03-07 00:00:00</start>
+      <end>0180-03-17 00:00:00</end>
+      <text>Reign of Marcus Aurelius</text>
+      <category>People</category>
+      <description>Stoic philosopher-emperor. Author of the Meditations.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="crisis-third-century">
+      <start>0235-01-01 00:00:00</start>
+      <end>0284-01-01 00:00:00</end>
+      <text>Crisis of the Third Century</text>
+      <category>Late Empire</category>
+      <description>Near-collapse. ~50 emperors in 49 years. Stabilised by Diocletian.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="diocletian-tetrarchy">
+      <start>0293-03-01 00:00:00</start>
+      <end>0293-03-01 00:00:00</end>
+      <text>Tetrarchy established</text>
+      <category>Late Empire</category>
+      <description>Diocletian creates the four-emperor rule. Empire split administratively.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="milvian-bridge">
+      <start>0312-10-28 00:00:00</start>
+      <end>0312-10-28 00:00:00</end>
+      <text>Battle of the Milvian Bridge</text>
+      <category>Wars</category>
+      <description>Constantine defeats Maxentius. "In hoc signo vinces." Christianity ascendant.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="edict-of-milan">
+      <start>0313-02-01 00:00:00</start>
+      <end>0313-02-01 00:00:00</end>
+      <text>Edict of Milan</text>
+      <category>Late Empire</category>
+      <description>Constantine and Licinius legalise Christianity across the Empire.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="nicaea">
+      <start>0325-05-20 00:00:00</start>
+      <end>0325-08-25 00:00:00</end>
+      <text>First Council of Nicaea</text>
+      <category>Late Empire</category>
+      <description>First ecumenical council. Nicene Creed; Arianism condemned.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="split-east-west">
+      <start>0395-01-17 00:00:00</start>
+      <end>0395-01-17 00:00:00</end>
+      <text>Empire permanently split East/West</text>
+      <category>Late Empire</category>
+      <description>Death of Theodosius I; sons Arcadius (East) and Honorius (West) divide rule.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="alaric-sack">
+      <start>0410-08-24 00:00:00</start>
+      <end>0410-08-27 00:00:00</end>
+      <text>Visigoths sack Rome</text>
+      <category>Wars</category>
+      <description>Alaric I sacks the city — first time in 800 years. Augustine writes De Civitate Dei in response.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="fall-west">
+      <start>0476-09-04 00:00:00</start>
+      <end>0476-09-04 00:00:00</end>
+      <text>Fall of the Western Roman Empire</text>
+      <category>Late Empire</category>
+      <description>Odoacer deposes Romulus Augustulus. Traditional end-date of antiquity.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="justinian">
+      <start>0527-04-01 00:00:00</start>
+      <end>0565-11-14 00:00:00</end>
+      <text>Reign of Justinian I</text>
+      <category>People</category>
+      <description>Last great reconquest of the West. Corpus Juris Civilis. Hagia Sophia.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="fall-constantinople">
+      <start>1453-05-29 00:00:00</start>
+      <end>1453-05-29 00:00:00</end>
+      <text>Fall of Constantinople</text>
+      <category>Late Empire</category>
+      <description>Ottoman conquest under Mehmed II ends the Eastern Roman (Byzantine) Empire.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+  </events>
+  <eras>
+    <era>
+      <name>Roman Kingdom</name>
+      <start>-0753-01-01 00:00:00</start>
+      <end>-0509-01-01 00:00:00</end>
+      <color>220,200,160</color>
+    </era>
+    <era>
+      <name>Roman Republic</name>
+      <start>-0509-01-01 00:00:00</start>
+      <end>-0027-01-16 00:00:00</end>
+      <color>180,220,180</color>
+    </era>
+    <era>
+      <name>Roman Empire (Principate)</name>
+      <start>-0027-01-16 00:00:00</start>
+      <end>0284-01-01 00:00:00</end>
+      <color>240,200,200</color>
+    </era>
+    <era>
+      <name>Late Empire / Dominate</name>
+      <start>0284-01-01 00:00:00</start>
+      <end>0476-09-04 00:00:00</end>
+      <color>210,190,230</color>
+    </era>
+    <era>
+      <name>Byzantine Empire</name>
+      <start>0476-09-04 00:00:00</start>
+      <end>1453-05-29 00:00:00</end>
+      <color>220,220,240</color>
+    </era>
+  </eras>
+  <view>
+    <displayed_period>
+      <start>-0800-01-01 00:00:00</start>
+      <end>0600-01-01 00:00:00</end>
+    </displayed_period>
+    <hidden_categories>
+    </hidden_categories>
+  </view>
+</timeline>

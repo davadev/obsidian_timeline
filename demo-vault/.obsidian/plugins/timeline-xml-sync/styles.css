@@ -1,0 +1,659 @@
+/* Timeline XML Sync — render block styles */
+
+.txs-timeline {
+  width: 100%;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.txs-timeline-bar {
+  width: 100%;
+  position: relative;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 80vh;
+}
+
+.txs-timeline-bar.txs-vertical {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.txs-timeline-bar svg {
+  display: block;
+}
+
+.txs-timeline-bar:not(.txs-vertical) svg {
+  min-width: 100%;
+}
+
+.txs-timeline-bar.txs-vertical svg {
+  width: 100%;
+  min-height: 100%;
+}
+
+.txs-event-bar {
+  cursor: pointer;
+  rx: 3;
+  ry: 3;
+}
+
+.txs-event-point {
+  cursor: pointer;
+}
+
+.txs-event-label {
+  font-size: 12px;
+  pointer-events: none;
+  dominant-baseline: middle;
+  font-weight: 500;
+}
+
+.txs-axis-line {
+  stroke: var(--text-faint);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.txs-axis-tick {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.txs-picker-title {
+  font-weight: 600;
+}
+
+.txs-picker-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-view-zoom-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.txs-era-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  font-size: var(--font-ui-smaller);
+}
+
+.txs-era-strip-label {
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.txs-era-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  text-decoration: none;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.txs-era-chip:hover {
+  background: var(--background-modifier-hover);
+}
+
+.txs-era-chip-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.txs-era-list-heading {
+  margin: 8px 0 4px;
+  font-size: 1em;
+  color: var(--text-muted);
+}
+
+.txs-era-list {
+  margin: 0 0 8px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.txs-era-list-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.txs-era-label {
+  font-size: 12px;
+  font-weight: 600;
+  font-style: italic;
+  opacity: 0.95;
+  pointer-events: auto;
+}
+
+.txs-axis-text {
+  fill: var(--text-muted);
+  font-size: 10px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.txs-timeline-list {
+  margin-top: 8px;
+  list-style: none;
+  padding-left: 0;
+}
+
+.txs-timeline-list li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.txs-timeline-list .txs-date {
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  margin-right: 6px;
+}
+
+.txs-timeline-list .txs-category {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  margin-left: 6px;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+.txs-timeline-list .txs-title {
+  font-weight: 600;
+}
+
+.txs-timeline-list .txs-desc {
+  display: block;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.txs-view-body .txs-timeline,
+.txs-view-body .txs-timeline-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Rich inline filter panel (collapsible) for ```timeline render blocks. */
+.txs-filter-rich {
+  margin-bottom: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.txs-filter-rich[open] {
+  padding-bottom: 8px;
+}
+
+.txs-filter-rich-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.txs-filter-rich-summary::-webkit-details-marker {
+  display: none;
+}
+
+.txs-filter-rich-summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.1s ease;
+  color: var(--text-faint);
+}
+
+.txs-filter-rich[open] > .txs-filter-rich-summary::before {
+  transform: rotate(90deg);
+}
+
+.txs-filter-rich-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.txs-filter-rich-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.txs-filter-rich-row label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-filter-rich-row input[type="search"],
+.txs-filter-rich-row input[type="text"] {
+  padding: 4px 6px;
+}
+
+.txs-filter-rich-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.txs-filter-rich-date-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.txs-filter-rich-date-group input {
+  padding: 4px 6px;
+}
+
+.txs-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+
+.txs-filter-action {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.txs-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+
+.txs-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.1s ease;
+}
+
+.txs-filter-chip.is-inactive {
+  opacity: 0.35;
+  text-decoration: line-through;
+}
+
+.txs-filter-chip.is-active:hover {
+  background: var(--background-modifier-hover);
+}
+
+.txs-filter-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.txs-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  max-width: 280px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.txs-mobile-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.txs-mp-title {
+  font-weight: 600;
+  font-size: 1.05em;
+  margin-bottom: 2px;
+}
+
+.txs-mp-date {
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.txs-mp-meta {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  margin-bottom: 4px;
+}
+
+.txs-mp-desc {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.txs-mp-link {
+  display: block;
+  margin: 4px 0;
+  word-break: break-all;
+}
+
+.txs-mp-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.txs-list-actions {
+  margin-top: 4px;
+}
+
+.txs-open-note {
+  font-size: 0.85em;
+  color: var(--text-accent);
+}
+
+.txs-inspector-root {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.txs-inspector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.txs-inspector-header h3 {
+  margin: 0;
+  font-size: 1em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+}
+
+.txs-inspector-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+}
+
+.txs-inspector-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.txs-inspector-row label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.txs-inspector-row input,
+.txs-inspector-row textarea,
+.txs-inspector-row select {
+  width: 100%;
+  padding: 4px 6px;
+  box-sizing: border-box;
+}
+
+.txs-date-fields {
+  display: flex;
+  gap: 4px;
+}
+
+.txs-date-fields input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.txs-inspector-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.txs-inspector-preview-toggle {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.txs-inspector-preview {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  max-height: 240px;
+  overflow: auto;
+  font-size: var(--font-ui-small);
+}
+
+.txs-inspector-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
+.txs-inspector-thumb {
+  /* Keep intrinsic aspect ratio — Obsidian's base stylesheet sets img to
+   * width: 100% which squeezed the inspector thumbnail. */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  display: block;
+  margin: 4px auto;
+  border-radius: 4px;
+}
+
+.txs-inspector-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.txs-inspector-empty {
+  color: var(--text-muted);
+  padding: 12px;
+}
+
+.txs-view-root {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.txs-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+
+.txs-view-header h3 {
+  margin: 0;
+}
+
+.txs-view-filters {
+  /* <details> element. When closed only the summary shows, so the body has
+   * full screen for the timeline — important on phones. */
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+}
+
+.txs-view-filters[open] {
+  padding: 4px 6px 6px;
+}
+
+.txs-view-filters > .txs-view-filters-summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.txs-view-filters > .txs-view-filters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.txs-view-filters > .txs-view-filters-summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.1s ease;
+  color: var(--text-faint);
+}
+
+.txs-view-filters[open] > .txs-view-filters-summary::before {
+  transform: rotate(90deg);
+}
+
+.txs-view-filters-badge {
+  font-weight: 500;
+}
+
+.txs-view-filters > *:not(summary) {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  margin-top: 4px;
+}
+
+.txs-view-search {
+  flex: 1 1 200px;
+  min-width: 120px;
+  padding: 4px 8px;
+}
+
+.txs-view-range-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.txs-view-year {
+  width: 70px;
+  padding: 4px 6px;
+}
+
+.txs-view-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.txs-view-body .txs-timeline,
+.txs-view-body .txs-timeline-body,
+.txs-view-body .txs-timeline-list {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.txs-timeline-placeholder {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  background: var(--background-secondary);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.txs-error {
+  color: var(--text-error);
+  font-family: var(--font-monospace);
+  padding: 8px;
+  border-left: 3px solid var(--text-error);
+  background: var(--background-secondary);
+}

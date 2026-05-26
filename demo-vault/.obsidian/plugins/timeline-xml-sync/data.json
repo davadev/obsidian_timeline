@@ -1,0 +1,50 @@
+{
+  "sourceXmlPath": "timelines/Rome.timeline",
+  "eventNotesDir": "Timeline events",
+  "templatesDir": "Templates",
+  "timelineId": "main",
+  "mirrorNames": {
+    "start": "timeline_start",
+    "end": "timeline_end",
+    "category": "timeline_category",
+    "eventId": "timeline_event_id",
+    "render": "timeline_render",
+    "role": "timeline_role"
+  },
+  "renderDefaults": {
+    "mode": "hybrid",
+    "source": "main",
+    "details": "list",
+    "sort": "chronological",
+    "show": [
+      "title",
+      "date",
+      "category",
+      "description"
+    ],
+    "zoom": 1,
+    "orientation": "horizontal",
+    "showFilterUI": true
+  },
+  "categoryColors": {},
+  "backupEnabled": true,
+  "autoSync": true,
+  "autoSyncDebounceMs": 60000,
+  "logLevel": "info",
+  "knownCategories": [],
+  "lastImportSchemaVersion": 0,
+  "pointPaddingYears": 100,
+  "hiddenCategories": [],
+  "eventSource": "auto",
+  "firstRunCompleted": true,
+  "clickBehavior": "inspector",
+  "globalFilterPrecision": "year",
+  "lastWrittenXmlMtime": null,
+  "autoSyncStartupDelayMs": 30000,
+  "selfWriteTtlMs": 5000,
+  "syncLogEnabled": true,
+  "backupRetention": 5,
+  "__safety": {
+    "crashDisabled": false
+  }
+}

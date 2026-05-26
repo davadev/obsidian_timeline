@@ -31,6 +31,7 @@ import {
 } from "./obsidian/commands";
 import { makeTimelineProcessor } from "./obsidian/markdown-postprocessor";
 import { debounce } from "./timeline/sync-engine";
+import bundledCss from "../styles.css";
 
 /**
  * Persisted alongside settings (under the same data.json key) so a crash on
@@ -64,6 +65,13 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   private externalChangeAnnounced = false;
 
   async onload(): Promise<void> {
+    // Inject bundled CSS so the plugin's UI looks correct even when the
+    // install path didn't ship styles.css (BRAT before 0.8.3, manual installs
+    // that forgot to copy the third file, demo vaults). Obsidian also loads
+    // a separate styles.css when it's present in the plugin folder — both
+    // copies define the same selectors, so the cascade ends in the same place.
+    this.injectBundledStyles();
+
     await this.loadSettings();
 
     if (this.safety.crashDisabled) {
@@ -81,7 +89,18 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     }
   }
 
+  private styleEl?: HTMLStyleElement;
+  private injectBundledStyles(): void {
+    if (this.styleEl) return;
+    const el = document.createElement("style");
+    el.setAttribute("data-source", "timeline-xml-sync-bundled");
+    el.textContent = bundledCss;
+    document.head.appendChild(el);
+    this.styleEl = el;
+  }
+
   onunload(): void {
+    this.styleEl?.remove();
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_TIMELINE);
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
   }

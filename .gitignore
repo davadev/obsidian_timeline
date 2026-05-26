@@ -1,5 +1,6 @@
 # Obsidian
 .obsidian/
+!demo-vault/.obsidian/
 
 # Build
 node_modules/
@@ -7,11 +8,14 @@ main.js
 *.js.map
 dist/
 build/
+# ...except the demo vault's bundled plugin copy so the vault is turnkey.
+!demo-vault/.obsidian/plugins/timeline-xml-sync/main.js
 
 # Personal Timeline fixture (do not commit user data)
 Timeline2_11.timeline
 *.timeline
 !tests/fixtures/*.timeline
+!demo-vault/**/*.timeline
 
 # IDE
 .vscode/

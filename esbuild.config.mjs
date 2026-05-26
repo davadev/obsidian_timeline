@@ -37,6 +37,10 @@ const context = await esbuild.context({
   treeShaking: true,
   outfile: "main.js",
   minify: prod,
+  // Bundle styles.css as a string into main.js so the plugin's UI looks
+  // right even when the user (or BRAT) didn't copy styles.css into the
+  // plugin folder. main.ts injects it into <head> on load.
+  loader: { ".css": "text" },
 });
 
 if (prod) {
