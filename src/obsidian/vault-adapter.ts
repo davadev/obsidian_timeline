@@ -112,4 +112,68 @@ export class VaultAdapter {
     await this.writeText(dest, content);
     return dest;
   }
+
+  /** mtime of a file in epoch ms, or null if missing. */
+  getMtime(path: string): number | null {
+    const f = this.getFile(path);
+    return f ? f.stat.mtime : null;
+  }
+
+  /**
+   * Copy every markdown file under `srcFolder` to a fresh
+   * `_backups/<label>-<ISO-stamp>/` folder. Preserves subdir layout.
+   * Returns the backup folder path, or null if srcFolder has no MD files.
+   */
+  async backupFolder(srcFolder: string, label: string): Promise<string | null> {
+    const files = this.listMarkdownFiles(srcFolder);
+    if (!files.length) return null;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const dest = `_backups/${label}-${stamp}`;
+    await this.ensureFolder(dest);
+    const src = normalizePath(srcFolder);
+    for (const f of files) {
+      const rel = f.path === src ? f.name : f.path.slice(src.length + 1);
+      const content = await this.app.vault.read(f);
+      await this.writeText(`${dest}/${rel}`, content);
+    }
+    return dest;
+  }
+
+  /**
+   * Keep only the most recent `keep` XML backup siblings of `originalXmlPath`
+   * (files matching `<originalXmlPath>.bak-*`). Returns the count deleted.
+   */
+  async pruneXmlBackups(originalXmlPath: string, keep: number): Promise<number> {
+    const np = normalizePath(originalXmlPath);
+    const prefix = `${np}.bak-`;
+    const all = this.app.vault.getFiles().filter((f) => f.path.startsWith(prefix));
+    all.sort((a, b) => b.stat.mtime - a.stat.mtime); // newest first
+    let deleted = 0;
+    for (const f of all.slice(Math.max(0, keep))) {
+      await this.app.vault.delete(f);
+      deleted++;
+    }
+    return deleted;
+  }
+
+  /**
+   * Keep only the most recent `keep` `_backups/<label>-*` folders.
+   * Names sort chronologically (ISO timestamp), so localeCompare suffices.
+   */
+  async pruneFolderBackups(label: string, keep: number): Promise<number> {
+    const root = this.app.vault.getAbstractFileByPath("_backups");
+    if (!root || !(root instanceof TFolder)) return 0;
+    const matches = root.children
+      .filter(
+        (c): c is TFolder =>
+          c instanceof TFolder && c.name.startsWith(label + "-")
+      )
+      .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+    let deleted = 0;
+    for (const f of matches.slice(Math.max(0, keep))) {
+      await this.app.vault.delete(f, true);
+      deleted++;
+    }
+    return deleted;
+  }
 }

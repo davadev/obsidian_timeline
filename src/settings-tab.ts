@@ -1,4 +1,4 @@
-import { PluginSettingTab, Setting, type App } from "obsidian";
+import { Notice, PluginSettingTab, Setting, type App } from "obsidian";
 import type TimelineXmlSyncPlugin from "./main";
 import { DEFAULT_MIRROR_NAMES } from "./timeline/model";
 import {
@@ -542,6 +542,91 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(s.backupEnabled).onChange(async (v) => {
           s.backupEnabled = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    containerEl.createEl("h3", { text: "Multi-device sync (advanced)" });
+    containerEl.createEl("div", {
+      cls: "setting-item-description",
+      text:
+        "These guard against data loss when the vault is synced across devices (Nextcloud, iCloud, Remotely Save). Defaults are right for most users.",
+    });
+
+    new Setting(containerEl)
+      .setName("Backup retention (count)")
+      .setDesc(
+        "Keep this many of each backup type: XML .bak-* siblings AND _backups/<label>-* folders. Older backups are deleted after each new one is created."
+      )
+      .addText((t) =>
+        t.setValue(String(s.backupRetention)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n >= 1) {
+            s.backupRetention = n;
+            await this.plugin.saveSettings();
+          }
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Prune backups now")
+      .setDesc(
+        "One-shot cleanup for piled-up backups from before retention was enforced."
+      )
+      .addButton((b) =>
+        b.setButtonText("Prune now").onClick(async () => {
+          const xml = s.sourceXmlPath
+            ? await this.plugin
+                .runVaultPrune("xml", s.sourceXmlPath, s.backupRetention)
+                .catch(() => 0)
+            : 0;
+          const wipe = await this.plugin
+            .runVaultPrune("folder", "wipe", s.backupRetention)
+            .catch(() => 0);
+          new Notice(
+            `Pruned ${xml} XML backup(s) and ${wipe} MD backup folder(s).`
+          );
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Startup grace period (ms)")
+      .setDesc(
+        "Auto-sync is suppressed for this long after the plugin loads. Lets remote sync finish its initial pull before we start writing. Default 30000."
+      )
+      .addText((t) =>
+        t.setValue(String(s.autoSyncStartupDelayMs)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n >= 0) {
+            s.autoSyncStartupDelayMs = n;
+            await this.plugin.saveSettings();
+          }
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Self-write suppression TTL (ms)")
+      .setDesc(
+        "How long after the plugin writes a file we ignore vault events for that file. Raise if remote sync lands plugin-written files later than this. Default 5000."
+      )
+      .addText((t) =>
+        t.setValue(String(s.selfWriteTtlMs)).onChange(async (v) => {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n >= 500) {
+            s.selfWriteTtlMs = n;
+            await this.plugin.saveSettings();
+          }
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Sync log enabled")
+      .setDesc(
+        "Append events (import-skipped, regen-aborted, filter-persist-failed, external-xml-change, wipe-backup) to _logs/timeline-sync.log. Rotated at ~200 KB."
+      )
+      .addToggle((t) =>
+        t.setValue(s.syncLogEnabled).onChange(async (v) => {
+          s.syncLogEnabled = v;
           await this.plugin.saveSettings();
         })
       );

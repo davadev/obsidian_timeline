@@ -42,16 +42,24 @@ export function parseEraNote(raw: string, fallbackId: string): TimelineEra | nul
   const color = typeof tl.color === "string" && (tl.color as string).trim()
     ? (tl.color as string).trim()
     : undefined;
-  return { id, name, start, end, color };
+  const stampRaw = tl.last_synced_xml_mtime;
+  const lastSyncedXmlMtime =
+    typeof stampRaw === "number" && Number.isFinite(stampRaw)
+      ? stampRaw
+      : undefined;
+  return { id, name, start, end, color, lastSyncedXmlMtime };
 }
 
 export function renderEraMarkdown(
   era: TimelineEra,
   timelineId: string,
-  sourceXmlPath: string
+  sourceXmlPath: string,
+  sourceMtime?: number | null
 ): string {
   const fmStart = formatDate(era.start);
   const fmEnd = formatDate(era.end);
+  const stamp = sourceMtime ?? era.lastSyncedXmlMtime ?? null;
+  const stampLine = stamp != null ? `  last_synced_xml_mtime: ${stamp}\n` : "";
   return `---
 title: ${escapeYaml(era.name)}
 tags:
@@ -73,7 +81,7 @@ timeline:
     year: ${era.end.year}
     month: ${nullOr(era.end.month)}
     day: ${nullOr(era.end.day)}
-
+${stampLine}
 timeline_era_start: ${fmStart}
 timeline_era_end: ${fmEnd}
 timeline_era_color: ${escapeYaml(era.color ?? "")}

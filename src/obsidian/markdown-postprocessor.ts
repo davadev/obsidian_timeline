@@ -16,6 +16,7 @@ import {
   type ViewportRange,
 } from "../timeline/overlap";
 import type { TimelineEvent } from "../timeline/model";
+import { autoViewportFromEvents } from "../timeline/era-utils";
 import { renderTimeline } from "../renderer";
 import { DEFAULT_RENDER_OPTIONS, type RenderOptions } from "../renderer/render-options";
 import { parseFrontmatterDate, type TimelineDate } from "../timeline/date";
@@ -28,6 +29,8 @@ export interface PostProcessorContext {
   /** Single click router — plugin decides whether to open the note or inspector. */
   onEventClick: (id: string) => void;
   onEraClick: (id: string) => void;
+  /** Optional sync log appender for diagnostic events (e.g. filter persist miss). */
+  appendSyncLog?: (event: string, path: string, detail: string) => Promise<void>;
 }
 
 /**
@@ -189,7 +192,11 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         container: el,
         events,
         categories: doc.categories,
-        eras: doc.eras ? filterErasToViewport(doc.eras, resolvedViewport) : undefined,
+        // Pass eras unfiltered — the renderer re-filters them against the
+        // active viewport on every filter tick, so pre-filtering here would
+        // make eras impossible to re-introduce after the user widens a range
+        // filter.
+        eras: doc.eras,
         viewport: resolvedViewport ?? undefined,
         options: opts,
         onOpenEvent: (id) => ctx.onEventClick(id),
@@ -367,6 +374,25 @@ function makeBlockPersister(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingState: import("../renderer/filter-bar").RichFilterState | null = null;
 
+  /** Run vault.process; return true if the old fence was found and replaced. */
+  const tryReplace = async (
+    file: TFile,
+    oldFence: string,
+    newFence: string
+  ): Promise<boolean> => {
+    let replaced = false;
+    try {
+      await ctx.app.vault.process(file, (raw) => {
+        if (!raw.includes(oldFence)) return raw;
+        replaced = true;
+        return raw.replace(oldFence, newFence);
+      });
+    } catch {
+      return false;
+    }
+    return replaced;
+  };
+
   const flush = async () => {
     timer = null;
     const state = pendingState;
@@ -379,15 +405,40 @@ function makeBlockPersister(
     if (nextBody === currentBody) return;
     const oldFence = "```timeline\n" + currentBody + "\n```";
     const newFence = "```timeline\n" + nextBody + "\n```";
-    try {
-      await ctx.app.vault.process(file, (raw) => {
-        if (!raw.includes(oldFence)) return raw;
-        return raw.replace(oldFence, newFence);
-      });
+    if (await tryReplace(file, oldFence, newFence)) {
       currentBody = nextBody;
-    } catch {
-      // localStorage in filter-bar already has the state — view stays correct.
+      return;
     }
+    // Old fence missing — another device (or the user) likely rewrote the
+    // block. Re-read the file, pick the first ```timeline``` block, and retry
+    // once with its current body as the new baseline.
+    try {
+      const raw = await ctx.app.vault.read(file);
+      const match = /```timeline\n([\s\S]*?)\n```/.exec(raw);
+      if (match) {
+        const freshBody = match[1];
+        const freshNext = serializeBlockBody(freshBody, state);
+        if (freshNext !== freshBody) {
+          const oldF2 = "```timeline\n" + freshBody + "\n```";
+          const newF2 = "```timeline\n" + freshNext + "\n```";
+          if (await tryReplace(file, oldF2, newF2)) {
+            currentBody = freshNext;
+            return;
+          }
+        } else {
+          currentBody = freshBody; // converged on someone else's write
+          return;
+        }
+      }
+    } catch {
+      // fall through to log
+    }
+    void ctx.appendSyncLog?.(
+      "filter-persist-failed",
+      sourcePath,
+      "could not locate timeline block to update"
+    );
+    // State remains in localStorage for this device — UI stays consistent.
   };
 
   return (state) => {
@@ -473,33 +524,9 @@ async function hostIsViewportNote(
   return tl.role === "viewport";
 }
 
-/** Drop eras whose range doesn't overlap the visible viewport. */
-function filterErasToViewport(
-  eras: NonNullable<ReturnType<() => import("../timeline/model").TimelineDoc["eras"]>>,
-  vp: ViewportRange | null
-): typeof eras {
-  if (!vp || !eras) return eras;
-  return eras.filter(
-    (e) => e.start.year <= vp.end.year && e.end.year >= vp.start.year
-  );
-}
-
+// filterErasToViewport + autoViewport moved to ../timeline/era-utils so the
+// renderer can re-filter eras dynamically on every filter tick. This shim
+// keeps the existing single call site here happy.
 function autoViewport(events: TimelineEvent[]): ViewportRange | undefined {
-  if (events.length === 0) return undefined;
-  let start = events[0].start;
-  let end = events[0].end;
-  for (const e of events) {
-    if (compareViewport(e.start, start) < 0) start = e.start;
-    if (compareViewport(e.end, end) > 0) end = e.end;
-  }
-  return { start, end };
-}
-
-function compareViewport(
-  a: { year: number; month?: number; day?: number },
-  b: { year: number; month?: number; day?: number }
-): number {
-  if (a.year !== b.year) return a.year - b.year;
-  if ((a.month ?? 1) !== (b.month ?? 1)) return (a.month ?? 1) - (b.month ?? 1);
-  return (a.day ?? 1) - (b.day ?? 1);
+  return autoViewportFromEvents(events);
 }

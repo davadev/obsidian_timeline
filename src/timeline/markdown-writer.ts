@@ -16,6 +16,12 @@ export interface WriteOptions {
   extraFrontmatter?: Record<string, unknown>;
   /** Existing body (Markdown below frontmatter). If absent we synthesize one. */
   body?: string;
+  /**
+   * mtime of the source XML at the time this note is being written from it.
+   * Stamped into `timeline.last_synced_xml_mtime` so importXml can detect
+   * locally edited notes (file mtime > stamp) and skip them.
+   */
+  sourceMtime?: number | null;
 }
 
 const SECTION_TEXT = "## Text";
@@ -74,6 +80,9 @@ export function renderEventMarkdown(
         ? { icon: ev.icon }
         : {}),
     ...(ev.alert != null ? { alert: ev.alert } : {}),
+    ...(opts.sourceMtime != null
+      ? { last_synced_xml_mtime: opts.sourceMtime }
+      : {}),
   };
 
   // Top-level mirror props
@@ -94,6 +103,11 @@ function defaultBody(ev: TimelineEvent): string {
   if (ev.iconAttachmentPath) {
     lines.push("## Image", "", `![[${ev.iconAttachmentPath}]]`, "");
   }
+  // viewport: true → the inline block narrows to THIS event's date (with the
+  // configured pointPaddingYears around single-point events) instead of
+  // auto-fitting to all events on the timeline, which would zoom out so far
+  // that eras span the entire chart. Users who insert their own ```timeline
+  // block via the action picker still get the unrestricted default.
   lines.push(
     SECTION_TEXT,
     "",
@@ -108,6 +122,7 @@ function defaultBody(ev: TimelineEvent): string {
     "```timeline",
     "mode: hybrid",
     "source: main",
+    "viewport: true",
     "```",
     ""
   );
@@ -119,7 +134,8 @@ export function renderExistingEventNote(
   note: EventNote,
   sourceXmlPath: string,
   timelineId: string,
-  mirrorNames?: MirrorPropertyNames
+  mirrorNames?: MirrorPropertyNames,
+  sourceMtime?: number | null
 ): string {
   return renderEventMarkdown(note.event, {
     sourceXmlPath,
@@ -127,5 +143,6 @@ export function renderExistingEventNote(
     mirrorNames,
     extraFrontmatter: note.extraFrontmatter,
     body: note.body,
+    sourceMtime: sourceMtime ?? note.lastSyncedXmlMtime ?? null,
   });
 }

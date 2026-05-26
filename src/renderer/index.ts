@@ -6,8 +6,13 @@ import {
   applyRichFilter,
   distinctCategories,
   renderRichFilterBar,
+  type RichFilterState,
 } from "./filter-bar";
 import type { RenderOptions } from "./render-options";
+import {
+  autoViewportFromEvents,
+  filterErasToViewport,
+} from "../timeline/era-utils";
 
 export { DEFAULT_RENDER_OPTIONS, type RenderOptions } from "./render-options";
 
@@ -45,22 +50,45 @@ export function renderTimeline(args: RenderArgs): void {
   // Mount-point for the bar+list combo (so filter chips re-render only the body).
   const body = args.container.createDiv({ cls: "txs-timeline-body" });
 
-  const drawEvents = (events: typeof args.events, zoomOverride?: number | null) => {
+  const drawEvents = (
+    events: typeof args.events,
+    state: RichFilterState | null,
+    zoomOverride?: number | null
+  ) => {
     body.empty();
     const { mode } = args.options;
     const effectiveZoom = zoomOverride != null ? zoomOverride : args.options.zoom;
+
+    // Derive the viewport from the current filter state so the time axis,
+    // event bars, and era bands all share the same range. Precedence:
+    //   1. explicit filter date range (user typed a from/to)
+    //   2. auto-fit to the currently-filtered events (handles "show events
+    //      in this era" / "events around this single-point note")
+    //   3. fall back to the caller's args.viewport when filter yields nothing
+    const filterRange: ViewportRange | undefined =
+      state?.start && state?.end
+        ? { start: state.start, end: state.end }
+        : undefined;
+    const effViewport: ViewportRange | undefined =
+      filterRange ?? autoViewportFromEvents(events) ?? args.viewport;
+    // Eras are background bands — only show the ones overlapping the visible
+    // viewport so a narrow viewer doesn't get scaled to span the entire Iron
+    // Age. Eras themselves have no category/label metadata so range overlap
+    // is the only applicable filter.
+    const effEras = filterErasToViewport(args.eras, effViewport);
+
     if (mode === "bar" || mode === "hybrid") {
       renderBar({
         container: body,
         events,
         categories: args.categories,
-        viewport: args.viewport,
+        viewport: effViewport,
         categoryColors: args.categoryColors,
         onOpenEvent: args.onOpenEvent,
         zoom: effectiveZoom,
         orientation: args.options.orientation,
         isMobile: args.isMobile,
-        eras: args.eras,
+        eras: effEras,
         onOpenEra: args.onOpenEra,
       });
     }
@@ -72,7 +100,7 @@ export function renderTimeline(args: RenderArgs): void {
         onOpenEvent: args.onOpenEvent,
         isMobile: args.isMobile,
         categoryColors: args.categoryColors,
-        eras: args.eras,
+        eras: effEras,
         onOpenEra: args.onOpenEra,
       });
     }
@@ -93,13 +121,17 @@ export function renderTimeline(args: RenderArgs): void {
       precision: args.filterPrecision ?? "year",
       defaultOpen: false, // inline blocks always collapsed by default
       onChange: (state) => {
-        drawEvents(applyRichFilter(args.events, state), state.zoom);
+        drawEvents(applyRichFilter(args.events, state), state, state.zoom);
         args.onFilterChange?.(state);
       },
     });
-    drawEvents(applyRichFilter(args.events, handle.state), handle.state.zoom);
+    drawEvents(
+      applyRichFilter(args.events, handle.state),
+      handle.state,
+      handle.state.zoom
+    );
   } else {
-    drawEvents(args.events);
+    drawEvents(args.events, null);
   }
 
   // Place body after the filter panel (createDiv appended it before).

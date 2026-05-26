@@ -10,6 +10,10 @@ import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
 import {
+  shouldSkipNoteOverwrite,
+  shouldAbortXmlWrite,
+} from "./sync-policy";
+import {
   arrayBufferToBase64,
   base64ToArrayBuffer,
   guessImageExtension,
@@ -24,12 +28,17 @@ export interface CommandsContext {
   cache: TimelineCache;
   getSettings: () => TimelineXmlSyncSettings;
   saveSettings: () => Promise<void>;
-  /** Suppress sync loop while plugin itself writes files. */
-  withSelfWrite: <T>(fn: () => Promise<T>) => Promise<T>;
+  /**
+   * Suppress sync loop while plugin itself writes files. Pass `paths` so the
+   * suppression is scoped to those files instead of suppressing everything.
+   */
+  withSelfWrite: <T>(fn: () => Promise<T>, paths?: string[]) => Promise<T>;
   /** Replace stored diagnostics. */
   setDiagnostics: (lines: string[]) => void;
   /** Interactive "new event" flow: prompt title, create note, open inspector. */
   createEventInteractive: () => Promise<void>;
+  /** Append a structured line to the sync log (best-effort). */
+  appendSyncLog: (event: string, path: string, detail: string) => Promise<void>;
 }
 
 export function registerCommands(ctx: CommandsContext): void {
@@ -254,16 +263,39 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   // Backup XML first — extra paranoia, the user could still recover.
   if (s.backupEnabled) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
-    if (bak) console.log("[Timeline XML Sync] pre-reimport backup:", bak);
+    if (bak) {
+      console.log("[Timeline XML Sync] pre-reimport backup:", bak);
+      const pruned = await ctx.vault.pruneXmlBackups(
+        s.sourceXmlPath,
+        s.backupRetention
+      );
+      if (pruned > 0) console.log(`[Timeline XML Sync] pruned ${pruned} old XML backup(s)`);
+    }
+  }
+  // Back up MD notes BEFORE deletion. Critical for the multi-device case:
+  // another device may have created notes that haven't propagated to XML yet;
+  // a stale-XML reimport would silently delete them otherwise.
+  const mdBackup = await ctx.vault.backupFolder(s.eventNotesDir, "wipe");
+  if (mdBackup) {
+    new Notice(`Backed up MD notes to ${mdBackup}`, 6000);
+    void ctx.appendSyncLog("wipe-backup", mdBackup, `from ${s.eventNotesDir}`);
+    const prunedFolders = await ctx.vault.pruneFolderBackups(
+      "wipe",
+      s.backupRetention
+    );
+    if (prunedFolders > 0) {
+      console.log(`[Timeline XML Sync] pruned ${prunedFolders} old MD backup folder(s)`);
+    }
   }
   const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
+  const filePaths = files.map((f) => f.path);
   let removed = 0;
   await ctx.withSelfWrite(async () => {
     for (const f of files) {
       await ctx.vault.deleteFile(f.path);
       removed++;
     }
-  });
+  }, filePaths);
   await importXml(ctx);
   s.lastImportSchemaVersion = EVENT_NOTE_SCHEMA_VERSION;
   await ctx.saveSettings();
@@ -274,6 +306,8 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
 export function needsSchemaReimport(s: TimelineXmlSyncSettings): boolean {
   return s.lastImportSchemaVersion < EVENT_NOTE_SCHEMA_VERSION;
 }
+
+export { shouldSkipNoteOverwrite, shouldAbortXmlWrite } from "./sync-policy";
 
 function reportErr(e: unknown): void {
   console.error("[Timeline XML Sync]", e);
@@ -290,6 +324,12 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   const doc = await ctx.cache.getXml(s.sourceXmlPath);
   await ctx.vault.ensureFolder(s.eventNotesDir);
 
+  // Source mtime stamped into every newly written note so future imports can
+  // detect "this note was edited locally after we wrote it from XML" and skip
+  // overwriting. Captured once here so all notes from this import share the
+  // same baseline.
+  const xmlMtime = ctx.vault.getMtime(s.sourceXmlPath);
+
   // Auto-populate category palette + knownCategories from the XML.
   ingestCategories(s, doc.categories);
   s.lastImportSchemaVersion = EVENT_NOTE_SCHEMA_VERSION;
@@ -298,8 +338,35 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   const attachmentsDir = `${s.eventNotesDir}/_attachments`;
   let created = 0;
   let updated = 0;
+  const skipped: string[] = [];
+  const writtenPaths: string[] = [];
   await ctx.withSelfWrite(async () => {
     for (const ev of doc.events) {
+      const path = `${s.eventNotesDir}/${ev.id}.md`;
+      // Skip notes that have local edits made after the last XML-driven write.
+      // Stamp check first — if the note never carried a stamp we treat it as
+      // unknown and skip too (legacy notes; reset by `Wipe and reimport`).
+      const onDisk = ctx.vault.getFile(path);
+      if (onDisk) {
+        try {
+          const raw = await ctx.vault.readText(path);
+          const parsed = parseEventNote(raw, {
+            path,
+            mirrorNames: s.mirrorNames,
+          });
+          if (
+            shouldSkipNoteOverwrite(onDisk.stat.mtime, parsed.note?.lastSyncedXmlMtime)
+          ) {
+            skipped.push(path);
+            continue;
+          }
+        } catch (e) {
+          // Unparseable note — refuse to overwrite blindly.
+          console.warn("[Timeline XML Sync] could not parse existing note", path, e);
+          skipped.push(path);
+          continue;
+        }
+      }
       // Picture sync (XML → MD): if the event carries a base64 icon, write
       // it to a vault attachment and put the path on the event.
       if (ev.icon && ev.icon.trim()) {
@@ -318,36 +385,81 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
         sourceXmlPath: s.sourceXmlPath,
         timelineId: s.timelineId,
         mirrorNames: s.mirrorNames,
+        sourceMtime: xmlMtime,
       });
-      const path = `${s.eventNotesDir}/${ev.id}.md`;
-      const existed = ctx.vault.exists(path);
+      const existed = !!onDisk;
       await ctx.vault.writeText(path, md);
+      writtenPaths.push(path);
       if (existed) updated++;
       else created++;
     }
-  });
+  }, writtenPaths);
   // Era notes — one Markdown file per <era>, written into _eras/ so they
-  // sit next to but not mingled with the editable event notes. These notes
-  // are read-only references; era data is sourced from the XML.
+  // sit next to but not mingled with the editable event notes. Same
+  // newer-than-stamp guard as events: inspector edits aren't overwritten.
+  let erasSkipped = 0;
   if (doc.eras && doc.eras.length) {
     const erasDir = `${s.eventNotesDir}/_eras`;
     await ctx.vault.ensureFolder(erasDir);
+    const eraWrittenPaths: string[] = [];
     await ctx.withSelfWrite(async () => {
       for (const era of doc.eras!) {
-        const md = renderEraMarkdown(era, s.timelineId, s.sourceXmlPath);
         const path = `${erasDir}/${era.id}.md`;
+        const onDisk = ctx.vault.getFile(path);
+        if (onDisk) {
+          try {
+            const raw = await ctx.vault.readText(path);
+            const parsed = (await import("../timeline/era-md")).parseEraNote(
+              raw,
+              era.id
+            );
+            if (
+              shouldSkipNoteOverwrite(onDisk.stat.mtime, parsed?.lastSyncedXmlMtime)
+            ) {
+              erasSkipped++;
+              skipped.push(path);
+              continue;
+            }
+          } catch {
+            erasSkipped++;
+            skipped.push(path);
+            continue;
+          }
+        }
+        const md = renderEraMarkdown(era, s.timelineId, s.sourceXmlPath, xmlMtime);
         await ctx.vault.writeText(path, md);
+        eraWrittenPaths.push(path);
       }
-    });
+    }, []);
+    void eraWrittenPaths; // reserved for future per-path self-write scoping
   }
 
 
+  // Persist the XML mtime so external-change detection has a baseline.
+  if (xmlMtime != null) {
+    s.lastWrittenXmlMtime = xmlMtime;
+    await ctx.saveSettings();
+  }
   ctx.cache.resetIndex();
-  new Notice(
-    `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
-      doc.eras?.length ? `, ${doc.eras.length} era(s)` : ""
-    }.`
-  );
+  if (skipped.length) {
+    void ctx.appendSyncLog(
+      "import-skipped",
+      s.sourceXmlPath,
+      `${skipped.length} note(s): ${skipped.slice(0, 10).join(", ")}${
+        skipped.length > 10 ? " …" : ""
+      }`
+    );
+    new Notice(
+      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits). Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See _logs/timeline-sync.log.`,
+      10000
+    );
+  } else {
+    new Notice(
+      `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
+        doc.eras?.length ? `, ${doc.eras.length} era(s)` : ""
+      }${erasSkipped ? `, ${erasSkipped} era(s) skipped` : ""}.`
+    );
+  }
 }
 
 
@@ -413,6 +525,14 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   const s = ctx.getSettings();
   if (!s.sourceXmlPath) throw new Error("Configure XML path in settings first.");
 
+  // Snapshot mtime BEFORE we read anything. After merge, before write, we
+  // re-read mtime and abort if it moved (and doesn't match what we last
+  // wrote). Prevents the multi-device read-modify-write race: device A reads
+  // the cache, Nextcloud lands device B's edit, device A overwrites.
+  const baseMtime = ctx.vault.exists(s.sourceXmlPath)
+    ? ctx.vault.getMtime(s.sourceXmlPath)
+    : null;
+
   const { notes, errors: parseErrors } = await loadAllNotes(ctx);
   const result = validateAll(notes);
   const all = [...parseErrors, ...result.errors];
@@ -438,9 +558,33 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     };
   }
 
+  // CAS check: did the XML change while we were reading + merging?
+  if (ctx.vault.exists(s.sourceXmlPath)) {
+    const now = ctx.vault.getMtime(s.sourceXmlPath);
+    if (shouldAbortXmlWrite(baseMtime, now, s.lastWrittenXmlMtime)) {
+      new Notice(
+        "Timeline XML changed externally — refusing to overwrite. Run \"Import XML\" to pull remote changes, then \"Regenerate XML\" again.",
+        10000
+      );
+      void ctx.appendSyncLog(
+        "regen-aborted-external-change",
+        s.sourceXmlPath,
+        `base=${baseMtime} now=${now} lastWritten=${s.lastWrittenXmlMtime}`
+      );
+      return;
+    }
+  }
+
   if (s.backupEnabled && ctx.vault.exists(s.sourceXmlPath)) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
-    if (bak) console.log("[Timeline XML Sync] backup:", bak);
+    if (bak) {
+      console.log("[Timeline XML Sync] backup:", bak);
+      const pruned = await ctx.vault.pruneXmlBackups(
+        s.sourceXmlPath,
+        s.backupRetention
+      );
+      if (pruned > 0) console.log(`[Timeline XML Sync] pruned ${pruned} XML backup(s)`);
+    }
   }
 
   // Picture sync (MD → XML): for any event whose note carries an
@@ -464,8 +608,14 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   const xml = writeTimelineXml(merged);
   await ctx.withSelfWrite(async () => {
     await ctx.vault.writeText(s.sourceXmlPath, xml);
-  });
+  }, [s.sourceXmlPath]);
   ctx.cache.invalidateXml(s.sourceXmlPath);
+  // Stamp last-written mtime so external-change detection has a baseline.
+  const writtenMtime = ctx.vault.getMtime(s.sourceXmlPath);
+  if (writtenMtime != null) {
+    s.lastWrittenXmlMtime = writtenMtime;
+    await ctx.saveSettings();
+  }
   new Notice(`Timeline XML regenerated — ${notes.length} events.`);
 }
 

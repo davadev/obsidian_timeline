@@ -120,6 +120,8 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     if (key in front) mirrorsSeen[key] = front[key];
   }
 
+  const lastSyncedXmlMtime = numOrUndef(timeline.last_synced_xml_mtime);
+
   return {
     note: {
       event: ev,
@@ -127,6 +129,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
       extraFrontmatter,
       body,
       mirrors: mirrorsSeen,
+      lastSyncedXmlMtime,
     },
     errors,
   };

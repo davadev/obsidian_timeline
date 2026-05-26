@@ -63,6 +63,20 @@ export interface TimelineXmlSyncSettings {
    * - "time": adds hour + minute + second on top of day
    */
   globalFilterPrecision: "year" | "day" | "time";
+  /**
+   * Multi-device sync hardening (Nextcloud / iCloud / Remotely Save).
+   * See plan: /Users/danielvavrik/.claude/plans/twinkly-crunching-noodle.md
+   */
+  /** mtime of the XML file as it was last written by this plugin. Used to detect remote edits. */
+  lastWrittenXmlMtime: number | null;
+  /** Skip auto-sync for this many ms after plugin load (lets remote sync finish initial pull). */
+  autoSyncStartupDelayMs: number;
+  /** TTL of per-path self-write suppression. Remote sync can land just-written files seconds later. */
+  selfWriteTtlMs: number;
+  /** Append-only sync log under _logs/timeline-sync.log (rotated ~200KB). */
+  syncLogEnabled: boolean;
+  /** Keep most recent N backups (XML .bak-* siblings AND _backups/<label>-* folders). */
+  backupRetention: number;
 }
 
 /**
@@ -94,4 +108,9 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   firstRunCompleted: false,
   clickBehavior: "inspector",
   globalFilterPrecision: "year",
+  lastWrittenXmlMtime: null,
+  autoSyncStartupDelayMs: 30_000,
+  selfWriteTtlMs: 5_000,
+  syncLogEnabled: true,
+  backupRetention: 5,
 };

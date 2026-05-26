@@ -67,6 +67,12 @@ export interface TimelineEra {
   color?: Color;
   /** Preserved raw `<era>` subtree for unknown sub-elements. */
   raw?: unknown;
+  /**
+   * Epoch-ms mtime of source XML when era MD was last written from it.
+   * Used by importXml to detect locally edited era notes (file mtime > stamp)
+   * and skip them. Only relevant on EventNote-equivalent of eras.
+   */
+  lastSyncedXmlMtime?: number;
 }
 
 export interface DisplayedPeriod {
@@ -107,6 +113,12 @@ export interface EventNote {
   body: string;
   /** Mirror property values that were present on disk (for diffing). */
   mirrors: Record<string, unknown>;
+  /**
+   * Epoch-ms mtime of the source XML when this note was last written by the
+   * plugin (read from `timeline.last_synced_xml_mtime`). Used by importXml to
+   * detect locally edited notes and skip them. Undefined for legacy notes.
+   */
+  lastSyncedXmlMtime?: number;
 }
 
 /** Settings-mapped mirror property names (top-level frontmatter keys). */

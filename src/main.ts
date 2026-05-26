@@ -55,8 +55,13 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   private templates!: TemplateService;
   private cache!: TimelineCache;
   private commandsCtx!: CommandsContext;
-  private writingPaths = new Set<string>();
+  /** Per-path expiry stamps for self-write suppression. `__SELF__` is a global fallback. */
+  private recentSelfWrites = new Map<string, number>();
   private debouncedSync?: () => void;
+  /** Wall-clock epoch-ms when fullOnload finished. Auto-sync defers until startup grace elapses. */
+  private loadedAt = 0;
+  /** One-shot guard so external-XML-change Notice does not repeat every tick. */
+  private externalChangeAnnounced = false;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -248,6 +253,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   }
 
   private async fullOnload(): Promise<void> {
+    this.loadedAt = Date.now();
     this.vault = new VaultAdapter(this.app);
     this.cache = new TimelineCache(this.app, () => this.settings);
     this.templates = new TemplateService(this.app, this.vault, () => ({
@@ -265,7 +271,9 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       cache: this.cache,
       getSettings: () => this.settings,
       saveSettings: () => this.saveSettings(),
-      withSelfWrite: async (fn) => this.withSelfWrite(fn),
+      withSelfWrite: async (fn, paths) => this.withSelfWrite(fn, paths),
+      appendSyncLog: (event, path, detail) =>
+        this.appendSyncLog(event, path, detail),
       setDiagnostics: (lines) => {
         this.diagnostics = lines;
       },
@@ -299,6 +307,8 @@ export default class TimelineXmlSyncPlugin extends Plugin {
           getSettings: () => this.settings,
           onEventClick: (id) => this.onEventClick(id),
           onEraClick: (id) => this.onEraClick(id),
+          appendSyncLog: (event, path, detail) =>
+            this.appendSyncLog(event, path, detail),
         }),
         "render"
       )
@@ -426,6 +436,13 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       setTimeout(() => void this.runFirstInstall(), 800);
     }
 
+    // Watch XML mtime so we can notice when remote sync lands a change.
+    // Throttled (30s) — vault.on("modify") would also catch it but only on
+    // some platforms, and would race with our own writes.
+    this.registerInterval(
+      window.setInterval(() => void this.checkExternalXml(), 30_000)
+    );
+
     // One-shot notice if the on-disk notes were written by an older schema.
     if (
       this.settings.lastImportSchemaVersion > 0 &&
@@ -544,12 +561,106 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     }).commands.executeCommandById(`${this.manifest.id}:${id}`);
   }
 
-  private async withSelfWrite<T>(fn: () => Promise<T>): Promise<T> {
-    this.writingPaths.add("__SELF__");
+  /**
+   * One-shot pruning entry point used by the settings tab.
+   * - kind="xml": `arg` is the XML path; keep `keep` newest .bak-* siblings.
+   * - kind="folder": `arg` is the label; keep `keep` newest `_backups/<label>-*` folders.
+   */
+  async runVaultPrune(
+    kind: "xml" | "folder",
+    arg: string,
+    keep: number
+  ): Promise<number> {
+    if (kind === "xml") return this.vault.pruneXmlBackups(arg, keep);
+    return this.vault.pruneFolderBackups(arg, keep);
+  }
+
+  /**
+   * Mark a region of code as a plugin-initiated write so the vault-event
+   * handler does not treat the resulting `modify`/`create` events as user
+   * edits and trigger a sync loop.
+   *
+   * If `paths` is provided each one is stamped individually so only events for
+   * those paths are suppressed. The `__SELF__` sentinel is always set as a
+   * coarse fallback for legacy callers that don't know the target paths.
+   *
+   * TTL comes from `settings.selfWriteTtlMs` — remote sync (Nextcloud / iCloud)
+   * can land a just-written file seconds after the local write, so the old
+   * 300ms window was too short and let those landings re-trigger auto-sync.
+   */
+  async withSelfWrite<T>(fn: () => Promise<T>, paths?: string[]): Promise<T> {
+    const ttl = this.settings.selfWriteTtlMs ?? 5000;
+    const exp = Date.now() + ttl;
+    if (paths) {
+      for (const p of paths) this.recentSelfWrites.set(normalizePath(p), exp);
+    }
+    this.recentSelfWrites.set("__SELF__", exp);
     try {
       return await fn();
     } finally {
-      setTimeout(() => this.writingPaths.delete("__SELF__"), 300);
+      // Lazy-evict expired entries to keep the map small over long sessions.
+      setTimeout(() => {
+        const now = Date.now();
+        for (const [k, e] of Array.from(this.recentSelfWrites.entries())) {
+          if (e <= now) this.recentSelfWrites.delete(k);
+        }
+      }, ttl + 100);
+    }
+  }
+
+  private isSelfWrite(path: string): boolean {
+    const now = Date.now();
+    const exp = this.recentSelfWrites.get(normalizePath(path));
+    if (exp && exp > now) return true;
+    const sentinel = this.recentSelfWrites.get("__SELF__");
+    return !!(sentinel && sentinel > now);
+  }
+
+  /** Append a line to _logs/timeline-sync.log (best-effort, rotated at ~200KB). */
+  async appendSyncLog(event: string, path: string, detail: string): Promise<void> {
+    if (!this.settings.syncLogEnabled) return;
+    try {
+      const logPath = "_logs/timeline-sync.log";
+      const line = `${new Date().toISOString()}\t${event}\t${path}\t${detail}\n`;
+      await this.vault.ensureFolder("_logs");
+      let prev = "";
+      if (this.vault.exists(logPath)) {
+        prev = await this.vault.readText(logPath);
+        if (prev.length > 200_000) prev = prev.slice(-100_000);
+      }
+      await this.withSelfWrite(
+        () => this.vault.writeText(logPath, prev + line),
+        [logPath]
+      );
+    } catch (e) {
+      console.warn("[Timeline XML Sync] sync log write failed:", e);
+    }
+  }
+
+  private async checkExternalXml(): Promise<void> {
+    const s = this.settings;
+    if (!s.sourceXmlPath) return;
+    const mtime = this.vault.getMtime(s.sourceXmlPath);
+    if (mtime == null) return;
+    // Allow a 2s grace for filesystem mtime quantization.
+    if (
+      s.lastWrittenXmlMtime != null &&
+      mtime > s.lastWrittenXmlMtime + 2000
+    ) {
+      if (!this.externalChangeAnnounced) {
+        new Notice(
+          "Timeline XML changed externally (remote sync?). Run \"Import XML\" to pick up changes before editing.",
+          8000
+        );
+        this.externalChangeAnnounced = true;
+        void this.appendSyncLog(
+          "external-xml-change",
+          s.sourceXmlPath,
+          `mtime=${mtime} vs lastWritten=${s.lastWrittenXmlMtime}`
+        );
+      }
+    } else {
+      this.externalChangeAnnounced = false;
     }
   }
 
@@ -582,9 +693,14 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       }
       // Auto-sync trigger gating (per-device override takes precedence).
       if (!effectiveAutoSync(this.settings.autoSync)) return;
-      if (this.writingPaths.has("__SELF__")) return;
+      if (this.isSelfWrite(file.path)) return;
       if (file.extension !== "md") return;
       if (!inDir(file.path) && !(oldPath && inDir(oldPath))) return;
+      // Startup grace: let remote sync (Nextcloud / iCloud) finish its initial
+      // pull before we start writing XML. Otherwise auto-sync may fire on a
+      // half-pulled state and clobber edits from another device.
+      const sinceLoad = Date.now() - this.loadedAt;
+      if (sinceLoad < this.settings.autoSyncStartupDelayMs) return;
       this.debouncedSync?.();
     } catch (e) {
       console.error("[Timeline XML Sync] vault-event handler error:", e);
