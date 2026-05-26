@@ -206,6 +206,8 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         filterKey: opts.source || "default",
         isMobile: Platform.isMobile,
         filterPrecision: settings.globalFilterPrecision,
+        fuzzyGradientPercent: settings.fuzzyGradientPercent,
+        eventLabelColor: settings.eventLabelColor,
         // Persist filter state directly into the block YAML so it survives a
         // note reload and travels with the note across devices. Falls back to
         // the localStorage state if the file write fails (e.g. the block

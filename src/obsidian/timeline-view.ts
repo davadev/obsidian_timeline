@@ -322,6 +322,8 @@ export class TimelineView extends ItemView {
       initialHidden: [],
       filterKey: `view:${settings.timelineId}`,
       isMobile: Platform.isMobile,
+      fuzzyGradientPercent: settings.fuzzyGradientPercent,
+      eventLabelColor: settings.eventLabelColor,
     });
 
     requestAnimationFrame(() => {

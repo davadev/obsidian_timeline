@@ -210,16 +210,60 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       isMobile: false,
     });
     const svg = container.querySelector("svg")!;
-    const grads = svg.querySelectorAll("linearGradient");
-    expect(grads.length).toBeGreaterThanOrEqual(1);
-    const stops = grads[0].querySelectorAll("stop");
-    // Both fuzzy: 3 stops, opacity 0 / 1 / 0.
-    expect(stops.length).toBe(3);
+    const stops = svg.querySelectorAll("stop");
+    // Both fuzzy with default 20% fade: 4 stops, opacity 0 / 1 / 1 / 0.
+    expect(stops.length).toBe(4);
     expect(stops[0].getAttribute("stop-opacity")).toBe("0");
+    expect(stops[0].getAttribute("offset")).toBe("0%");
     expect(stops[1].getAttribute("stop-opacity")).toBe("1");
-    expect(stops[2].getAttribute("stop-opacity")).toBe("0");
+    expect(stops[1].getAttribute("offset")).toBe("20%");
+    expect(stops[2].getAttribute("stop-opacity")).toBe("1");
+    expect(stops[2].getAttribute("offset")).toBe("80%");
+    expect(stops[3].getAttribute("stop-opacity")).toBe("0");
     const bar = svg.querySelector("rect.txs-event-bar")!;
     expect(bar.getAttribute("fill")).toMatch(/^url\(#txs-fuzzy-/);
+  });
+
+  it("honours fuzzyGradientPercent override (5% = tight halo)", () => {
+    const container = withContainer();
+    const e = ev("fuzz-tight", 100, 200);
+    e.fuzzyStart = true;
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      categoryColors: {},
+      initialHidden: [],
+      filterKey: "test:fuzzy-tight",
+      isMobile: false,
+      fuzzyGradientPercent: 5,
+    });
+    const stops = container.querySelector("svg")!.querySelectorAll("stop");
+    expect(stops[1].getAttribute("offset")).toBe("5%");
+  });
+
+  it("honours eventLabelColor override on bar labels", () => {
+    const container = withContainer();
+    const e = ev("big", 100, 200);
+    e.text = "Big enough title to force a label render";
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar", zoom: 8 },
+      onOpenEvent: () => {},
+      categoryColors: {},
+      initialHidden: [],
+      filterKey: "test:label-color",
+      isMobile: false,
+      eventLabelColor: "#ff00ff",
+    });
+    const label = container.querySelector("text.txs-event-label")!;
+    expect(label.getAttribute("fill")).toBe("#ff00ff");
   });
 
   it("renders fuzzy-start-only as 0→40%→100% gradient with opacities 0,1,1", () => {
@@ -240,8 +284,12 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
     });
     const svg = container.querySelector("svg")!;
     const stops = svg.querySelectorAll("stop");
+    // fuzzy_start only with default 20% fade: 0% / 20% / 100% opacities 0 / 1 / 1
     expect(stops.length).toBe(3);
+    expect(stops[0].getAttribute("offset")).toBe("0%");
     expect(stops[0].getAttribute("stop-opacity")).toBe("0");
+    expect(stops[1].getAttribute("offset")).toBe("20%");
+    expect(stops[1].getAttribute("stop-opacity")).toBe("1");
     expect(stops[2].getAttribute("stop-opacity")).toBe("1");
   });
 

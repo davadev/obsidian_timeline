@@ -79,6 +79,18 @@ export interface TimelineXmlSyncSettings {
   backupRetention: number;
   /** Trim leading/trailing whitespace in event descriptions when writing notes. */
   trimDescriptionOnWrite: boolean;
+  /**
+   * How far across the bar the fuzzy edge fades from transparent to fully opaque,
+   * in percent of the bar's long axis. Smaller = tighter fuzzy "halo".
+   * Clamped to [1, 49] at render time so opaque region always survives.
+   */
+  fuzzyGradientPercent: number;
+  /**
+   * Override the bar/point label color. Empty string = auto-contrast against
+   * the event's fill color (default). Useful when fuzzy gradients leave the
+   * label sitting over a partially transparent region.
+   */
+  eventLabelColor: string;
 }
 
 /**
@@ -116,4 +128,6 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   syncLogEnabled: true,
   backupRetention: 5,
   trimDescriptionOnWrite: true,
+  fuzzyGradientPercent: 20,
+  eventLabelColor: "",
 };

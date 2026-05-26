@@ -46,6 +46,10 @@ export interface BarRenderArgs {
   eras?: TimelineEra[];
   /** Click handler for era bands / labels. */
   onOpenEra?: (eraId: string) => void;
+  /** Percent of bar length the fuzzy-edge gradient fades over. Default 20. */
+  fuzzyGradientPercent?: number;
+  /** CSS color for event labels. Empty/undefined = auto-contrast vs. fill. */
+  eventLabelColor?: string;
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -65,6 +69,11 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   }
   const isVertical = orientation === "vertical";
   wrapper.toggleClass("txs-vertical", isVertical);
+  const gradientPercent = clampPercent(args.fuzzyGradientPercent ?? 20);
+  const labelColorOverride =
+    args.eventLabelColor && args.eventLabelColor.trim()
+      ? args.eventLabelColor.trim()
+      : null;
 
   const lanes = assignLanes(events);
   const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
@@ -104,7 +113,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     const lane = lanes[i];
     const cross = AXIS_PAD + lane * (LANE_THICKNESS + LANE_GAP);
     const color = colorFor(ev, categoryColors);
-    const textColor = contrastTextColor(color);
+    const textColor = labelColorOverride ?? contrastTextColor(color);
     if (ev.isPoint) {
       const along =
         fractionalPosition(ev.start, viewport.start, viewport.end) *
@@ -118,7 +127,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       const pointFuzzy = ev.fuzzyStart === true || ev.fuzzyEnd === true || ev.fuzzy === true;
       if (pointFuzzy) {
         const id = gradientId();
-        defs.appendChild(makeRadialFuzzyGradient(id, color));
+        defs.appendChild(makeRadialFuzzyGradient(id, color, gradientPercent));
         circle.setAttribute("fill", `url(#${id})`);
       } else {
         circle.setAttribute("fill", color);
@@ -154,7 +163,14 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       if (fuzzyStart || fuzzyEnd) {
         const id = gradientId();
         defs.appendChild(
-          makeLinearFuzzyGradient(id, color, fuzzyStart, fuzzyEnd, isVertical)
+          makeLinearFuzzyGradient(
+            id,
+            color,
+            fuzzyStart,
+            fuzzyEnd,
+            isVertical,
+            gradientPercent
+          )
         );
         rect.setAttribute("fill", `url(#${id})`);
       } else {
@@ -556,12 +572,20 @@ function makeGradientIdFactory(): () => string {
   return () => `txs-fuzzy-${salt}-${i++}`;
 }
 
+function clampPercent(p: number): number {
+  if (!Number.isFinite(p)) return 20;
+  if (p < 1) return 1;
+  if (p > 49) return 49;
+  return p;
+}
+
 function makeLinearFuzzyGradient(
   id: string,
   color: string,
   fuzzyStart: boolean,
   fuzzyEnd: boolean,
-  isVertical: boolean
+  isVertical: boolean,
+  fadePercent: number
 ): SVGLinearGradientElement {
   const g = document.createElementNS(SVG_NS, "linearGradient");
   g.setAttribute("id", id);
@@ -571,13 +595,14 @@ function makeLinearFuzzyGradient(
   g.setAttribute("x2", isVertical ? "0" : "1");
   g.setAttribute("y2", isVertical ? "1" : "0");
 
+  const p = clampPercent(fadePercent);
   const stops: Array<[string, number]> = [];
   if (fuzzyStart && fuzzyEnd) {
-    stops.push(["0%", 0], ["50%", 1], ["100%", 0]);
+    stops.push(["0%", 0], [`${p}%`, 1], [`${100 - p}%`, 1], ["100%", 0]);
   } else if (fuzzyStart) {
-    stops.push(["0%", 0], ["40%", 1], ["100%", 1]);
+    stops.push(["0%", 0], [`${p}%`, 1], ["100%", 1]);
   } else {
-    stops.push(["0%", 1], ["60%", 1], ["100%", 0]);
+    stops.push(["0%", 1], [`${100 - p}%`, 1], ["100%", 0]);
   }
   for (const [offset, op] of stops) {
     const s = document.createElementNS(SVG_NS, "stop");
@@ -589,14 +614,21 @@ function makeLinearFuzzyGradient(
   return g;
 }
 
-function makeRadialFuzzyGradient(id: string, color: string): SVGRadialGradientElement {
+function makeRadialFuzzyGradient(
+  id: string,
+  color: string,
+  fadePercent: number
+): SVGRadialGradientElement {
   const g = document.createElementNS(SVG_NS, "radialGradient");
   g.setAttribute("id", id);
   g.setAttribute("gradientUnits", "objectBoundingBox");
   g.setAttribute("cx", "0.5");
   g.setAttribute("cy", "0.5");
   g.setAttribute("r", "0.5");
-  for (const [offset, op] of [["0%", 1], ["55%", 1], ["100%", 0]] as const) {
+  // Inner solid disc grows as the fade-percent shrinks: smaller percent =
+  // narrower halo = larger solid core.
+  const inner = Math.max(0, Math.min(99, 100 - 2 * clampPercent(fadePercent)));
+  for (const [offset, op] of [["0%", 1], [`${inner}%`, 1], ["100%", 0]] as const) {
     const s = document.createElementNS(SVG_NS, "stop");
     s.setAttribute("offset", offset);
     s.setAttribute("stop-color", color);

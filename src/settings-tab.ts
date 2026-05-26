@@ -345,6 +345,36 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Fuzzy edge fade length (%)")
+      .setDesc(
+        "How far across an event's bar the transparent → opaque gradient stretches when fuzzy_start / fuzzy_end is set. 20 = a 20% sliver at the fuzzy edge fades in. Clamped to 1-49 at render time."
+      )
+      .addText((t) =>
+        t.setValue(String(s.fuzzyGradientPercent)).onChange(async (v) => {
+          const n = parseFloat(v);
+          if (Number.isFinite(n) && n >= 1 && n <= 49) {
+            s.fuzzyGradientPercent = n;
+            await this.plugin.saveSettings();
+          }
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Event label color")
+      .setDesc(
+        "CSS color (e.g. #1a1a1a, white, rgb(20,20,20)) for the text drawn on top of event bars. Leave empty for the auto-contrast default. Useful when fuzzy gradients leave the label sitting over a faded edge."
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("auto (contrast vs. fill)")
+          .setValue(s.eventLabelColor ?? "")
+          .onChange(async (v) => {
+            s.eventLabelColor = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Show in-render filter bar by default")
       .setDesc(
         "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false."

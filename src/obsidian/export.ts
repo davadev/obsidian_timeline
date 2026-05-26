@@ -73,6 +73,8 @@ export async function exportActiveNoteWithRenderedTimeline(
         initialHidden: [],
         filterKey: `export:${active.path}:${i}`,
         isMobile: false,
+        fuzzyGradientPercent: settings.fuzzyGradientPercent,
+        eventLabelColor: settings.eventLabelColor,
       });
       const svg = stage.querySelector("svg");
       if (!svg) continue;

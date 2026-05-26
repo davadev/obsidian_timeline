@@ -35,6 +35,10 @@ export interface RenderArgs {
   filterPrecision?: "year" | "day" | "time";
   /** Optional click router for era bands / chips / list entries. */
   onOpenEra?: (eraId: string) => void;
+  /** Percent of bar length the fuzzy-edge gradient fades over. */
+  fuzzyGradientPercent?: number;
+  /** Override CSS color for event labels. Empty = auto-contrast. */
+  eventLabelColor?: string;
   /**
    * Called whenever the rich filter state changes so the caller (post-
    * processor) can serialise it back into the block's YAML and write it
@@ -102,6 +106,8 @@ export function renderTimeline(args: RenderArgs): void {
         isMobile: args.isMobile,
         eras: effEras,
         onOpenEra: args.onOpenEra,
+        fuzzyGradientPercent: args.fuzzyGradientPercent,
+        eventLabelColor: args.eventLabelColor,
       });
     }
     if (mode === "list" || mode === "hybrid") {
