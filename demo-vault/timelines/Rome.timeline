@@ -348,6 +348,305 @@
       <ends_today>False</ends_today>
       <labels>key</labels>
     </event>
+    <event id="conquest-greece">
+      <start>-0146-01-01 00:00:00</start>
+      <end>-0146-01-01 00:00:00</end>
+      <text>Rome destroys Corinth</text>
+      <category>Wars</category>
+      <description>Greece becomes a Roman province. Same year as Carthage.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="cicero">
+      <start>-0106-01-03 00:00:00</start>
+      <end>-0043-12-07 00:00:00</end>
+      <text>Life of Cicero</text>
+      <category>People</category>
+      <description>Statesman, orator, philosopher. Killed in the proscriptions.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="pompey">
+      <start>-0106-09-29 00:00:00</start>
+      <end>-0048-09-28 00:00:00</end>
+      <text>Life of Pompey the Great</text>
+      <category>People</category>
+      <description>Triumvir with Caesar and Crassus. Killed in Egypt after Pharsalus.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="caesar-life">
+      <start>-0100-07-13 00:00:00</start>
+      <end>-0044-03-15 00:00:00</end>
+      <text>Life of Julius Caesar</text>
+      <category>People</category>
+      <description>Consul, dictator, conqueror of Gaul.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="sulla">
+      <start>-0082-01-01 00:00:00</start>
+      <end>-0079-01-01 00:00:00</end>
+      <text>Dictatorship of Sulla</text>
+      <category>Republic</category>
+      <description>First man to march on Rome with an army. Constitutional reforms.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="spartacus">
+      <start>-0073-01-01 00:00:00</start>
+      <end>-0071-01-01 00:00:00</end>
+      <text>Third Servile War (Spartacus)</text>
+      <category>Wars</category>
+      <description>Slave revolt led by Spartacus. Crushed by Crassus and Pompey.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="first-triumvirate">
+      <start>-0060-01-01 00:00:00</start>
+      <end>-0053-06-09 00:00:00</end>
+      <text>First Triumvirate</text>
+      <category>Republic</category>
+      <description>Caesar, Pompey, Crassus. Ends with Crassus's death at Carrhae.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="gallic-wars">
+      <start>-0058-01-01 00:00:00</start>
+      <end>-0050-01-01 00:00:00</end>
+      <text>Gallic Wars</text>
+      <category>Wars</category>
+      <description>Caesar conquers Gaul. Documented in Commentarii de Bello Gallico.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="second-triumvirate">
+      <start>-0043-11-27 00:00:00</start>
+      <end>-0033-01-01 00:00:00</end>
+      <text>Second Triumvirate</text>
+      <category>Republic</category>
+      <description>Octavian, Antony, Lepidus. Ends in civil war between Octavian and Antony.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="virgil-aeneid">
+      <start>-0029-01-01 00:00:00</start>
+      <end>-0019-09-21 00:00:00</end>
+      <text>Virgil writes the Aeneid</text>
+      <category>Empire</category>
+      <description>National epic commissioned under Augustus. Unfinished at Virgil's death.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="jesus-life">
+      <start>-0004-01-01 00:00:00</start>
+      <end>0033-04-03 00:00:00</end>
+      <text>Life of Jesus of Nazareth</text>
+      <category>People</category>
+      <description>Born under Augustus, crucified under Tiberius. Approximate dates.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="tiberius">
+      <start>0014-09-17 00:00:00</start>
+      <end>0037-03-16 00:00:00</end>
+      <text>Reign of Tiberius</text>
+      <category>Empire</category>
+      <description>Augustus's stepson. Withdraws to Capri. Sejanus's purges.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="caligula">
+      <start>0037-03-18 00:00:00</start>
+      <end>0041-01-24 00:00:00</end>
+      <text>Reign of Caligula</text>
+      <category>Empire</category>
+      <description>Notorious for tyranny. Assassinated by the Praetorian Guard.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="claudius">
+      <start>0041-01-24 00:00:00</start>
+      <end>0054-10-13 00:00:00</end>
+      <text>Reign of Claudius</text>
+      <category>Empire</category>
+      <description>Conquers Britain. Allegedly poisoned by Agrippina.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="conquest-britain">
+      <start>0043-01-01 00:00:00</start>
+      <end>0043-12-31 00:00:00</end>
+      <text>Roman conquest of Britain begins</text>
+      <category>Wars</category>
+      <description>Claudius's invasion. Britannia becomes a province.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="nero">
+      <start>0054-10-13 00:00:00</start>
+      <end>0068-06-09 00:00:00</end>
+      <text>Reign of Nero</text>
+      <category>Empire</category>
+      <description>Great Fire, first Christian persecution, suicide after senate condemnation.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="year-four-emperors">
+      <start>0068-06-09 00:00:00</start>
+      <end>0069-12-22 00:00:00</end>
+      <text>Year of the Four Emperors</text>
+      <category>Empire</category>
+      <description>Galba, Otho, Vitellius, Vespasian. Civil war.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="jerusalem-destruction">
+      <start>0070-08-04 00:00:00</start>
+      <end>0070-09-08 00:00:00</end>
+      <text>Destruction of the Second Temple</text>
+      <category>Wars</category>
+      <description>Titus sacks Jerusalem ending the First Jewish-Roman War.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>key</labels>
+    </event>
+    <event id="flavians">
+      <start>0069-12-22 00:00:00</start>
+      <end>0096-09-18 00:00:00</end>
+      <text>Flavian dynasty</text>
+      <category>Empire</category>
+      <description>Vespasian, Titus, Domitian. Stability after Nero.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="colosseum-built">
+      <start>0072-01-01 00:00:00</start>
+      <end>0080-01-01 00:00:00</end>
+      <text>Colosseum constructed</text>
+      <category>Empire</category>
+      <description>Flavian Amphitheatre. Funded by spoils from Jerusalem.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="trajan">
+      <start>0098-01-28 00:00:00</start>
+      <end>0117-08-09 00:00:00</end>
+      <text>Reign of Trajan</text>
+      <category>Empire</category>
+      <description>Empire at greatest territorial extent. Dacian conquests.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="dacian-wars">
+      <start>0101-01-01 00:00:00</start>
+      <end>0106-12-31 00:00:00</end>
+      <text>Dacian Wars</text>
+      <category>Wars</category>
+      <description>Trajan conquers Dacia (modern Romania). Trajan's Column commemorates.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="hadrian">
+      <start>0117-08-11 00:00:00</start>
+      <end>0138-07-10 00:00:00</end>
+      <text>Reign of Hadrian</text>
+      <category>Empire</category>
+      <description>Consolidates borders. Hadrian's Wall, Pantheon, Villa at Tivoli.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+      <labels>emperor</labels>
+    </event>
+    <event id="hadrians-wall">
+      <start>0122-01-01 00:00:00</start>
+      <end>0128-01-01 00:00:00</end>
+      <text>Hadrian's Wall built</text>
+      <category>Empire</category>
+      <description>117 km wall across northern Britain. Marks Empire's northwestern limit.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="antonine-plague">
+      <start>0165-01-01 00:00:00</start>
+      <end>0180-01-01 00:00:00</end>
+      <text>Antonine Plague</text>
+      <category>Empire</category>
+      <description>Smallpox pandemic. Kills ~5 million including possibly Lucius Verus.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="adrianople">
+      <start>0378-08-09 00:00:00</start>
+      <end>0378-08-09 00:00:00</end>
+      <text>Battle of Adrianople</text>
+      <category>Wars</category>
+      <description>Goths annihilate eastern Roman army; Emperor Valens killed.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="theodosius-paganism">
+      <start>0391-02-24 00:00:00</start>
+      <end>0391-02-24 00:00:00</end>
+      <text>Theodosius bans paganism</text>
+      <category>Late Empire</category>
+      <description>Nicene Christianity becomes the sole state religion.</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="city-of-god">
+      <start>0413-01-01 00:00:00</start>
+      <end>0426-01-01 00:00:00</end>
+      <text>Augustine writes De Civitate Dei</text>
+      <category>Late Empire</category>
+      <description>Theological response to the sack of Rome. Founds Western political theology.</description>
+      <fuzzy>True</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
+    <event id="vandals-sack">
+      <start>0455-06-02 00:00:00</start>
+      <end>0455-06-16 00:00:00</end>
+      <text>Vandals sack Rome</text>
+      <category>Wars</category>
+      <description>Genseric's two-week sack. Origin of the word "vandalism".</description>
+      <fuzzy>False</fuzzy>
+      <locked>False</locked>
+      <ends_today>False</ends_today>
+    </event>
   </events>
   <eras>
     <era>

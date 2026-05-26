@@ -5,7 +5,7 @@
 Built mobile-first: only uses the Obsidian Vault API. Same plugin runs on desktop, iPad, iPhone.
 
 <p align="center">
-  <img src="docs/images/hero-hybrid-view.png" alt="Inline timeline rendered in a Markdown note" width="800" />
+  <img src="docs/images/hero.png" alt="Inline timeline rendered in a Markdown note" width="800" />
 </p>
 
 ---
@@ -22,15 +22,11 @@ Built mobile-first: only uses the Obsidian Vault API. Same plugin runs on deskto
 
 | Inline ` ```timeline ` block (hybrid mode) | Global Timeline view |
 | --- | --- |
-| ![hybrid block](docs/images/hero-hybrid-view.png) | ![global view](docs/images/global-view.png) |
+| ![hybrid block](docs/images/hero.png) | ![global view](docs/images/global-view.png) |
 
-| Right-sidebar Inspector | Settings: multi-device sync |
+| Right-sidebar Inspector | Mobile (iPad / iPhone) |
 | --- | --- |
-| ![inspector](docs/images/inspector.png) | ![settings](docs/images/settings-sync.png) |
-
-| Eras as background bands | Mobile (iPad / iPhone) |
-| --- | --- |
-| ![eras](docs/images/eras.png) | ![mobile](docs/images/mobile.png) |
+| ![inspector](docs/images/inspector.png) | ![mobile](docs/images/mobile.png) |
 
 ---
 
