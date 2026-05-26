@@ -221,7 +221,35 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
     expect(stops[2].getAttribute("offset")).toBe("80%");
     expect(stops[3].getAttribute("stop-opacity")).toBe("0");
     const bar = svg.querySelector("rect.txs-event-bar")!;
-    expect(bar.getAttribute("fill")).toMatch(/^url\(#txs-fuzzy-/);
+    expect(bar.getAttribute("fill")).toMatch(/^url\([^)]*#txs-fuzzy-/);
+  });
+
+  it("normalizes stop-color to hex + emits style fallback (iOS WebView safety)", () => {
+    const container = withContainer();
+    const e = ev("fuzz-rgb", 100, 200, "Empire");
+    e.fuzzyStart = true;
+    renderTimeline({
+      container,
+      events: [e],
+      categories: [],
+      viewport: { start: { year: 100 }, end: { year: 200 } },
+      options: { ...baseOptions, mode: "bar" },
+      onOpenEvent: () => {},
+      // Category palette uses Obsidian's rgb(no-spaces) format which iOS
+      // WebView sometimes refuses inside stop-color. The renderer must
+      // canonicalise this to #rrggbb.
+      categoryColors: { Empire: "rgb(180,80,80)" },
+      initialHidden: [],
+      filterKey: "test:fuzzy-rgb",
+      isMobile: true,
+    });
+    const stops = container.querySelector("svg")!.querySelectorAll("stop");
+    expect(stops.length).toBe(3);
+    for (const s of Array.from(stops)) {
+      expect(s.getAttribute("stop-color")).toBe("#b45050");
+      const style = s.getAttribute("style") ?? "";
+      expect(style).toContain("stop-color:#b45050");
+    }
   });
 
   it("honours fuzzyGradientPercent override (5% = tight halo)", () => {
@@ -312,7 +340,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
     const grads = container.querySelectorAll("radialGradient");
     expect(grads.length).toBe(1);
     const circle = container.querySelector("circle.txs-event-point")!;
-    expect(circle.getAttribute("fill")).toMatch(/^url\(#txs-fuzzy-/);
+    expect(circle.getAttribute("fill")).toMatch(/^url\([^)]*#txs-fuzzy-/);
   });
 
   it("skips gradient defs when no fuzzy flags", () => {

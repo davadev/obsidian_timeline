@@ -99,6 +99,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const defs = document.createElementNS(SVG_NS, "defs");
   svg.appendChild(defs);
   const gradientId = makeGradientIdFactory();
+  // iOS WebView (Obsidian Mobile) resolves `fill="url(#id)"` against the
+  // document's <base href> rather than the SVG itself, which silently turns
+  // the fill into "not found" and paints the shape with its default (none /
+  // black depending on element). Prefixing the fragment with the current
+  // location forces same-document resolution and is a no-op on desktop.
+  const fragmentBase = makeFragmentBase();
 
   // Eras paint FIRST so they sit behind stripes + axis grid + events.
   if (args.eras && args.eras.length) {
@@ -128,7 +134,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       if (pointFuzzy) {
         const id = gradientId();
         defs.appendChild(makeRadialFuzzyGradient(id, color, gradientPercent));
-        circle.setAttribute("fill", `url(#${id})`);
+        circle.setAttribute("fill", `url(${fragmentBase}#${id})`);
       } else {
         circle.setAttribute("fill", color);
       }
@@ -172,7 +178,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
             gradientPercent
           )
         );
-        rect.setAttribute("fill", `url(#${id})`);
+        rect.setAttribute("fill", `url(${fragmentBase}#${id})`);
       } else {
         rect.setAttribute("fill", color);
       }
@@ -572,11 +578,42 @@ function makeGradientIdFactory(): () => string {
   return () => `txs-fuzzy-${salt}-${i++}`;
 }
 
+/**
+ * Returns the current document's URL stripped of any existing fragment, so we
+ * can build absolute fragment refs like `url(<page>#id)` that bypass Obsidian
+ * Mobile's iOS WebView `<base href>` resolution bug. Returns "" when window /
+ * location aren't available (jsdom tests fall back to the bare `#id` form,
+ * which works fine there).
+ */
+function makeFragmentBase(): string {
+  try {
+    const href = typeof window !== "undefined" ? window.location?.href : "";
+    if (!href) return "";
+    return href.split("#")[0];
+  } catch {
+    return "";
+  }
+}
+
 function clampPercent(p: number): number {
   if (!Number.isFinite(p)) return 20;
   if (p < 1) return 1;
   if (p > 49) return 49;
   return p;
+}
+
+/**
+ * iOS WebView (Obsidian Mobile) is stricter than desktop Chromium about
+ * `stop-color` values: a `rgb(180,80,80)` with no spaces after the commas, or
+ * a `var(--…)` reference inside a gradient stop, can silently fail there and
+ * paint the stop as transparent. Canonicalise to `#rrggbb` whenever we can
+ * parse the input; fall back to the original string only for unknown formats.
+ */
+function normalizeColorForStop(color: string): string {
+  const rgb = parseColorToRgb(color);
+  if (!rgb) return color;
+  const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${toHex(rgb[0])}${toHex(rgb[1])}${toHex(rgb[2])}`;
 }
 
 function makeLinearFuzzyGradient(
@@ -595,6 +632,9 @@ function makeLinearFuzzyGradient(
   g.setAttribute("x2", isVertical ? "0" : "1");
   g.setAttribute("y2", isVertical ? "1" : "0");
 
+  g.setAttribute("spreadMethod", "pad");
+
+  const stopColor = normalizeColorForStop(color);
   const p = clampPercent(fadePercent);
   const stops: Array<[string, number]> = [];
   if (fuzzyStart && fuzzyEnd) {
@@ -607,8 +647,11 @@ function makeLinearFuzzyGradient(
   for (const [offset, op] of stops) {
     const s = document.createElementNS(SVG_NS, "stop");
     s.setAttribute("offset", offset);
-    s.setAttribute("stop-color", color);
+    s.setAttribute("stop-color", stopColor);
     s.setAttribute("stop-opacity", String(op));
+    // Belt + braces for older iOS WebKit: some versions only honour the style
+    // form of these properties, not the bare attribute.
+    s.setAttribute("style", `stop-color:${stopColor};stop-opacity:${op}`);
     g.appendChild(s);
   }
   return g;
@@ -622,17 +665,20 @@ function makeRadialFuzzyGradient(
   const g = document.createElementNS(SVG_NS, "radialGradient");
   g.setAttribute("id", id);
   g.setAttribute("gradientUnits", "objectBoundingBox");
+  g.setAttribute("spreadMethod", "pad");
   g.setAttribute("cx", "0.5");
   g.setAttribute("cy", "0.5");
   g.setAttribute("r", "0.5");
   // Inner solid disc grows as the fade-percent shrinks: smaller percent =
   // narrower halo = larger solid core.
   const inner = Math.max(0, Math.min(99, 100 - 2 * clampPercent(fadePercent)));
+  const stopColor = normalizeColorForStop(color);
   for (const [offset, op] of [["0%", 1], [`${inner}%`, 1], ["100%", 0]] as const) {
     const s = document.createElementNS(SVG_NS, "stop");
     s.setAttribute("offset", offset);
-    s.setAttribute("stop-color", color);
+    s.setAttribute("stop-color", stopColor);
     s.setAttribute("stop-opacity", String(op));
+    s.setAttribute("style", `stop-color:${stopColor};stop-opacity:${op}`);
     g.appendChild(s);
   }
   return g;
