@@ -1,6 +1,6 @@
 {
   "name": "obsidian-timeline-xml-sync",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "Two-way sync between Timeline Project XML save files and Obsidian Markdown event notes, with timeline render blocks.",
   "main": "main.js",
   "scripts": {

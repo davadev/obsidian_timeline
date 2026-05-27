@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_SETTINGS,
   EVENT_NOTE_SCHEMA_VERSION,
+  resolveLogFolder,
   type TimelineXmlSyncSettings,
 } from "./settings";
 import { TimelineXmlSyncSettingTab } from "./settings-tab";
@@ -592,7 +593,8 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     keep: number
   ): Promise<number> {
     if (kind === "xml") return this.vault.pruneXmlBackups(arg, keep);
-    return this.vault.pruneFolderBackups(arg, keep);
+    const { resolveBackupFolder } = await import("./settings");
+    return this.vault.pruneFolderBackups(arg, keep, resolveBackupFolder(this.settings));
   }
 
   /**
@@ -636,13 +638,14 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     return !!(sentinel && sentinel > now);
   }
 
-  /** Append a line to _logs/timeline-sync.log (best-effort, rotated at ~200KB). */
+  /** Append a line to the sync log (best-effort, rotated at ~200KB). */
   async appendSyncLog(event: string, path: string, detail: string): Promise<void> {
     if (!this.settings.syncLogEnabled) return;
     try {
-      const logPath = "_logs/timeline-sync.log";
+      const logFolder = resolveLogFolder(this.settings);
+      const logPath = `${logFolder}/timeline-sync.log`;
       const line = `${new Date().toISOString()}\t${event}\t${path}\t${detail}\n`;
-      await this.vault.ensureFolder("_logs");
+      await this.vault.ensureFolder(logFolder);
       let prev = "";
       if (this.vault.exists(logPath)) {
         prev = await this.vault.readText(logPath);

@@ -1,5 +1,9 @@
 import { Notice, type App, type Plugin } from "obsidian";
-import { EVENT_NOTE_SCHEMA_VERSION, type TimelineXmlSyncSettings } from "../settings";
+import {
+  EVENT_NOTE_SCHEMA_VERSION,
+  resolveBackupFolder,
+  type TimelineXmlSyncSettings,
+} from "../settings";
 import type { VaultAdapter } from "./vault-adapter";
 import type { TemplateService } from "./template-service";
 import type { TimelineCache } from "./cache";
@@ -276,13 +280,15 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   // Back up MD notes BEFORE deletion. Critical for the multi-device case:
   // another device may have created notes that haven't propagated to XML yet;
   // a stale-XML reimport would silently delete them otherwise.
-  const mdBackup = await ctx.vault.backupFolder(s.eventNotesDir, "wipe");
+  const backupRoot = resolveBackupFolder(s);
+  const mdBackup = await ctx.vault.backupFolder(s.eventNotesDir, "wipe", backupRoot);
   if (mdBackup) {
     new Notice(`Backed up MD notes to ${mdBackup}`, 6000);
     void ctx.appendSyncLog("wipe-backup", mdBackup, `from ${s.eventNotesDir}`);
     const prunedFolders = await ctx.vault.pruneFolderBackups(
       "wipe",
-      s.backupRetention
+      s.backupRetention,
+      backupRoot
     );
     if (prunedFolders > 0) {
       console.log(`[Timeline XML Sync] pruned ${prunedFolders} old MD backup folder(s)`);
@@ -477,7 +483,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       }`
     );
     new Notice(
-      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits). Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See _logs/timeline-sync.log.`,
+      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits). Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See the sync log.`,
       10000
     );
   } else {

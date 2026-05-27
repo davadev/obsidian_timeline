@@ -91,6 +91,17 @@ export interface TimelineXmlSyncSettings {
    * label sitting over a partially transparent region.
    */
   eventLabelColor: string;
+  /**
+   * Vault-relative folder where MD snapshots (wipe-and-reimport, future bulk
+   * operations) are written under `<folder>/<label>-<ISO-stamp>/`. Empty =
+   * default to `<eventNotesDir>/_backups` so backups stay near the timeline.
+   */
+  backupFolder: string;
+  /**
+   * Vault-relative folder for the sync log file
+   * (`<folder>/timeline-sync.log`). Empty = default to `<eventNotesDir>/_logs`.
+   */
+  logFolder: string;
 }
 
 /**
@@ -130,4 +141,20 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   trimDescriptionOnWrite: true,
   fuzzyGradientPercent: 20,
   eventLabelColor: "",
+  backupFolder: "",
+  logFolder: "",
 };
+
+/** Resolves the effective backup folder, honouring explicit override else default. */
+export function resolveBackupFolder(s: TimelineXmlSyncSettings): string {
+  const explicit = s.backupFolder?.trim();
+  if (explicit) return explicit;
+  return `${s.eventNotesDir}/_backups`;
+}
+
+/** Resolves the effective log folder, honouring explicit override else default. */
+export function resolveLogFolder(s: TimelineXmlSyncSettings): string {
+  const explicit = s.logFolder?.trim();
+  if (explicit) return explicit;
+  return `${s.eventNotesDir}/_logs`;
+}

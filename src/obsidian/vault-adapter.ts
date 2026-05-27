@@ -121,14 +121,18 @@ export class VaultAdapter {
 
   /**
    * Copy every markdown file under `srcFolder` to a fresh
-   * `_backups/<label>-<ISO-stamp>/` folder. Preserves subdir layout.
+   * `<backupRoot>/<label>-<ISO-stamp>/` folder. Preserves subdir layout.
    * Returns the backup folder path, or null if srcFolder has no MD files.
    */
-  async backupFolder(srcFolder: string, label: string): Promise<string | null> {
+  async backupFolder(
+    srcFolder: string,
+    label: string,
+    backupRoot: string
+  ): Promise<string | null> {
     const files = this.listMarkdownFiles(srcFolder);
     if (!files.length) return null;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const dest = `_backups/${label}-${stamp}`;
+    const dest = `${normalizePath(backupRoot)}/${label}-${stamp}`;
     await this.ensureFolder(dest);
     const src = normalizePath(srcFolder);
     for (const f of files) {
@@ -157,11 +161,15 @@ export class VaultAdapter {
   }
 
   /**
-   * Keep only the most recent `keep` `_backups/<label>-*` folders.
+   * Keep only the most recent `keep` `<backupRoot>/<label>-*` folders.
    * Names sort chronologically (ISO timestamp), so localeCompare suffices.
    */
-  async pruneFolderBackups(label: string, keep: number): Promise<number> {
-    const root = this.app.vault.getAbstractFileByPath("_backups");
+  async pruneFolderBackups(
+    label: string,
+    keep: number,
+    backupRoot: string
+  ): Promise<number> {
+    const root = this.app.vault.getAbstractFileByPath(normalizePath(backupRoot));
     if (!root || !(root instanceof TFolder)) return 0;
     const matches = root.children
       .filter(

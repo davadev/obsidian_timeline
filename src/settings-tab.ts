@@ -1,6 +1,7 @@
 import { Notice, PluginSettingTab, Setting, type App } from "obsidian";
 import type TimelineXmlSyncPlugin from "./main";
 import { DEFAULT_MIRROR_NAMES } from "./timeline/model";
+import { resolveBackupFolder, resolveLogFolder } from "./settings";
 import {
   getDeviceSyncMode,
   setDeviceSyncMode,
@@ -596,9 +597,39 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
     });
 
     new Setting(containerEl)
+      .setName("Backup folder")
+      .setDesc(
+        `Vault-relative folder for MD snapshot backups (wipe-and-reimport). Empty = default to ${"<event notes folder>"}/_backups, currently "${resolveBackupFolder(s)}". Existing backups at a previous path won't be moved automatically.`
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder(`${s.eventNotesDir}/_backups`)
+          .setValue(s.backupFolder)
+          .onChange(async (v) => {
+            s.backupFolder = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Log folder")
+      .setDesc(
+        `Vault-relative folder for the sync log file (timeline-sync.log). Empty = default to ${"<event notes folder>"}/_logs, currently "${resolveLogFolder(s)}".`
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder(`${s.eventNotesDir}/_logs`)
+          .setValue(s.logFolder)
+          .onChange(async (v) => {
+            s.logFolder = v.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
       .setName("Backup retention (count)")
       .setDesc(
-        "Keep this many of each backup type: XML .bak-* siblings AND _backups/<label>-* folders. Older backups are deleted after each new one is created."
+        "Keep this many of each backup type: XML .bak-* siblings AND the backup folder's <label>-* subfolders. Older backups are deleted after each new one is created."
       )
       .addText((t) =>
         t.setValue(String(s.backupRetention)).onChange(async (v) => {
@@ -664,7 +695,7 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Sync log enabled")
       .setDesc(
-        "Append events (import-skipped, regen-aborted, filter-persist-failed, external-xml-change, wipe-backup) to _logs/timeline-sync.log. Rotated at ~200 KB."
+        `Append events (import-skipped, regen-aborted, filter-persist-failed, external-xml-change, wipe-backup, meta-stale-skip) to ${resolveLogFolder(s)}/timeline-sync.log. Rotated at ~200 KB.`
       )
       .addToggle((t) =>
         t.setValue(s.syncLogEnabled).onChange(async (v) => {
