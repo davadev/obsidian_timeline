@@ -54,6 +54,24 @@ git push origin 0.10.0-beta.1
 Committed to `main`: **nothing**. The workflow stamps `0.10.0-beta.1` into the
 assets and publishes a GitHub prerelease.
 
+A beta can equally be tagged on a **feature branch head** — the workflow fires
+on the tag regardless of branch, and the invariant still holds because `main`'s
+manifest never moves. That is the right move when the work is not merged yet
+and you want it in testers' hands first:
+
+```bash
+git push -u origin my-branch     # the tagged commit must exist on the remote
+git tag 0.10.0-beta.2 && git push origin 0.10.0-beta.2
+```
+
+Before tagging, rebuild and refresh the committed demo-vault copy, so the
+plugin bundled in `demo-vault/` matches what ships:
+
+```bash
+npm run build
+cp main.js manifest.json styles.css demo-vault/.obsidian/plugins/timeline-xml-sync/
+```
+
 ### 3. Test it
 
 BRAT → *Add Beta Plugin* → `davadev/obsidian_timeline`. BRAT picks the highest
@@ -71,8 +89,17 @@ gh release view 0.10.0-beta.1 --json isPrerelease    # -> true
 
 ### 4. Iterate
 
-More work → merge → `git tag 0.10.0-beta.2 && git push origin 0.10.0-beta.2`.
-`main` still never moves.
+More work → commit → `git tag 0.10.0-beta.3 && git push origin 0.10.0-beta.3`.
+`main` still never moves. Bump the suffix every time; a tag is never moved or
+reused once pushed.
+
+Watch the run and confirm the result rather than assuming:
+
+```bash
+gh run watch "$(gh run list --limit 1 --json databaseId --jq '.[0].databaseId')" --exit-status
+gh release view 0.10.0-beta.3 --json tagName,isPrerelease,assets
+curl -sL https://github.com/davadev/obsidian_timeline/releases/download/0.10.0-beta.3/manifest.json
+```
 
 ### 5. Promote to stable
 
