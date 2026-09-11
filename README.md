@@ -53,6 +53,8 @@ The plugin ships three files: `manifest.json`, `main.js`, `styles.css`.
 - **Desktop**: drop them in `.obsidian/plugins/timeline-xml-sync/` and enable in Community plugins.
 - **Mobile**: use [BRAT](https://github.com/TfTHacker/obsidian42-brat) and add the beta plugin `davadev/obsidian_timeline`.
 
+Requires Obsidian **1.13.0** or newer.
+
 Full instructions for every sync setup (Obsidian Sync, Syncthing, Remotely Save, iCloud, manual file-app drop, a-Shell): **[docs/install.md](docs/install.md)**.
 
 ---
@@ -81,6 +83,7 @@ Built and tested against **Timeline 2.11** save files. The XML parser is defensi
 | XML compatibility notes | [docs/xml-compatibility.md](docs/xml-compatibility.md) |
 | Multi-device sync safety (Nextcloud / Remotely Save / iCloud) | [docs/multi-device-sync.md](docs/multi-device-sync.md) |
 | Architecture, testing, project layout | [docs/architecture.md](docs/architecture.md) |
+| Release + beta-channel process | [docs/releasing.md](docs/releasing.md) |
 
 ---
 

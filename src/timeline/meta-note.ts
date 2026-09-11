@@ -47,7 +47,7 @@ export function parseTimelineMetaNote(raw: string): TimelineMetaNote | undefined
   if (!m) return undefined;
   let fm: Record<string, unknown>;
   try {
-    const parsed = YAML.parse(m[1]);
+    const parsed: unknown = YAML.parse(m[1]);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
     fm = parsed as Record<string, unknown>;
   } catch {
@@ -65,7 +65,7 @@ export function parseTimelineMetaNote(raw: string): TimelineMetaNote | undefined
 
   const stamp =
     typeof timeline.last_synced_xml_mtime === "number"
-      ? (timeline.last_synced_xml_mtime as number)
+      ? (timeline.last_synced_xml_mtime)
       : undefined;
   return {
     docPatch: {

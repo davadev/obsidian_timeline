@@ -16,44 +16,33 @@ export function showTooltip(
   clientY: number
 ): void {
   hideTooltip();
-  const tip = document.createElement("div");
-  tip.className = "txs-tooltip";
-  tip.style.position = "fixed";
+  // Hidden while it is measured; `.is-measuring` is dropped once the final
+  // placement is known, so there is no flash at the pre-measure position.
+  const tip = createDiv({ cls: "txs-tooltip is-measuring" });
   tip.style.left = `${clientX + 12}px`;
   tip.style.top = `${clientY + 12}px`;
-  tip.innerHTML = "";
-  const title = document.createElement("div");
-  title.style.fontWeight = "600";
+  const title = createDiv({ cls: "txs-tooltip-title" });
   title.textContent = ev.text;
   tip.appendChild(title);
 
-  const dates = document.createElement("div");
-  dates.style.fontFamily = "var(--font-monospace)";
-  dates.style.fontSize = "0.85em";
-  dates.style.color = "var(--text-muted)";
+  const dates = createDiv({ cls: "txs-tooltip-dates" });
   dates.textContent = ev.isPoint
     ? toFrontmatterString(ev.start)
     : `${toFrontmatterString(ev.start)} → ${toFrontmatterString(ev.end)}`;
   tip.appendChild(dates);
 
   if (ev.category) {
-    const cat = document.createElement("div");
-    cat.style.marginTop = "2px";
+    const cat = createDiv({ cls: "txs-tooltip-category" });
     cat.textContent = `Category: ${ev.category}`;
     tip.appendChild(cat);
   }
   if (ev.description) {
-    const d = document.createElement("div");
-    d.style.marginTop = "4px";
-    d.style.maxHeight = "120px";
-    d.style.overflow = "hidden";
+    const d = createDiv({ cls: "txs-tooltip-desc" });
     d.textContent = truncate(ev.description, 240);
     tip.appendChild(d);
   }
 
-  // Hide first to avoid a visible flash when the initial placement is
-  // outside the viewport — measure once, then reposition + show.
-  tip.style.visibility = "hidden";
+  // Measure once, then reposition + reveal.
   document.body.appendChild(tip);
   const r = tip.getBoundingClientRect();
   const vw = window.innerWidth;
@@ -64,7 +53,7 @@ export function showTooltip(
   if (top + r.height > vh - 8) top = Math.max(8, clientY - r.height - 12);
   tip.style.left = `${left}px`;
   tip.style.top = `${top}px`;
-  tip.style.visibility = "visible";
+  tip.removeClass("is-measuring");
   activeTip = tip;
 }
 

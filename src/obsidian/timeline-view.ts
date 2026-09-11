@@ -89,7 +89,7 @@ export class TimelineView extends ItemView {
   }
 
   private async fullRender(): Promise<void> {
-    const { cache, getSettings, app } = this.args;
+    const { cache, getSettings } = this.args;
     const settings = getSettings();
     this.contentEl.empty();
     this.contentEl.addClass("txs-view-root");
@@ -126,13 +126,13 @@ export class TimelineView extends ItemView {
 
     const panel = this.contentEl.createEl("details", {
       cls: "txs-view-filters",
-    }) as HTMLDetailsElement;
+    });
     if (!Platform.isMobile) panel.open = true;
 
     const summary = panel.createEl("summary", {
       cls: "txs-view-filters-summary",
     });
-    const badge = summary.createEl("span", {
+    const badge = summary.createSpan({
       cls: "txs-view-filters-badge",
       text: "Filters",
     });
@@ -149,10 +149,10 @@ export class TimelineView extends ItemView {
     };
 
     // Coalesce keystrokes — don't re-render on every character.
-    let renderTimer: ReturnType<typeof setTimeout> | null = null;
+    let renderTimer: number | null = null;
     const scheduleRender = () => {
-      if (renderTimer) clearTimeout(renderTimer);
-      renderTimer = setTimeout(() => {
+      if (renderTimer) window.clearTimeout(renderTimer);
+      renderTimer = window.setTimeout(() => {
         renderTimer = null;
         this.bodyRender();
       }, 250);
@@ -173,7 +173,7 @@ export class TimelineView extends ItemView {
 
     // Date range — granularity comes from settings.
     const dateBox = panel.createDiv({ cls: "txs-view-date-row" });
-    dateBox.createEl("span", {
+    dateBox.createSpan({
       cls: "txs-view-range-label",
       text: "From → to:",
     });
@@ -187,7 +187,7 @@ export class TimelineView extends ItemView {
         this.bodyRender();
       }
     );
-    dateBox.createEl("span", { text: "→" });
+    dateBox.createSpan({ text: "→" });
     const endGroup = renderDateInputs(
       dateBox,
       this.filters.end,
@@ -240,12 +240,12 @@ export class TimelineView extends ItemView {
 
     // Zoom override
     const zoomRow = panel.createDiv({ cls: "txs-view-zoom-row" });
-    zoomRow.createEl("span", { text: "Zoom override:" });
+    zoomRow.createSpan({ text: "Zoom override:" });
     const zoomInput = zoomRow.createEl("input", {
       type: "number",
       placeholder: "auto",
-    }) as HTMLInputElement;
-    zoomInput.style.width = "80px";
+    });
+    zoomInput.addClass("txs-view-zoom-input");
     zoomInput.step = "0.5";
     zoomInput.min = "0.5";
     if (this.filters.zoom != null) zoomInput.value = String(this.filters.zoom);
@@ -287,7 +287,7 @@ export class TimelineView extends ItemView {
 
     body.empty();
     if (!this.cachedDoc) return;
-    const { cache, getSettings, app } = this.args;
+    const { getSettings } = this.args;
     const settings = getSettings();
 
     let filtered = applyFilters(this.cachedDoc.events, this.filters);
@@ -326,8 +326,8 @@ export class TimelineView extends ItemView {
       eventLabelColor: settings.eventLabelColor,
     });
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         body.scrollTop = bodyScrollTop;
         body
           .querySelectorAll<HTMLElement>(".txs-timeline-bar")
@@ -376,7 +376,7 @@ function renderDateInputs(
     const i = wrap.createEl("input", {
       type: "number",
       placeholder,
-    }) as HTMLInputElement;
+    });
     i.style.width = `${width}px`;
     if (value != null) i.value = String(value);
     inputs.push(i);

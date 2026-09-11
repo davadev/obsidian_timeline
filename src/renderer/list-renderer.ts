@@ -33,14 +33,14 @@ export function renderList(args: ListRenderArgs): HTMLElement {
       );
     for (const era of sortedEras) {
       const li = eraUl.createEl("li", { cls: "txs-era-list-item" });
-      const sw = document.createElement("span");
+      const sw = createSpan();
       sw.className = "txs-era-chip-sw";
       sw.style.background = eraSwatchColor(era.color);
       li.appendChild(sw);
       const range = li.createSpan({ cls: "txs-date" });
       range.textContent = `${toFrontmatterString(era.start)} → ${toFrontmatterString(era.end)}`;
       const titleEl = li.createSpan({ cls: "txs-title", text: ` ${era.name}` });
-      titleEl.style.marginLeft = "4px";
+      titleEl.addClass("txs-list-era-title");
       if (onOpenEra) {
         const openLink = li.createEl("a", {
           cls: "txs-open-note",
@@ -63,7 +63,7 @@ export function renderList(args: ListRenderArgs): HTMLElement {
     let titleEl: HTMLElement;
     if (isMobile) {
       // Plain text — no auto-navigation. User must tap the explicit Open note.
-      titleEl = li.createEl("span", { cls: "txs-title", text: ev.text });
+      titleEl = li.createSpan({ cls: "txs-title", text: ev.text });
     } else {
       const link = li.createEl("a", { cls: "txs-title", text: ev.text, href: "#" });
       link.addEventListener("click", (e) => {
@@ -103,7 +103,7 @@ export function renderList(args: ListRenderArgs): HTMLElement {
       const link2 = li.createEl("a", { href: ev.hyperlink, text: ev.hyperlink });
       link2.setAttr("target", "_blank");
       link2.setAttr("rel", "noopener");
-      link2.style.marginLeft = "6px";
+      link2.addClass("txs-list-link");
     }
 
     // Explicit Open-note affordance — always shown, primary action on mobile.

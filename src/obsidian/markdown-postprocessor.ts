@@ -210,7 +210,7 @@ export function makeTimelineProcessor(ctx: PostProcessorContext) {
         eventLabelColor: settings.eventLabelColor,
         // Persist filter state directly into the block YAML so it survives a
         // note reload and travels with the note across devices. Falls back to
-        // the localStorage state if the file write fails (e.g. the block
+        // the device-local state if the file write fails (e.g. the block
         // lives in an embedded note we can't locate).
         onFilterChange: makeBlockPersister(ctx, md.sourcePath, source),
       });
@@ -233,7 +233,7 @@ export function parseBlockOptions(
 ): RenderOptions {
   let parsed: Record<string, unknown> = {};
   try {
-    const p = YAML.parse(source);
+    const p: unknown = YAML.parse(source);
     if (p && typeof p === "object" && !Array.isArray(p)) {
       parsed = p as Record<string, unknown>;
     }
@@ -306,7 +306,7 @@ async function resolveViewport(
     if (file) {
       // Fast path: use metadataCache (no YAML reparse).
       const meta = ctx.app.metadataCache.getFileCache(file);
-      const fm = meta?.frontmatter as Record<string, unknown> | undefined;
+      const fm = meta?.frontmatter;
       if (fm && fm.timeline && typeof fm.timeline === "object") {
         const tl = fm.timeline as Record<string, unknown>;
         const start = asViewportDate(tl.start);
@@ -337,7 +337,7 @@ function asViewportDate(v: unknown): TimelineDate | null {
     }
     return null;
   }
-  return parseFrontmatterDate(v as string | number);
+  return parseFrontmatterDate(v);
 }
 
 /**
@@ -373,7 +373,7 @@ function makeBlockPersister(
   originalSource: string
 ): (state: import("../renderer/filter-bar").RichFilterState) => void {
   let currentBody = originalSource;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: number | null = null;
   let pendingState: import("../renderer/filter-bar").RichFilterState | null = null;
 
   /** Run vault.process; return true if the old fence was found and replaced. */
@@ -440,13 +440,13 @@ function makeBlockPersister(
       sourcePath,
       "could not locate timeline block to update"
     );
-    // State remains in localStorage for this device — UI stays consistent.
+    // State remains in device-local storage — UI stays consistent.
   };
 
   return (state) => {
     pendingState = state;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(flush, 600);
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => void flush(), 600);
   };
 }
 
@@ -461,7 +461,7 @@ function serializeBlockBody(
 ): string {
   let doc: Record<string, unknown> = {};
   try {
-    const p = YAML.parse(body);
+    const p: unknown = YAML.parse(body);
     if (p && typeof p === "object" && !Array.isArray(p)) doc = p as Record<string, unknown>;
   } catch {
     // ignore — start clean
@@ -475,7 +475,7 @@ function serializeBlockBody(
   const labelsExisting =
     (doc.labels && typeof doc.labels === "object" && !Array.isArray(doc.labels)
       ? (doc.labels as Record<string, unknown>)
-      : {}) as Record<string, unknown>;
+      : {});
   if (state.labels.length) labelsExisting.include = state.labels;
   else delete labelsExisting.include;
   if (Object.keys(labelsExisting).length === 0) delete doc.labels;
@@ -485,7 +485,7 @@ function serializeBlockBody(
   const catsExisting =
     (doc.categories && typeof doc.categories === "object" && !Array.isArray(doc.categories)
       ? (doc.categories as Record<string, unknown>)
-      : {}) as Record<string, unknown>;
+      : {});
   const hidden = Array.from(state.hiddenCategories);
   if (hidden.length) catsExisting.exclude = hidden;
   else delete catsExisting.exclude;
@@ -519,7 +519,7 @@ async function hostIsViewportNote(
   const file = ctx.vault.getFile(sourcePath);
   if (!file) return false;
   const meta = ctx.app.metadataCache.getFileCache(file);
-  const fm = meta?.frontmatter as Record<string, unknown> | undefined;
+  const fm = meta?.frontmatter;
   if (!fm) return false;
   const tl = fm.timeline as Record<string, unknown> | undefined;
   if (!tl || typeof tl !== "object" || Array.isArray(tl)) return false;

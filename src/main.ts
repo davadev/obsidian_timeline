@@ -32,7 +32,8 @@ import {
 } from "./obsidian/commands";
 import { makeTimelineProcessor } from "./obsidian/markdown-postprocessor";
 import { debounce } from "./timeline/sync-engine";
-import bundledCss from "../styles.css";
+import { setLogLevel } from "./logger";
+import { initDeviceStore } from "./obsidian/app-storage";
 
 /**
  * Persisted alongside settings (under the same data.json key) so a crash on
@@ -66,12 +67,9 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   private externalChangeAnnounced = false;
 
   async onload(): Promise<void> {
-    // Inject bundled CSS so the plugin's UI looks correct even when the
-    // install path didn't ship styles.css (BRAT before 0.8.3, manual installs
-    // that forgot to copy the third file, demo vaults). Obsidian also loads
-    // a separate styles.css when it's present in the plugin folder — both
-    // copies define the same selectors, so the cascade ends in the same place.
-    this.injectBundledStyles();
+    // Device-local storage (per-device sync mode, saved block filters) routes
+    // through the App, so register it before anything reads a preference.
+    initDeviceStore(this.app);
 
     await this.loadSettings();
 
@@ -88,22 +86,6 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       await this.tripSafetyNet(e as Error, "onload");
       this.installSafeMode();
     }
-  }
-
-  private styleEl?: HTMLStyleElement;
-  private injectBundledStyles(): void {
-    if (this.styleEl) return;
-    const el = document.createElement("style");
-    el.setAttribute("data-source", "timeline-xml-sync-bundled");
-    el.textContent = bundledCss;
-    document.head.appendChild(el);
-    this.styleEl = el;
-  }
-
-  onunload(): void {
-    this.styleEl?.remove();
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_TIMELINE);
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_INSPECTOR);
   }
 
   /**
@@ -129,7 +111,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       leaf = right;
       await leaf.setViewState({ type: VIEW_TYPE_INSPECTOR, active: true });
     }
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
     const view = leaf.view instanceof InspectorView ? leaf.view : null;
     if (view && eventId) await view.loadEvent(eventId);
     return view;
@@ -145,13 +127,13 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   onEventClick(eventId: string): void {
     if (this.settings.clickBehavior === "open-note") {
       const path = this.cache.resolvePath(eventId);
-      if (path) this.app.workspace.openLinkText(path, "", false);
+      if (path) void this.app.workspace.openLinkText(path, "", false);
       return;
     }
     void this.activateInspector(eventId).then((view) => {
       if (!view) {
         const path = this.cache.resolvePath(eventId);
-        if (path) this.app.workspace.openLinkText(path, "", false);
+        if (path) void this.app.workspace.openLinkText(path, "", false);
       }
     });
   }
@@ -164,7 +146,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   async createEraInteractive(): Promise<void> {
     try {
       await this.templates.createNewEraInteractive(this.vault, async (eraId) => {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => window.setTimeout(r, 200));
         this.cache.invalidateMdDoc();
         await this.activateInspector();
         const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_INSPECTOR)[0];
@@ -264,12 +246,12 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   async activateTimelineView(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TIMELINE);
     if (existing.length) {
-      this.app.workspace.revealLeaf(existing[0]);
+      void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
     const leaf = this.app.workspace.getLeaf("tab");
     await leaf.setViewState({ type: VIEW_TYPE_TIMELINE, active: true });
-    this.app.workspace.revealLeaf(leaf);
+    void this.app.workspace.revealLeaf(leaf);
   }
 
   private async fullOnload(): Promise<void> {
@@ -307,7 +289,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
             // The note write is processed by Obsidian asynchronously — wait
             // a tick for the metadataCache to index it before the inspector
             // tries to resolve the id, then prime the cache directly.
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => window.setTimeout(r, 200));
             this.cache.updateFile(path);
             this.cache.invalidateMdDoc();
             await this.activateInspector(eventId);
@@ -346,7 +328,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       onEraClick: (id: string) => this.onEraClick(id),
     };
     this.registerView(VIEW_TYPE_TIMELINE, (leaf) => new TimelineView(leaf, viewArgs));
-    this.addRibbonIcon("calendar-range", "Open Timeline view", () => {
+    this.addRibbonIcon("calendar-range", "Open timeline view", () => {
       void this.activateTimelineView();
     });
     // Single consolidated picker for "create" / "insert" actions so the
@@ -367,7 +349,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     });
     this.addCommand({
       id: "txs-open-view",
-      name: "Open Timeline view",
+      name: "Open timeline view",
       callback: () => void this.activateTimelineView(),
     });
 
@@ -386,7 +368,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     );
     this.addCommand({
       id: "txs-open-inspector",
-      name: "Open Timeline inspector",
+      name: "Open timeline inspector",
       callback: () => void this.activateInspector(),
     });
 
@@ -423,7 +405,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     // Coalesce metadataCache events — Obsidian fires "changed" eagerly during
     // typing. We collect paths and flush once per 250 ms on the microtask queue.
     const pendingMetaUpdates = new Set<string>();
-    let metaFlushTimer: ReturnType<typeof setTimeout> | null = null;
+    let metaFlushTimer: number | null = null;
     const flushMeta = () => {
       metaFlushTimer = null;
       for (const p of pendingMetaUpdates) this.cache.updateFile(p);
@@ -433,7 +415,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     this.registerEvent(
       this.app.metadataCache.on("changed", (f) => {
         pendingMetaUpdates.add(f.path);
-        if (!metaFlushTimer) metaFlushTimer = setTimeout(flushMeta, 250);
+        if (!metaFlushTimer) metaFlushTimer = window.setTimeout(flushMeta, 250);
       })
     );
 
@@ -442,7 +424,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     if (Platform.isMobile && getDeviceSyncMode() === "global") {
       setDeviceSyncMode("off");
       new Notice(
-        "Timeline XML Sync: auto-sync turned off on this device by default. Re-enable in Settings → Auto-sync on this device.",
+        "Timeline XML Sync: auto-sync turned off on this device by default. Re-enable in settings → auto-sync on this device.",
         8000
       );
     }
@@ -454,7 +436,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     // if both look fresh. Runs once — gated by settings.firstRunCompleted.
     if (!this.settings.firstRunCompleted) {
       // Defer so onload returns quickly — the work happens in the background.
-      setTimeout(() => void this.runFirstInstall(), 800);
+      window.setTimeout(() => void this.runFirstInstall(), 800);
     }
 
     // Watch XML mtime so we can notice when remote sync lands a change.
@@ -483,7 +465,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     new Notice(msg, 8000);
     this.addCommand({
       id: "txs-reenable",
-      name: "Re-enable Timeline XML Sync (clear crash flag)",
+      name: "Re-enable after crash (clear crash flag)",
       callback: async () => {
         this.safety = { ...SAFETY_DEFAULTS };
         await this.persistAll();
@@ -531,6 +513,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       | (Partial<TimelineXmlSyncSettings> & { __safety?: SafetyState })
       | null;
     this.settings = mergeSettings(DEFAULT_SETTINGS, stored);
+    setLogLevel(this.settings.logLevel);
     this.safety = {
       ...SAFETY_DEFAULTS,
       ...(stored?.__safety ?? {}),
@@ -538,6 +521,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   }
 
   async saveSettings(): Promise<void> {
+    setLogLevel(this.settings.logLevel);
     await this.persistAll();
     if (this.debouncedSync) this.rebuildDebouncedSync();
     // Re-prime caches when paths or scan-source change.
@@ -567,7 +551,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     mutate();
     await this.saveSettings();
     new Notice(
-      "Setting changed. Run \"Wipe event notes and reimport from XML\" to refresh notes to the new schema.",
+      "Setting changed. Run \"wipe event notes and reimport from XML\" to refresh notes to the new schema.",
       9000
     );
   }
@@ -621,7 +605,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       return await fn();
     } finally {
       // Lazy-evict expired entries to keep the map small over long sessions.
-      setTimeout(() => {
+      window.setTimeout(() => {
         const now = Date.now();
         for (const [k, e] of Array.from(this.recentSelfWrites.entries())) {
           if (e <= now) this.recentSelfWrites.delete(k);
@@ -672,7 +656,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     ) {
       if (!this.externalChangeAnnounced) {
         new Notice(
-          "Timeline XML changed externally (remote sync?). Run \"Import XML\" to pick up changes before editing.",
+          "Timeline XML changed externally (remote sync?). Run \"import XML\" to pick up changes before editing.",
           8000
         );
         this.externalChangeAnnounced = true;
@@ -745,7 +729,7 @@ class TimelineActionPicker extends SuggestModal<{
     private actions: { label: string; description: string; run: () => void }[]
   ) {
     super(app);
-    this.setPlaceholder("Pick a Timeline action…");
+    this.setPlaceholder("Pick a timeline action…");
   }
   getSuggestions(query: string) {
     const q = query.toLowerCase();
@@ -757,8 +741,8 @@ class TimelineActionPicker extends SuggestModal<{
     );
   }
   renderSuggestion(a: { label: string; description: string }, el: HTMLElement) {
-    el.createEl("div", { text: a.label, cls: "txs-picker-title" });
-    el.createEl("div", { text: a.description, cls: "txs-picker-desc" });
+    el.createDiv({ text: a.label, cls: "txs-picker-title" });
+    el.createDiv({ text: a.description, cls: "txs-picker-desc" });
   }
   onChooseSuggestion(a: { run: () => void }) {
     a.run();

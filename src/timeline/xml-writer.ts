@@ -1,4 +1,4 @@
-import { XMLBuilder } from "fast-xml-parser";
+import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import { toXmlString, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
@@ -71,7 +71,7 @@ function textNode(s: string): RawNode {
 }
 
 function elem(name: string, children: RawNode[], attrs?: Record<string, string>): RawNode {
-  const n: RawNode = { [name]: children } as RawNode;
+  const n: RawNode = { [name]: children };
   if (attrs && Object.keys(attrs).length) n[":@"] = attrs;
   return n;
 }
@@ -210,7 +210,7 @@ function buildEventNode(ev: TimelineEvent): RawNode {
 
   const attrs: Record<string, string> = {};
   if (ev.raw && typeof ev.raw === "object") {
-    const rawAttrs = ((ev.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    const rawAttrs = ((ev.raw as RawNode)[":@"] || {});
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
   for (const [k, v] of Object.entries(ev.xmlAttrs ?? {})) {
@@ -330,7 +330,7 @@ function cdataLeaf(name: string, content: string): RawNode {
   // The builder with cdataPropName: "#cdata" emits a `<![CDATA[...]]>`
   // section. The text node inside carries the literal content.
   return elem(name, [
-    { "#cdata": [{ "#text": content }] } as RawNode,
+    { "#cdata": [{ "#text": content }] },
   ]);
 }
 
@@ -392,7 +392,7 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
 
   const attrs: Record<string, string> = {};
   if (c.raw && typeof c.raw === "object") {
-    const rawAttrs = ((c.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    const rawAttrs = ((c.raw as RawNode)[":@"] || {});
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
   for (const [k, v] of Object.entries(c.xmlAttrs ?? {})) {
@@ -414,7 +414,7 @@ function buildEraNode(era: TimelineEra): RawNode {
   for (const u of unknownChildren(era.raw, KNOWN_ERA_TAGS)) children.push(u);
   const attrs: Record<string, string> = {};
   if (era.raw && typeof era.raw === "object") {
-    const rawAttrs = ((era.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    const rawAttrs = ((era.raw as RawNode)[":@"] || {});
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
   for (const [k, v] of Object.entries(era.xmlAttrs ?? {})) {
@@ -446,7 +446,7 @@ function buildViewNode(view: TimelineView): RawNode {
   }
   const attrs: Record<string, string> = {};
   if (view.raw && typeof view.raw === "object") {
-    const rawAttrs = ((view.raw as RawNode)[":@"] || {}) as Record<string, string>;
+    const rawAttrs = ((view.raw as RawNode)[":@"] || {});
     for (const [k, v] of Object.entries(rawAttrs)) attrs[k] = v;
   }
   for (const [k, v] of Object.entries(view.xmlAttrs ?? {})) {
@@ -527,14 +527,14 @@ export function writeTimelineXml(doc: TimelineDoc): string {
   if (doc.raw && Array.isArray(doc.raw)) {
     const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
     if (rawRoot) {
-      const rawAttrs = ((rawRoot as RawNode)[":@"] || {}) as Record<string, string>;
+      const rawAttrs = ((rawRoot)[":@"] || {});
       for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
     }
   }
   for (const [k, v] of Object.entries(doc.xmlAttrs ?? {})) timelineAttrs[k] = v;
   tree.push(elem("timeline", timelineChildren, timelineAttrs));
 
-  return builder.build(tree) as string;
+  return builder.build(tree);
 }
 
 /**
@@ -564,7 +564,7 @@ function stripWhitespaceTextNodes(nodes: RawNode[]): RawNode[] {
     const kids = nodeChildren(n);
     if (kids.length) {
       const cleaned = stripWhitespaceTextNodes(kids);
-      out.push({ ...n, [name]: cleaned } as RawNode);
+      out.push({ ...n, [name]: cleaned });
     } else {
       out.push(n);
     }
@@ -578,7 +578,6 @@ function stripWhitespaceTextNodes(nodes: RawNode[]): RawNode[] {
  * the round-trip test instead of strict byte-equality.
  */
 export function canonicalizeXml(xml: string): string {
-  const { XMLParser } = require("fast-xml-parser") as typeof import("fast-xml-parser");
   const parser = new XMLParser(PARSER_OPTIONS);
   const builder = new XMLBuilder(BUILDER_OPTIONS);
   const tree = parser.parse(xml) as RawNode[];
@@ -588,7 +587,7 @@ export function canonicalizeXml(xml: string): string {
   // escape an already-encoded `&apos;` into `&amp;apos;`.
   decodeTextNodesInPlace(tree);
   const cleaned = stripWhitespaceTextNodes(tree);
-  return builder.build(cleaned) as string;
+  return builder.build(cleaned);
 }
 
 function decodeTextNodesInPlace(nodes: RawNode[]): void {

@@ -160,48 +160,45 @@ function promptForEra(app: App): Promise<EraPromptResult | null> {
     let resolved = false;
 
     new Setting(wrap).setName("Name").addText((t) => {
-      t.setPlaceholder("e.g. Bronze Age");
-      t.inputEl.style.width = "100%";
+      t.setPlaceholder("Bronze age");
+      t.inputEl.addClass("txs-modal-input-wide");
       t.onChange((v) => (name = v));
-      setTimeout(() => t.inputEl.focus(), 0);
+      window.setTimeout(() => t.inputEl.focus(), 0);
     });
 
     const startBox = wrap.createDiv();
-    startBox.createEl("div", { text: "Start (year required; month/day optional)" });
-    const startRow = startBox.createDiv();
-    startRow.style.display = "flex";
-    startRow.style.gap = "6px";
-    const sy = startRow.createEl("input", { type: "number", placeholder: "year" }) as HTMLInputElement;
-    const sm = startRow.createEl("input", { type: "number", placeholder: "mm" }) as HTMLInputElement;
-    const sd = startRow.createEl("input", { type: "number", placeholder: "dd" }) as HTMLInputElement;
-    sm.style.width = "60px";
-    sd.style.width = "60px";
+    startBox.createDiv({ text: "Start (year required; month/day optional)" });
+    const startRow = startBox.createDiv({ cls: "txs-modal-date-row" });
+    const sy = startRow.createEl("input", { type: "number", placeholder: "year" });
+    const sm = startRow.createEl("input", { type: "number", placeholder: "mm" });
+    const sd = startRow.createEl("input", { type: "number", placeholder: "dd" });
+    sm.addClass("txs-modal-date-part");
+    sd.addClass("txs-modal-date-part");
     sy.addEventListener("input", () => (startY = sy.value));
     sm.addEventListener("input", () => (startM = sm.value));
     sd.addEventListener("input", () => (startD = sd.value));
 
     const endBox = wrap.createDiv();
-    endBox.createEl("div", { text: "End (year required)" });
-    const endRow = endBox.createDiv();
-    endRow.style.display = "flex";
-    endRow.style.gap = "6px";
-    const ey = endRow.createEl("input", { type: "number", placeholder: "year" }) as HTMLInputElement;
-    const em = endRow.createEl("input", { type: "number", placeholder: "mm" }) as HTMLInputElement;
-    const ed = endRow.createEl("input", { type: "number", placeholder: "dd" }) as HTMLInputElement;
-    em.style.width = "60px";
-    ed.style.width = "60px";
+    endBox.createDiv({ text: "End (year required)" });
+    const endRow = endBox.createDiv({ cls: "txs-modal-date-row" });
+    const ey = endRow.createEl("input", { type: "number", placeholder: "year" });
+    const em = endRow.createEl("input", { type: "number", placeholder: "mm" });
+    const ed = endRow.createEl("input", { type: "number", placeholder: "dd" });
+    em.addClass("txs-modal-date-part");
+    ed.addClass("txs-modal-date-part");
     ey.addEventListener("input", () => (endY = ey.value));
     em.addEventListener("input", () => (endM = em.value));
     ed.addEventListener("input", () => (endD = ed.value));
 
     new Setting(wrap).setName("Color (optional)").addText((t) => {
       t.setPlaceholder("r,g,b or #hex");
-      t.inputEl.style.width = "100%";
+      t.inputEl.addClass("txs-modal-input-wide");
       t.onChange((v) => (color = v));
     });
 
-    const actions = wrap.createDiv({ cls: "modal-button-container" });
-    actions.style.marginTop = "12px";
+    const actions = wrap.createDiv({
+      cls: "modal-button-container txs-modal-actions",
+    });
     const create = actions.createEl("button", { cls: "mod-cta", text: "Create" });
     create.addEventListener("click", () => {
       const yStart = parseInt(startY, 10);
@@ -223,8 +220,10 @@ function promptForEra(app: App): Promise<EraPromptResult | null> {
       });
       modal.close();
     });
-    const cancel = actions.createEl("button", { text: "Cancel" });
-    cancel.style.marginLeft = "6px";
+    const cancel = actions.createEl("button", {
+      cls: "txs-modal-cancel",
+      text: "Cancel",
+    });
     cancel.addEventListener("click", () => modal.close());
 
     modal.onClose = () => {
@@ -244,8 +243,8 @@ function promptForTitle(app: App): Promise<string | null> {
     new Setting(wrap)
       .setName("Title")
       .addText((t) => {
-        t.setPlaceholder("e.g. Hezekiah (770 B.C.E. - 716 B.C.E.)");
-        t.inputEl.style.width = "100%";
+        t.setPlaceholder("Hezekiah (770 BCE – 716 BCE)");
+        t.inputEl.addClass("txs-modal-input-wide");
         t.onChange((v) => (value = v));
         t.inputEl.addEventListener("keydown", (e) => {
           if (e.key === "Enter" && value.trim()) {
@@ -255,10 +254,11 @@ function promptForTitle(app: App): Promise<string | null> {
           }
         });
         // Focus once the modal is mounted.
-        setTimeout(() => t.inputEl.focus(), 0);
+        window.setTimeout(() => t.inputEl.focus(), 0);
       });
-    const actions = wrap.createDiv({ cls: "modal-button-container" });
-    actions.style.marginTop = "12px";
+    const actions = wrap.createDiv({
+      cls: "modal-button-container txs-modal-actions",
+    });
     const create = actions.createEl("button", { cls: "mod-cta", text: "Create" });
     create.addEventListener("click", () => {
       if (!value.trim()) return;
@@ -266,8 +266,10 @@ function promptForTitle(app: App): Promise<string | null> {
       resolve(value.trim());
       modal.close();
     });
-    const cancel = actions.createEl("button", { text: "Cancel" });
-    cancel.style.marginLeft = "6px";
+    const cancel = actions.createEl("button", {
+      cls: "txs-modal-cancel",
+      text: "Cancel",
+    });
     cancel.addEventListener("click", () => modal.close());
     modal.onClose = () => {
       if (!resolved) resolve(null);

@@ -343,7 +343,7 @@
 }
 
 .txs-tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   background: var(--background-primary);
   color: var(--text-normal);
@@ -704,4 +704,121 @@
   padding: 8px;
   border-left: 3px solid var(--text-error);
   background: var(--background-secondary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Classes replacing inline style assignments. Obsidian's plugin review
+ * (eslint-plugin-obsidianmd/no-static-styles-assignment) requires static
+ * styling to live here so themes and snippets can override it.
+ * ------------------------------------------------------------------ */
+
+/* Off-screen stage used while rasterising a timeline for PNG export. */
+.txs-export-stage {
+  position: fixed;
+  left: -99999px;
+  top: -99999px;
+  width: 1200px;
+}
+
+/* Modal forms (new era / new event). */
+.txs-modal-input-wide {
+  width: 100%;
+}
+
+.txs-modal-date-row {
+  display: flex;
+  gap: 6px;
+}
+
+.txs-modal-date-part {
+  width: 60px;
+}
+
+.txs-modal-actions {
+  margin-top: 12px;
+}
+
+.txs-modal-cancel {
+  margin-left: 6px;
+}
+
+/* Settings tab: category colour rows + diagnostics dump. */
+.txs-category-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.txs-category-picker {
+  margin-right: 6px;
+}
+
+.txs-diagnostics-box {
+  max-height: 200px;
+  overflow: auto;
+}
+
+/* Inspector: era colour picker pairing. */
+.txs-inspector-color-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.txs-inspector-color-text {
+  flex: 1 1 0;
+}
+
+/* Numeric zoom overrides in the view header and the filter panel. */
+.txs-view-zoom-input {
+  width: 80px;
+}
+
+.txs-filter-zoom-input {
+  width: 100px;
+}
+
+/* List renderer inline affordances. */
+.txs-list-era-title {
+  margin-left: 4px;
+}
+
+.txs-list-link {
+  margin-left: 6px;
+}
+
+/* Bar renderer: tap target. touch-action suppresses the iOS 300ms delay. */
+.txs-bar-hit {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Tooltip internals. */
+.txs-tooltip-title {
+  font-weight: 600;
+}
+
+.txs-tooltip-dates {
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.txs-tooltip-category {
+  margin-top: 2px;
+}
+
+.txs-tooltip-desc {
+  margin-top: 4px;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+/* Applied while the tooltip is measured off-view, before placement. */
+.txs-tooltip.is-measuring {
+  visibility: hidden;
 }

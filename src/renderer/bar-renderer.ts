@@ -1,10 +1,7 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import type { ViewportRange } from "../timeline/overlap";
 import { assignLanes } from "../timeline/overlap";
-import {
-  fractionalPosition,
-  toFrontmatterString,
-} from "../timeline/date";
+import { fractionalPosition } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
 import type { Orientation } from "./render-options";
 
@@ -234,16 +231,15 @@ function attachEvents(
     onOpen(ev.id);
   });
   // Hit-target affordance + suppress the iOS 300ms tap delay.
-  (el as unknown as HTMLElement).style.cursor = "pointer";
-  el.setAttribute("style", `${el.getAttribute("style") ?? ""} touch-action: manipulation;`);
+  el.classList.add("txs-bar-hit");
 
   if (!isMobile) {
     el.addEventListener("mouseenter", (e) => {
-      const me = e as MouseEvent;
+      const me = e;
       showTooltip(container, ev, me.clientX, me.clientY);
     });
     el.addEventListener("mousemove", (e) => {
-      const me = e as MouseEvent;
+      const me = e;
       showTooltip(container, ev, me.clientX, me.clientY);
     });
     el.addEventListener("mouseleave", () => hideTooltip());

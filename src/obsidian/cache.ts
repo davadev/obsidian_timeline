@@ -270,5 +270,5 @@ const MD_DOC_TTL_MS = 30_000;
 const BATCH = 25;
 
 function yieldToUi(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 0));
+  return new Promise((r) => window.setTimeout(r, 0));
 }

@@ -129,7 +129,7 @@ export function renderTimeline(args: RenderArgs): void {
       // out by the inline filter panel" (most common — and recoverable by
       // the user via the Clear filters button up top).
       if (args.events.length > 0) {
-        msg.createEl("div", {
+        msg.createDiv({
           text: "Filters are hiding all events. Expand the Filters panel above and click \"Clear filters\" to see them.",
           cls: "txs-filter-empty-hint",
         });

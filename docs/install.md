@@ -2,7 +2,7 @@
 
 Three files ship: `manifest.json`, `main.js`, `styles.css`. Drop them into `.obsidian/plugins/timeline-xml-sync/` inside your vault.
 
-> Since 0.8.3 the CSS is also bundled inside `main.js` and auto-injected at load time, so the plugin's UI looks correct even when `styles.css` is missing. The separate file is still recommended (themes can override individual rules), but the plugin no longer breaks visually without it.
+> All three files are required. Obsidian (and BRAT) load `styles.css` for you; without it the plugin's UI renders unstyled. Requires Obsidian **1.13.0** or newer.
 
 ## Desktop (easiest)
 

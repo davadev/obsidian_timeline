@@ -56,11 +56,7 @@ export async function exportActiveNoteWithRenderedTimeline(
     const vp = autoViewport(events);
 
     // Render off-screen
-    const stage = document.body.createDiv();
-    stage.style.position = "fixed";
-    stage.style.left = "-99999px";
-    stage.style.top = "-99999px";
-    stage.style.width = "1200px";
+    const stage = document.body.createDiv({ cls: "txs-export-stage" });
     try {
       renderTimeline({
         container: stage,
@@ -78,7 +74,7 @@ export async function exportActiveNoteWithRenderedTimeline(
       });
       const svg = stage.querySelector("svg");
       if (!svg) continue;
-      const png = await svgToPng(svg as SVGSVGElement);
+      const png = await svgToPng(svg);
       const attDir = `${settings.eventNotesDir}/_attachments`;
       await ctx.vault.ensureFolder(attDir);
       const safe = active.basename.replace(/[^A-Za-z0-9-_]+/g, "-");
@@ -214,7 +210,7 @@ async function svgToPng(svg: SVGSVGElement): Promise<ArrayBuffer> {
   const url = URL.createObjectURL(blob);
   try {
     const img = await loadImage(url);
-    const canvas = document.createElement("canvas");
+    const canvas = createEl("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx2d = canvas.getContext("2d");
@@ -237,7 +233,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(new Error(`Image load failed: ${e}`));
+    img.onerror = () => reject(new Error(`Image load failed: ${url}`));
     img.src = url;
   });
 }
