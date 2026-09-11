@@ -13,15 +13,20 @@ export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 20000;
 /**
  * Hard cap on the rendered time axis, in CSS pixels — the real limit on how
- * far you can zoom in. Browsers tile the rasterisation, so element count
- * matters more than extent, but very large SVGs still get dropped or
- * mis-painted on mobile WebKit. 150k gives roughly 75px per year across two
- * millennia. At 4M a six-thousand-year timeline still reaches month labels,
- * and a span of a century or so reaches days. Chromium builds and paints an
- * 8M-wide SVG with 800 events in about 2ms — the element count, not the
- * extent, is what costs; lower this if a device shows blank stretches.
+ * far you can zoom in.
+ *
+ * Mobile gets a much smaller budget on purpose. A very wide SVG is a very
+ * large compositing layer, and iOS kills the app rather than allocating it:
+ * scrolling or pinching a multi-million-pixel chart crashed Obsidian back to
+ * "loading workspace". Desktop has the memory to spare.
  */
-export const MAX_AXIS_PX = 4000000;
+export const MAX_AXIS_PX = 1000000;
+export const MAX_AXIS_PX_MOBILE = 120000;
+
+export function maxAxisPx(isMobile: boolean): number {
+  return isMobile ? MAX_AXIS_PX_MOBILE : MAX_AXIS_PX;
+}
+
 /** Multiplier applied by one press of +/-. */
 export const ZOOM_STEP = 1.35;
 
@@ -31,8 +36,8 @@ export function clampZoom(z: number): number {
 }
 
 /** Keep the rendered axis inside what the WebView can actually paint. */
-export function clampAxisSize(px: number): number {
-  return Math.min(MAX_AXIS_PX, Math.max(120, Math.round(px)));
+export function clampAxisSize(px: number, isMobile = false): number {
+  return Math.min(maxAxisPx(isMobile), Math.max(120, Math.round(px)));
 }
 
 /** "1.5" / "12" rather than "1.4999999" / "12.0". */

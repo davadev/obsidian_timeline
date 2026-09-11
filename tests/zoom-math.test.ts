@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_AXIS_PX,
+  MAX_AXIS_PX_MOBILE,
   MAX_ZOOM,
   PinchTracker,
   clampAxisSize,
@@ -46,12 +47,12 @@ describe("clampAxisSize", () => {
     expect(clampAxisSize(800 * MAX_ZOOM)).toBe(MAX_AXIS_PX);
   });
 
-  it("lets even a six-millennia span reach month-level detail", () => {
-    // 4000 BCE to today across the widest axis we will draw
-    const pxPerYear = MAX_AXIS_PX / 6000;
-    // a quarter has to be at least as wide as the tick target, or the ladder
-    // never descends past years
-    expect(pxPerYear / 4).toBeGreaterThan(120);
+  it("gives mobile a far smaller budget than the desktop", () => {
+    // A multi-million-pixel SVG is a compositing layer iOS will not allocate;
+    // it killed the app mid-gesture.
+    expect(clampAxisSize(1e9, true)).toBe(MAX_AXIS_PX_MOBILE);
+    expect(clampAxisSize(1e9, false)).toBe(MAX_AXIS_PX);
+    expect(MAX_AXIS_PX_MOBILE * 4).toBeLessThan(MAX_AXIS_PX);
   });
 });
 

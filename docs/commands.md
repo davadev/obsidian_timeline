@@ -43,11 +43,13 @@ The axis re-scales with the zoom: fitted out it marks centuries, zoomed in it
 moves to decades, years, months and finally individual days, so a label near
 the pointer always says where you are.
 
-How deep the zoom goes is bounded by a pixel cap on the rendered axis
-(`MAX_AXIS_PX` in `src/renderer/zoom-math.ts`, 4 000 000 px), not by the zoom
-factor. At that width a six-thousand-year timeline still reaches month labels,
-and a span of a century or so reaches days. Lower the cap if a device starts
-showing blank stretches at extreme zoom.
+How deep the zoom goes is bounded by a pixel cap on the rendered axis, not by
+the zoom factor — the chart is one SVG, and its width is its compositing layer.
+`src/renderer/zoom-math.ts` caps it at 1 000 000 px on desktop and **120 000 px
+on mobile**: iOS refuses to allocate a multi-million-pixel layer and kills the
+app mid-gesture rather than degrading. The practical consequence is that a very
+long timeline reaches month labels on desktop but not on a phone; a shorter
+span (a century or two) reaches days on both.
 
 Zoom is a view setting, not a filter: it is not counted in the Filters badge,
 though **Clear filters** does reset it to automatic. Inline ` ```timeline `

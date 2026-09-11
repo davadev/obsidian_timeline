@@ -758,35 +758,6 @@
   margin-bottom: var(--txs-zoom-extra, 0);
 }
 
-/* Sliding event labels.
- *
- * Each label group carries its own bounds; the clamp is evaluated by the
- * browser against a single `--txs-scroll` variable the scroll handler writes
- * on the wrapper. No per-label JS on a scroll frame, so a fast flick stays
- * smooth, and the label goes exactly as far as its bar allows. */
-.txs-timeline-bar.is-sticky-labels .txs-label-anchor {
-  transform: translate(
-    clamp(
-      var(--txs-from, 0px),
-      calc(var(--txs-scroll, 0px) + 6px),
-      var(--txs-latest, 0px)
-    ),
-    var(--txs-cross, 0px)
-  );
-}
-
-.txs-timeline-bar.is-sticky-labels.txs-vertical .txs-label-anchor {
-  transform: translate(
-      var(--txs-cross, 0px),
-      clamp(
-        var(--txs-from, 0px),
-        calc(var(--txs-scroll, 0px) + 6px),
-        var(--txs-latest, 0px)
-      )
-    )
-    rotate(90deg);
-}
-
 /* Undo the stretch for anything that should keep its shape. Labels and point
  * markers are rendered at the origin of a <g> that carries their anchor
  * position (see `anchored()` in bar-renderer.ts), so scaling them about that

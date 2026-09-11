@@ -231,8 +231,10 @@ export function visibleAxisTicks(
   const spanJ = endJ - startJ;
   if (!(spanJ > 0)) return [];
 
-  // A margin either side keeps labels from popping in at the edges.
-  const margin = Math.max(targetSpacingPx * 2, (viewToPx - viewFromPx) * 0.25);
+  // A full screen of margin either side: the painter only refreshes when the
+  // scroll leaves what is painted or comes to rest, so the marks have to
+  // survive a decent flick without a repaint.
+  const margin = Math.max(targetSpacingPx * 2, viewToPx - viewFromPx);
   const fromPx = Math.max(0, viewFromPx - margin);
   const toPx = Math.min(axisPx, viewToPx + margin);
   if (!(toPx > fromPx)) return [];

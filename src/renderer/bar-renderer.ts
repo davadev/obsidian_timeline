@@ -89,7 +89,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const timeAxisBase = isVertical
     ? Math.max(360, container.clientHeight || 600)
     : containerSize;
-  const timeAxisSize = clampAxisSize(timeAxisBase * zoom);
+  const timeAxisSize = clampAxisSize(timeAxisBase * zoom, args.isMobile);
   const crossAxisSize =
     AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
 
@@ -214,17 +214,18 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
           ? anchored(svg, label, cross + LANE_THICKNESS / 2, a1, 90)
           : anchored(svg, label, a1, cross + LANE_THICKNESS / 2);
         if (args.stickyLabels !== false) {
-          // Position is computed by CSS from one scroll variable (see
-          // `.txs-label-anchor` in styles.css). Writing per-label transforms
-          // on every scroll frame is what made a fast flick stutter.
-          group.classList.add("txs-label-anchor");
-          group.style.setProperty("--txs-cross", `${cross + LANE_THICKNESS / 2}px`);
-          group.style.setProperty("--txs-from", `${a1}px`);
-          group.style.setProperty(
-            "--txs-latest",
-            `${Math.max(a1, a2 - (text.length * CHAR_W + LABEL_PAD * 2))}px`
-          );
-          sticky.push({ g: group, text: label, from: a1, to: a2 });
+          sticky.push({
+            g: group,
+            text: label,
+            from: a1,
+            to: a2,
+            cross: cross + LANE_THICKNESS / 2,
+            latest: Math.max(
+              a1,
+              a2 - (text.length * CHAR_W + LABEL_PAD * 2)
+            ),
+            at: a1,
+          });
         }
       }
     }
@@ -393,17 +394,32 @@ interface StickyLabel {
   text: SVGTextElement;
   from: number;
   to: number;
+  cross: number;
+  /** Travel limit; refined once real glyph widths are known. */
+  latest: number;
+  /** Last position written, so an unchanged label costs nothing. */
+  at: number;
 }
 
 /**
- * Wires up everything that depends on the visible stretch of the axis.
+ * Repaint once the scroll has moved this fraction of a screen away from what
+ * was painted. The axis is drawn with a screen of margin either side, so this
+ * has to stay below 1.
+ */
+const PAINT_MARGIN = 0.6;
+/** Quiet period after scrolling stops before anything is repositioned. */
+const SETTLE_MS = 90;
+
+/**
+ * Everything that depends on the visible stretch of the axis: the axis marks,
+ * and each label's position inside its own bar.
  *
- * The labels themselves are positioned by CSS: each carries its own bounds as
- * custom properties and clamps against `--txs-scroll`, so a scroll frame is a
- * single property write on the wrapper rather than a transform write per
- * label — that per-label loop is what made a fast flick stutter.
- *
- * The axis marks still have to be rebuilt, but only for what is on screen.
+ * Nothing runs per scroll frame. Doing work on every frame — whether writing
+ * transforms from JS or touching a CSS variable the labels clamp against —
+ * costs a style pass over every label while the WebView is trying to scroll,
+ * and on a phone that reads as lag. Instead the axis is painted with a wide
+ * margin either side, and the work only happens when the scroll leaves that
+ * margin or comes to rest.
  */
 function attachViewportPainters(
   wrapper: HTMLElement,
@@ -411,53 +427,82 @@ function attachViewportPainters(
   paintAxis: (viewFrom: number, viewTo: number) => void,
   labels: StickyLabel[]
 ): void {
-  if (labels.length) wrapper.addClass("is-sticky-labels");
-  let frame: number | null = null;
+  labels.sort((a, b) => a.from - b.from);
+  const ends = labels.map((l) => l.to);
+  let paintedAt = Number.NaN;
+  let paintedSize = 0;
+  let settle: number | null = null;
   let measured = false;
 
-  const paint = () => {
-    frame = null;
-    const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
-    const size = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
+  const firstVisible = (viewFrom: number): number => {
+    let lo = 0;
+    let hi = labels.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ends[mid] < viewFrom) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
 
-    wrapper.style.setProperty("--txs-scroll", `${viewFrom}px`);
-    paintAxis(viewFrom, viewFrom + size);
-
-    if (!measured) {
-      measured = true;
-      // One batched pass over the real glyph widths. The estimate used at
-      // build time is close but conservative, which stopped labels short of
-      // the end of their bar.
-      for (const l of labels) {
-        const w = textWidth(l.text);
-        if (w > 0) {
-          l.g.style.setProperty(
-            "--txs-latest",
-            `${Math.max(l.from, l.to - w - LABEL_PAD * 2)}px`
-          );
-        }
+  const measure = () => {
+    measured = true;
+    // One batched pass over the real glyph widths: the build-time estimate is
+    // conservative, which stopped labels short of the end of their bar.
+    for (const l of labels) {
+      let w = 0;
+      try {
+        w = l.text.getComputedTextLength();
+      } catch {
+        w = 0;
       }
+      if (w > 0) l.latest = Math.max(l.from, l.to - w - LABEL_PAD * 2);
+    }
+  };
+
+  const paint = () => {
+    const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
+    const size =
+      (isVertical ? wrapper.clientHeight : wrapper.clientWidth) || paintedSize;
+    paintedAt = viewFrom;
+    paintedSize = size;
+
+    paintAxis(viewFrom, viewFrom + size);
+    if (!measured) measure();
+
+    for (let i = firstVisible(viewFrom); i < labels.length; i++) {
+      const l = labels[i];
+      if (l.from > viewFrom + size) break;
+      const target = Math.min(Math.max(l.from, viewFrom + LABEL_PAD), l.latest);
+      if (Math.abs(target - l.at) < 1) continue;
+      l.at = target;
+      const rotate = isVertical ? " rotate(90)" : "";
+      const x = isVertical ? l.cross : target;
+      const y = isVertical ? target : l.cross;
+      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
     }
   };
 
   wrapper.addEventListener(
     "scroll",
     () => {
-      if (frame != null) return;
-      frame = window.requestAnimationFrame(paint);
+      // Comparing two numbers is all that happens while the finger is moving.
+      const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
+      const size = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
+      const drifted = Math.abs(viewFrom - paintedAt) > size * PAINT_MARGIN;
+
+      if (settle != null) window.clearTimeout(settle);
+      if (drifted) {
+        // Scrolled clean out of what is painted — repaint now, or the axis
+        // would be blank until the finger stops.
+        window.requestAnimationFrame(paint);
+      }
+      settle = window.setTimeout(paint, SETTLE_MS);
     },
     { passive: true }
   );
-  window.requestAnimationFrame(paint);
-}
 
-/** Real rendered width, where the platform can give it. */
-function textWidth(text: SVGTextElement): number {
-  try {
-    return text.getComputedTextLength();
-  } catch {
-    return 0;
-  }
+  window.requestAnimationFrame(paint);
 }
 
 function saturateForLabel(era: TimelineEra): string {
