@@ -483,13 +483,18 @@
   color: var(--text-muted);
 }
 
-.txs-inspector-row input,
+/* Text-bearing controls fill the row. Checkboxes and radios are left entirely
+ * to Obsidian: width: 100% stretched its styled checkbox into a long oval, and
+ * overriding the width back to `auto` collapsed it to nothing — the app sizes
+ * these itself, so this rule simply must not reach them. */
+.txs-inspector-row input:not([type="checkbox"]):not([type="radio"]),
 .txs-inspector-row textarea,
 .txs-inspector-row select {
   width: 100%;
   padding: 4px 6px;
   box-sizing: border-box;
 }
+
 
 .txs-inspector-section-title {
   margin-top: 6px;
