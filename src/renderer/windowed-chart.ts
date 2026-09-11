@@ -374,6 +374,10 @@ export class WindowedChart {
     const origin = this.scrollPos() + focalPx;
     this.tileLayer.setCssProps({
       "--txs-tile-scale": String(scale),
+      // Anything that should keep its shape — axis labels, point markers —
+      // counter-scales by the inverse about its own anchor, so only the bars
+      // stretch while the gesture is in flight.
+      "--txs-tile-inv": String(1 / scale),
       "--txs-tile-origin": `${origin}px`,
     });
   }
@@ -385,6 +389,7 @@ export class WindowedChart {
     this.scroller.removeClass("is-zooming");
     this.tileLayer.setCssProps({
       "--txs-tile-scale": "1",
+      "--txs-tile-inv": "1",
       "--txs-tile-origin": "0px",
     });
     if (!p) return;

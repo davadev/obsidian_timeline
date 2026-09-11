@@ -1014,6 +1014,21 @@
   transform: scaleY(var(--txs-tile-scale, 1));
 }
 
+/* Undo the stretch for anything that is not a duration: axis labels and point
+ * markers sit at the origin of an anchored <g>, so scaling them by the inverse
+ * about that origin keeps their shape and their position while the bars around
+ * them stretch. */
+.txs-chart.is-zooming .txs-chart-tiles text,
+.txs-chart.is-zooming .txs-chart-tiles .txs-event-point {
+  transform-origin: 0 0;
+  transform: scaleX(var(--txs-tile-inv, 1));
+}
+
+.txs-chart.txs-vertical.is-zooming .txs-chart-tiles text,
+.txs-chart.txs-vertical.is-zooming .txs-chart-tiles .txs-event-point {
+  transform: scaleY(var(--txs-tile-inv, 1));
+}
+
 /* Labels are redrawn on commit; they would only smear during the gesture. */
 .txs-chart.is-zooming .txs-chart-edge {
   opacity: 0;

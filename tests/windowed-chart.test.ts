@@ -245,6 +245,27 @@ describe("windowed chart", () => {
     expect(chart.zoom).toBeGreaterThan(zoomBefore * 4);
   });
 
+  it("counter-scales anything that is not a duration during a gesture", async () => {
+    const { chart, scroller } = chartWith(DATA, 8);
+    const gesture = chart as unknown as {
+      beginPreview: (px: number) => void;
+      updatePreview: (scale: number, px: number) => void;
+    };
+    gesture.beginPreview(200);
+    gesture.updatePreview(6, 200);
+    await settle();
+
+    // Bars stretch with the gesture; text and point markers undo it, so a
+    // label is not smeared across the screen while the fingers move.
+    const layer = scroller.querySelector(".txs-chart-tiles") as HTMLElement;
+    expect(layer.style.getPropertyValue("--txs-tile-scale")).toBe("6");
+    expect(Number(layer.style.getPropertyValue("--txs-tile-inv"))).toBeCloseTo(
+      1 / 6,
+      6
+    );
+    expect(scroller.classList.contains("is-zooming")).toBe(true);
+  });
+
   it("tears down cleanly", () => {
     const { chart, scroller } = chartWith(DATA, 2);
     chart.destroy();
