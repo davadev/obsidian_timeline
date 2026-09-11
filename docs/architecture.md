@@ -112,29 +112,12 @@ timeline rather than all of it and re-anchors as you reach an end — an
 hour-deep window on a three-millennia span would otherwise want ~2×10¹⁰ px of
 scroll range.
 
-Inline ` ```timeline ` blocks still use the classic whole-chart path, as does
-PNG export; `renderDefaults.windowedChart` switches the view between the two.
+Both the Timeline view and inline ` ```timeline ` blocks render through it.
 
-### Unfinished, and why it matters
-
-This split is **temporary**, not a design. Carrying it indefinitely means two
-chart renderers to fix everything in twice, so 0.12 should close it:
-
-- **Blocks move to the windowed chart.** Until they do they keep the old
-  ceiling (`clampAxisSize`, 120 000 px on mobile), the old sliding-label
-  machinery (`attachViewportPainters`), and none of the seam, fuzzy-edge or
-  duplicate-label fixes from 0.11. Their window/zoom will need persisting under
-  a **new** YAML key — never `range:`, which is a *filter* and would drop events
-  outside it when the user pans.
-- **`renderDefaults.windowedChart` is deleted** along with the classic path,
-  `clampAxisSize`, `maxZoomForAxis` and the sticky-label code, once blocks no
-  longer need them.
-- **`stickyLabels` currently only affects blocks.** Tiles draw no labels, so the
-  pinned layer always slides them; the windowed chart should honour the setting
-  (pin labels to the bar start when it is off) or the setting should go.
-
-PNG export stays on the classic path deliberately — it renders the whole span,
-which is what an exported image should show.
+PNG export is the one caller that still draws a whole chart in one SVG
+(`renderBar` directly, not through `renderTimeline`): an exported image shows
+the entire span, and there is no single element to serialise when only a window
+is drawn.
 
 ## Caches
 

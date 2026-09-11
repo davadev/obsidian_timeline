@@ -965,8 +965,10 @@
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  /* Native panning; two-finger pinch still reaches the touch handlers. */
-  touch-action: pan-x;
+  /* Both axes stay native: inside a note the chart scrolls horizontally, but a
+   * vertical drag that starts on it must still scroll the page. Pinch is
+   * handled through WebKit's gesture events, which do not depend on this. */
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -980,7 +982,7 @@
 .txs-chart.txs-vertical {
   overflow-x: hidden;
   overflow-y: auto;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
   max-height: 80vh;
 }
 

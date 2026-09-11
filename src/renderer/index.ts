@@ -1,6 +1,6 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import type { ViewportRange } from "../timeline/overlap";
-import { renderBar } from "./bar-renderer";
+import { WindowedChart } from "./windowed-chart";
 import { renderList } from "./list-renderer";
 import {
   applyRichFilter,
@@ -53,13 +53,18 @@ export function renderTimeline(args: RenderArgs): void {
 
   // Mount-point for the bar+list combo (so filter chips re-render only the body).
   const body = args.container.createDiv({ cls: "txs-timeline-body" });
+  // The chart outlives a filter change: rebuilding it would throw away the
+  // scroll position, so toggling a category would jump the reader back to the
+  // start of the timeline. Only the list is redrawn wholesale.
+  const chartHost = body.createDiv({ cls: "txs-timeline-chart" });
+  const listHost = body.createDiv({ cls: "txs-timeline-list-host" });
+  let chart: WindowedChart | null = null;
 
   const drawEvents = (
     events: typeof args.events,
     state: RichFilterState | null,
     zoomOverride?: number | null
   ) => {
-    body.empty();
     const { mode } = args.options;
     const effectiveZoom = zoomOverride != null ? zoomOverride : args.options.zoom;
 
@@ -94,26 +99,28 @@ export function renderTimeline(args: RenderArgs): void {
     const effEras = filterErasToViewport(args.eras, effViewport);
 
     if (mode === "bar" || mode === "hybrid") {
-      renderBar({
-        container: body,
-        events,
+      chart ??= new WindowedChart({
+        container: chartHost,
         categories: args.categories,
-        viewport: effViewport,
         categoryColors: args.categoryColors,
-        onOpenEvent: args.onOpenEvent,
-        zoom: effectiveZoom,
         orientation: args.options.orientation,
         isMobile: args.isMobile,
-        eras: effEras,
+        onOpenEvent: args.onOpenEvent,
         onOpenEra: args.onOpenEra,
         fuzzyGradientPercent: args.fuzzyGradientPercent,
         eventLabelColor: args.eventLabelColor,
         stickyLabels: args.options.stickyLabels,
       });
+      if (effViewport) chart.setData(events, effEras ?? [], effViewport, effectiveZoom);
+    } else if (chart) {
+      chart.destroy();
+      chart = null;
     }
+
+    listHost.empty();
     if (mode === "list" || mode === "hybrid") {
       renderList({
-        container: body,
+        container: listHost,
         events,
         options: args.options,
         onOpenEvent: args.onOpenEvent,
@@ -124,7 +131,7 @@ export function renderTimeline(args: RenderArgs): void {
       });
     }
     if (events.length === 0) {
-      const msg = body.createDiv({ text: "No events to display." });
+      const msg = listHost.createDiv({ text: "No events to display." });
       // Distinguish "renderer received an empty event set from the caller"
       // (rare — usually a config/setup issue) from "events were filtered
       // out by the inline filter panel" (most common — and recoverable by

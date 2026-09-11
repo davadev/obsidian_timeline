@@ -55,9 +55,11 @@ Auto-generated event notes ship a `viewport: true` block by default so the inlin
 
 ## Filters panel
 
-Inline blocks render through the classic whole-chart renderer; the windowed
-chart introduced in 0.11 is used by the workspace **Timeline view** only, so
-`zoom:` here still means "how many screens wide the chart is drawn".
+Since 0.12 a block draws only the stretch of time on screen, exactly like the
+Timeline view: pinch, trackpad pinch and <kbd>Ctrl</kbd>+scroll all work inside
+a note, and `zoom:` sets the initial framing (how many screens wide the whole
+span would be). Panning and zooming a block does **not** rewrite the note — only
+the filter panel persists its state.
 
 Every inline block (and the global view) carries the same Filters panel — collapsed by default. It writes its state into the block's YAML on every change, so filters travel with the note across devices.
 

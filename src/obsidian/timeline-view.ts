@@ -1,7 +1,6 @@
 import { ItemView, Platform, WorkspaceLeaf, type App } from "obsidian";
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
-import { renderTimeline } from "../renderer";
 import { renderList } from "../renderer/list-renderer";
 import { WindowedChart } from "../renderer/windowed-chart";
 import type { TimelineDoc, TimelineEvent } from "../timeline/model";
@@ -12,17 +11,7 @@ import {
   renderFilterBar,
   type RichFilterState,
 } from "../renderer/filter-bar";
-import {
-  PinchTracker,
-  ZOOM_STEP,
-  clampZoom,
-  maxZoomForAxis,
-  focalScroll,
-  formatZoom,
-  wheelZoomFactor,
-  type PinchAction,
-  type PinchPoint,
-} from "../renderer/zoom-math";
+import { ZOOM_STEP, formatZoom } from "../renderer/zoom-math";
 
 export const VIEW_TYPE_TIMELINE = "txs-timeline-view";
 
@@ -188,8 +177,7 @@ export class TimelineView extends ItemView {
     }
 
     this.buildFilterPanel(settings);
-    const body = this.contentEl.createDiv({ cls: "txs-view-body" });
-    this.attachZoomGestures(body);
+    this.contentEl.createDiv({ cls: "txs-view-body" });
     this.bodyRender();
   }
 
@@ -342,119 +330,16 @@ export class TimelineView extends ItemView {
 
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
-    if (!body) return;
-    if (this.args.getSettings().renderDefaults.windowedChart) {
-      this.windowedRender(body);
-      return;
-    }
-    const bodyScrollTop = body.scrollTop;
-    const barScrolls: number[] = [];
-    body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
-      barScrolls.push(b.scrollLeft);
-    });
-
-    if (!this.cachedDoc) {
-      body.empty();
-      return;
-    }
-    const { getSettings } = this.args;
-    const settings = getSettings();
-
-    let filtered = applyFilters(this.cachedDoc.events, this.filters);
-    if (!filtered.length) {
-      body.empty();
-      body.createDiv({ text: "No events match current filters." });
-      return;
-    }
-
-    // Build the new chart alongside the old one and swap in a single frame.
-    // Emptying first left a blank pane for a frame, which reads as a flicker
-    // when zooming. The staging div stays in the document (hidden, same
-    // width) because the renderer sizes the chart from its container.
-    const previous = Array.from(body.children);
-    const staging = body.createDiv({ cls: "txs-view-staging" });
-
-    const fullViewport = autoViewport(filtered);
-    const computedZoom = pickAutoZoom(filtered.length, fullViewport, body);
-    const autoZoom = this.filters.zoom != null ? this.filters.zoom : computedZoom;
-    this.effectiveZoom = autoZoom;
-    renderTimeline({
-      container: staging,
-      events: filtered,
-      categories: this.cachedDoc.categories,
-      eras: this.cachedDoc.eras,
-      viewport: fullViewport,
-      options: {
-        ...settings.renderDefaults,
-        mode: settings.renderDefaults.mode,
-        zoom: autoZoom,
-        show: ["title", "date", "category"],
-        details: "compact",
-        // Category chips are in the filter panel for the global view, so the
-        // renderer's own chip bar would be duplicate noise.
-        showFilterUI: false,
-      },
-      onOpenEvent: (id) => this.args.onEventClick(id),
-      onOpenEra: (id) => this.args.onEraClick(id),
-      categoryColors: settings.categoryColors,
-      // Already filtered by our hiddenCategories above — don't double-filter.
-      initialHidden: [],
-      filterKey: `view:${settings.timelineId}`,
-      isMobile: Platform.isMobile,
-      fuzzyGradientPercent: settings.fuzzyGradientPercent,
-      eventLabelColor: settings.eventLabelColor,
-    });
-
-    // Swap in two steps so there is never a blank frame: the new chart is
-    // revealed as an overlay on top of the old one, and only once it has been
-    // painted does the old one go away. A large SVG takes a moment to
-    // rasterise, and removing the old nodes first is what let that show
-    // through as a flash.
-    const focus = this.pendingFocus;
-    this.pendingFocus = null;
-
-    const restore = () => {
-      body.scrollTop = bodyScrollTop;
-      body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b, i) => {
-        if (focus) {
-          // Zoom: put the same slice of content back under the pointer,
-          // measured against what was actually rendered.
-          const size = focus.vertical ? b.scrollHeight : b.scrollWidth;
-          const target = focus.fraction * size - focus.focalPx;
-          if (focus.vertical) b.scrollTop = Math.max(0, target);
-          else b.scrollLeft = Math.max(0, target);
-        } else if (i < barScrolls.length) {
-          b.scrollLeft = barScrolls[i];
-        }
-      });
-    };
-
-    // Swap in two steps so there is never a blank frame: the new chart is
-    // revealed as an overlay on top of the old one, and only once it has been
-    // painted does the old one go away. A large SVG takes a moment to
-    // rasterise, and removing the old nodes first let that show through as a
-    // flash.
-    staging.removeClass("txs-view-staging");
-    staging.addClass("txs-view-swapping");
-    restore();
-
-    window.requestAnimationFrame(() => {
-      for (const el of previous) el.remove();
-      staging.removeClass("txs-view-swapping");
-      this.clearGestureState();
-      restore();
-      // Once more after layout has definitely settled.
-      window.requestAnimationFrame(restore);
-    });
+    if (body) this.renderChart(body);
   }
 
   /**
-   * Windowed path (0.11): the chart draws only the time window on screen, so
-   * zooming narrows the window instead of widening an SVG. The chart object
-   * outlives a filter change — rebuilding it would throw away the scroll
-   * position, i.e. jump to the start of the timeline on every chip toggle.
+   * The chart draws only the time window on screen, so zooming narrows the
+   * window instead of widening an SVG. The chart object outlives a filter
+   * change — rebuilding it would throw away the scroll position, i.e. jump to
+   * the start of the timeline on every chip toggle.
    */
-  private windowedRender(body: HTMLElement): void {
+  private renderChart(body: HTMLElement): void {
     if (!this.cachedDoc) {
       body.empty();
       this.chart = null;
@@ -542,10 +427,6 @@ export class TimelineView extends ItemView {
   }
 
   /** The horizontally (or vertically) scrolling box the bar chart lives in. */
-  private barScroller(): HTMLElement | null {
-    return this.contentEl.querySelector(".txs-timeline-bar");
-  }
-
   private updateZoomLabel(): void {
     if (!this.zoomLabelEl) return;
     const z = this.filters.zoom;
@@ -553,7 +434,8 @@ export class TimelineView extends ItemView {
 
     // At the ceiling the chart cannot grow further, so say so rather than
     // letting the number climb against a frozen view.
-    const atMax = z != null && z >= this.maxZoom() - 0.001;
+    const atMax =
+      z != null && this.chart != null && z >= this.chart.maxZoom - 0.001;
     if (this.zoomInEl) this.zoomInEl.disabled = atMax;
     this.zoomLabelEl.setAttr(
       "aria-label",
@@ -563,65 +445,11 @@ export class TimelineView extends ItemView {
     );
   }
 
-  /**
-   * Ceiling for this pane. The renderer caps the axis in pixels (and far more
-   * tightly on mobile, where a huge layer takes the app down), so zoom past
-   * this point would change the number and nothing else.
-   */
-  private maxZoom(): number {
-    // Windowed, the ceiling comes from the data (a one-hour window), not from
-    // how many pixels the platform will paint.
-    if (this.chart) return this.chart.maxZoom;
-    const body = this.contentEl.querySelector(".txs-view-body");
-    const vertical =
-      this.args.getSettings().renderDefaults.orientation === "vertical";
-    // Mirrors the renderer's own floors for the axis base.
-    const base = vertical
-      ? Math.max(360, body?.clientHeight || 600)
-      : Math.max(320, body?.clientWidth || 800);
-    return maxZoomForAxis(base, Platform.isMobile);
-  }
-
   /** Clamp that respects both the absolute limits and this pane's ceiling. */
-  private clampForView(z: number): number {
-    return Math.min(clampZoom(z), this.maxZoom());
-  }
-
   /** Multiply the current zoom, keeping `focalClient` (px, viewport) steady. */
-  private zoomBy(factor: number, focalClient?: { x: number; y: number }): void {
-    if (this.chart) {
-      // The windowed chart owns the window; it re-reports the zoom back to the
-      // label through onWindowChange.
-      this.chart.zoomBy(factor);
-      return;
-    }
-    const from = this.filters.zoom ?? this.effectiveZoom;
-    this.setZoom(from * factor, from, focalClient);
-  }
-
-  private setZoom(
-    next: number,
-    from: number,
-    focalClient?: { x: number; y: number }
-  ): void {
-    const clamped = this.clampForView(next);
-    if (Math.abs(clamped - from) < 0.001) return;
-
-    const scroller = this.barScroller();
-    if (scroller) {
-      const rect = scroller.getBoundingClientRect();
-      const vertical = scroller.hasClass("txs-vertical");
-      const focalPx = focalClient
-        ? vertical
-          ? focalClient.y - rect.top
-          : focalClient.x - rect.left
-        : (vertical ? rect.height : rect.width) / 2;
-      this.pendingFocus = focusFraction(scroller, vertical, focalPx);
-    }
-
-    this.filters.zoom = clamped;
-    this.updateZoomLabel();
-    this.scheduleZoomRender();
+  /** The chart owns the window; it reports the new zoom back through onWindowChange. */
+  private zoomBy(factor: number): void {
+    this.chart?.zoomBy(factor);
   }
 
   private resetZoom(): void {
@@ -647,237 +475,14 @@ export class TimelineView extends ItemView {
     });
   }
 
-  /**
-   * Pinch to zoom on touch, trackpad pinch / ctrl+wheel on desktop.
-   *
-   * Two deliberate choices, both learned the hard way:
-   *
-   * - Touch state comes from `event.touches` every time, never from a map of
-   *   live pointer ids. A pointerup that never arrives (the WebView eats one
-   *   when it takes over a scroll) leaves a stale id behind, and the next
-   *   one-finger pan then looks like a pinch and zooms instead of scrolling.
-   * - The gesture only transforms the existing SVG. Re-rendering it per frame
-   *   costs far more than a frame budget on a phone, which is what made the
-   *   view feel stuck. The real re-render happens once, on release.
-   */
-  private attachZoomGestures(body: HTMLElement): void {
-    let wheelCommit: number | null = null;
-    body.addEventListener(
-      "wheel",
-      (e: WheelEvent) => {
-        // A trackpad pinch arrives as a wheel event with ctrlKey set; plain
-        // scrolling (including two-finger panning) must stay scrolling.
-        if (!e.ctrlKey) return;
-        e.preventDefault();
-        const focal = { x: e.clientX, y: e.clientY };
-        if (!this.preview) this.beginPreview(focal);
-        this.updatePreview(
-          (this.preview?.scale ?? 1) * wheelZoomFactor(e.deltaY),
-          focal
-        );
-        if (wheelCommit != null) window.clearTimeout(wheelCommit);
-        wheelCommit = window.setTimeout(() => {
-          wheelCommit = null;
-          this.commitPreview();
-          // Long enough that a continuous trackpad pinch rebuilds the chart
-          // once at the end rather than several times a second.
-        }, 220);
-      },
-      { passive: false }
-    );
-
-    const pinch = new PinchTracker();
-
-    body.addEventListener(
-      "touchstart",
-      (e: TouchEvent) => this.applyPinch(pinch.start(points(e))),
-      { passive: true }
-    );
-
-    body.addEventListener(
-      "touchmove",
-      (e: TouchEvent) => {
-        const action = pinch.move(points(e));
-        if (action.kind === "update") e.preventDefault();
-        this.applyPinch(action);
-      },
-      { passive: false }
-    );
-
-    const endPinch = (e: TouchEvent) => {
-      this.applyPinch(pinch.end(points(e)));
-      // Whatever the tracker thought, no fingers means no gesture: the
-      // scroller must never be left with touch-action: none, or vertical
-      // panning stays dead until the view is rebuilt.
-      if (e.touches.length === 0) this.clearGestureState();
-    };
-    body.addEventListener("touchend", endPinch);
-    body.addEventListener("touchcancel", endPinch);
-
-    // Backgrounding the app can swallow the touchend entirely.
-    this.registerDomEvent(document, "visibilitychange", () => {
-      if (document.hidden) {
-        this.applyPinch(pinch.end([]));
-        this.clearGestureState();
-      }
-    });
-  }
-
   /** Drop every trace of an in-flight gesture. Safe to call at any time. */
-  private clearGestureState(): void {
-    this.contentEl
-      .querySelectorAll<HTMLElement>(".txs-timeline-bar.is-scaling")
-      .forEach((el) => {
-        el.removeClass("is-scaling");
-        el.setCssProps({
-          "--txs-zoom-scale": "1",
-          "--txs-zoom-inv": "1",
-          "--txs-zoom-extra": "0px",
-        });
-      });
-    this.contentEl.querySelector(".txs-view-body")?.removeClass("is-pinching");
-  }
-
-  private applyPinch(action: PinchAction): void {
-    switch (action.kind) {
-      case "begin":
-        this.beginPreview(action.focal);
-        break;
-      case "update":
-        this.updatePreview(action.scale, action.focal);
-        break;
-      case "commit":
-        this.commitPreview();
-        break;
-      default:
-        break;
-    }
-  }
-
   /** Snapshot what the gesture will scale, and freeze the scroll it started from. */
-  private beginPreview(focalClient: { x: number; y: number }): void {
-    const scroller = this.barScroller();
-    const svg = scroller?.querySelector("svg") ?? null;
-    if (!scroller || !svg) return;
-
-    const rect = scroller.getBoundingClientRect();
-    const svgRect = svg.getBoundingClientRect();
-    this.preview = {
-      scroller,
-      baseWidth: svgRect.width,
-      baseHeight: svgRect.height,
-      vertical: scroller.hasClass("txs-vertical"),
-      base: this.filters.zoom ?? this.effectiveZoom,
-      scale: 1,
-      startLeft: scroller.scrollLeft,
-      startTop: scroller.scrollTop,
-      focalX: focalClient.x - rect.left,
-      focalY: focalClient.y - rect.top,
-    };
-    // Bars stop taking taps for the duration, so ending a pinch over one
-    // doesn't open that event.
-    this.contentEl
-      .querySelector(".txs-view-body")
-      ?.addClass("is-pinching");
-  }
-
   /** Live feedback: stretch the rendered SVG, no geometry recomputed. */
-  private updatePreview(
-    scale: number,
-    focalClient: { x: number; y: number }
-  ): void {
-    const p = this.preview;
-    if (!p) return;
-
-    // Clamp against the zoom limits rather than the raw finger distance, so
-    // the preview can never show something the commit won't reproduce.
-    const target = this.clampForView(p.base * scale);
-    p.scale = target / p.base;
-
-    const rect = p.scroller.getBoundingClientRect();
-    p.focalX = focalClient.x - rect.left;
-    p.focalY = focalClient.y - rect.top;
-
-    // The scale rides on custom properties; the transform itself lives in
-    // styles.css, keyed off `is-scaling`. The extra length keeps the scroll
-    // range honest while the gesture is in flight — a transform alone does
-    // not grow the scroller's content, so zooming in would hit the old edge.
-    const extra = p.vertical
-      ? p.baseHeight * (p.scale - 1)
-      : p.baseWidth * (p.scale - 1);
-    p.scroller.addClass("is-scaling");
-    p.scroller.setCssProps({
-      "--txs-zoom-scale": String(p.scale),
-      // Labels and point markers counter-scale by the inverse, so only the
-      // bars stretch — text keeps its shape until the real render lands.
-      "--txs-zoom-inv": String(1 / p.scale),
-      "--txs-zoom-extra": `${Math.max(0, extra)}px`,
-    });
-
-    if (p.vertical) {
-      p.scroller.scrollTop = focalScroll(p.startTop, p.focalY, p.scale);
-    } else {
-      p.scroller.scrollLeft = focalScroll(p.startLeft, p.focalX, p.scale);
-    }
-  }
-
   /** Drop the transform and re-render once, at the zoom the gesture landed on. */
-  private commitPreview(): void {
-    const p = this.preview;
-    this.preview = null;
-    if (!p) return;
-
-    const next = this.clampForView(p.base * p.scale);
-    if (Math.abs(next - p.base) < 0.001) {
-      // Nothing changed; drop the preview and put the scroll back.
-      this.clearGestureState();
-      p.scroller.scrollLeft = p.startLeft;
-      p.scroller.scrollTop = p.startTop;
-      return;
-    }
-
-    // The stretched SVG stays on screen until the real one replaces it —
-    // clearing it here would show one frame at the old zoom, which is exactly
-    // the flicker. bodyRender() drops it as part of the swap.
-
-    // Scroll is derived from where the gesture STARTED, so the preview's own
-    // scrolling is not counted twice.
-    // Anchor on the content fraction under the fingers, measured from where
-    // the gesture STARTED so the preview's own scrolling is not counted twice.
-    const focalPx = p.vertical ? p.focalY : p.focalX;
-    const startScroll = p.vertical ? p.startTop : p.startLeft;
-    const contentSize = p.vertical ? p.baseHeight : p.baseWidth;
-    this.pendingFocus = {
-      fraction: contentSize > 0 ? (startScroll + focalPx) / contentSize : 0,
-      focalPx,
-      vertical: p.vertical,
-    };
-    this.filters.zoom = next;
-    this.updateZoomLabel();
-    this.scheduleZoomRender();
-  }
 }
 
 /** Fraction of the scroller's content sitting under `focalPx`. */
-function focusFraction(
-  scroller: HTMLElement,
-  vertical: boolean,
-  focalPx: number
-): { fraction: number; focalPx: number; vertical: boolean } {
-  const size = vertical ? scroller.scrollHeight : scroller.scrollWidth;
-  const scroll = vertical ? scroller.scrollTop : scroller.scrollLeft;
-  return {
-    fraction: size > 0 ? (scroll + focalPx) / size : 0,
-    focalPx,
-    vertical,
-  };
-}
-
 /** The touches currently down, in viewport coordinates. */
-function points(e: TouchEvent): PinchPoint[] {
-  return Array.from(e.touches, (t) => ({ x: t.clientX, y: t.clientY }));
-}
-
 function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] {
   // Delegate to the shared RichFilterState applicator so global view, inline
   // ```timeline blocks, and the single-event view share one filter

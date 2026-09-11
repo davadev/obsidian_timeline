@@ -41,6 +41,19 @@ function withContainer(): HTMLElement {
   return c;
 }
 
+/**
+ * The chart is drawn as tiles, behind an (empty) sticky label layer, so the
+ * first <svg> in the container is not the chart. Everything an event is drawn
+ * into lives in a tile.
+ */
+function chartSvg(container: HTMLElement): SVGSVGElement | null {
+  return container.querySelector(".txs-tile-host svg");
+}
+
+function chartSvgs(container: HTMLElement): SVGSVGElement[] {
+  return Array.from(container.querySelectorAll(".txs-tile-host svg"));
+}
+
 const baseOptions = {
   mode: "bar" as const,
   source: "main",
@@ -68,7 +81,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       isMobile: false,
     });
     expect(bodyText(container)).not.toContain("No events to display");
-    expect(container.querySelector("svg")).not.toBeNull();
+    expect(chartSvg(container)).not.toBeNull();
   });
 
   it("renders even when caller viewport is undefined (auto-derives)", () => {
@@ -86,7 +99,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       isMobile: false,
     });
     expect(bodyText(container)).not.toContain("No events to display");
-    expect(container.querySelector("svg")).not.toBeNull();
+    expect(chartSvg(container)).not.toBeNull();
   });
 
   it("renders inline-block scenario: filter UI present, default state, events non-empty", () => {
@@ -130,7 +143,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       isMobile: false,
     });
     expect(bodyText(container)).not.toContain("No events to display");
-    const svg = container.querySelector("svg");
+    const svg = chartSvg(container);
     expect(svg).not.toBeNull();
     // SVG width should reflect the wide viewport (zoom=1 + container default).
     // A zero-width viewport would still draw the SVG, but the point would sit
@@ -165,7 +178,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
     });
     // With caller viewport [-2000, 2000], ice-age (-10000..-8000) is OUTSIDE
     // and must be filtered out. iron-age + modern-era overlap.
-    const svg = container.querySelector("svg");
+    const svg = chartSvg(container);
     expect(svg).not.toBeNull();
     const eraBands = svg!.querySelectorAll(".txs-era-band, [data-era-id]");
     // At minimum the two overlapping eras render; ice-age must NOT.
@@ -209,7 +222,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       filterKey: "test:fuzzy-both",
       isMobile: false,
     });
-    const svg = container.querySelector("svg")!;
+    const svg = chartSvg(container)!;
     const stops = svg.querySelectorAll("stop");
     // Both fuzzy with default 20% fade: 4 stops, opacity 0 / 1 / 1 / 0.
     expect(stops.length).toBe(4);
@@ -243,7 +256,9 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       filterKey: "test:fuzzy-rgb",
       isMobile: true,
     });
-    const stops = container.querySelector("svg")!.querySelectorAll("stop");
+    const stops = chartSvgs(container).flatMap((s) =>
+      Array.from(s.querySelectorAll("stop"))
+    );
     expect(stops.length).toBe(3);
     for (const s of Array.from(stops)) {
       expect(s.getAttribute("stop-color")).toBe("#b45050");
@@ -269,7 +284,9 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       isMobile: false,
       fuzzyGradientPercent: 5,
     });
-    const stops = container.querySelector("svg")!.querySelectorAll("stop");
+    const stops = chartSvgs(container).flatMap((s) =>
+      Array.from(s.querySelectorAll("stop"))
+    );
     expect(stops[1].getAttribute("offset")).toBe("5%");
   });
 
@@ -310,7 +327,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       filterKey: "test:fuzzy-s",
       isMobile: false,
     });
-    const svg = container.querySelector("svg")!;
+    const svg = chartSvg(container)!;
     const stops = svg.querySelectorAll("stop");
     // fuzzy_start only with default 20% fade: 0% / 20% / 100% opacities 0 / 1 / 1
     expect(stops.length).toBe(3);
@@ -376,7 +393,7 @@ describe("renderTimeline display regression — issue: 'No events to display'", 
       filterKey: "test:hybrid",
       isMobile: false,
     });
-    expect(container.querySelector("svg")).not.toBeNull();
+    expect(chartSvg(container)).not.toBeNull();
     expect(container.querySelector("ul.txs-timeline-list")).not.toBeNull();
   });
 });
