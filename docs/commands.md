@@ -43,6 +43,10 @@ The axis re-scales with the zoom: fitted out it marks centuries, zoomed in it
 moves to decades, years, months and finally individual days, so a label near
 the pointer always says where you are.
 
+The factor shown between the buttons is what is actually being drawn: once the
+pane hits its ceiling the `+` button greys out rather than letting the number
+climb against a chart that has stopped growing.
+
 How deep the zoom goes is bounded by a pixel cap on the rendered axis, not by
 the zoom factor — the chart is one SVG, and its width is its compositing layer.
 `src/renderer/zoom-math.ts` caps it at 1 000 000 px on desktop and **120 000 px

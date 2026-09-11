@@ -14,6 +14,7 @@ import {
   PinchTracker,
   ZOOM_STEP,
   clampZoom,
+  maxZoomForAxis,
   focalScroll,
   formatZoom,
   wheelZoomFactor,
@@ -81,6 +82,7 @@ export class TimelineView extends ItemView {
   /** Zoom actually used by the last render — the base that +/- and pinch scale. */
   private effectiveZoom = 1;
   private zoomLabelEl: HTMLElement | null = null;
+  private zoomInEl: HTMLButtonElement | null = null;
   /**
    * Where the next render must land to keep the focal point still, expressed
    * as a fraction of the content rather than a pixel offset: the rendered axis
@@ -154,6 +156,7 @@ export class TimelineView extends ItemView {
       text: "+",
       attr: { type: "button", "aria-label": "Zoom in" },
     });
+    this.zoomInEl = zoomIn;
     zoomOut.addEventListener("click", () => this.zoomBy(1 / ZOOM_STEP));
     zoomIn.addEventListener("click", () => this.zoomBy(ZOOM_STEP));
     this.zoomLabelEl.addEventListener("click", () => this.resetZoom());
@@ -444,6 +447,38 @@ export class TimelineView extends ItemView {
     if (!this.zoomLabelEl) return;
     const z = this.filters.zoom;
     this.zoomLabelEl.textContent = z == null ? "Auto" : `${formatZoom(z)}×`;
+
+    // At the ceiling the chart cannot grow further, so say so rather than
+    // letting the number climb against a frozen view.
+    const atMax = z != null && z >= this.maxZoom() - 0.001;
+    if (this.zoomInEl) this.zoomInEl.disabled = atMax;
+    this.zoomLabelEl.setAttr(
+      "aria-label",
+      atMax
+        ? "Maximum zoom for this screen — tap to reset to automatic"
+        : "Reset zoom to automatic"
+    );
+  }
+
+  /**
+   * Ceiling for this pane. The renderer caps the axis in pixels (and far more
+   * tightly on mobile, where a huge layer takes the app down), so zoom past
+   * this point would change the number and nothing else.
+   */
+  private maxZoom(): number {
+    const body = this.contentEl.querySelector(".txs-view-body");
+    const vertical =
+      this.args.getSettings().renderDefaults.orientation === "vertical";
+    // Mirrors the renderer's own floors for the axis base.
+    const base = vertical
+      ? Math.max(360, body?.clientHeight || 600)
+      : Math.max(320, body?.clientWidth || 800);
+    return maxZoomForAxis(base, Platform.isMobile);
+  }
+
+  /** Clamp that respects both the absolute limits and this pane's ceiling. */
+  private clampForView(z: number): number {
+    return Math.min(clampZoom(z), this.maxZoom());
   }
 
   /** Multiply the current zoom, keeping `focalClient` (px, viewport) steady. */
@@ -457,7 +492,7 @@ export class TimelineView extends ItemView {
     from: number,
     focalClient?: { x: number; y: number }
   ): void {
-    const clamped = clampZoom(next);
+    const clamped = this.clampForView(next);
     if (Math.abs(clamped - from) < 0.001) return;
 
     const scroller = this.barScroller();
@@ -638,7 +673,7 @@ export class TimelineView extends ItemView {
 
     // Clamp against the zoom limits rather than the raw finger distance, so
     // the preview can never show something the commit won't reproduce.
-    const target = clampZoom(p.base * scale);
+    const target = this.clampForView(p.base * scale);
     p.scale = target / p.base;
 
     const rect = p.scroller.getBoundingClientRect();
@@ -674,7 +709,7 @@ export class TimelineView extends ItemView {
     this.preview = null;
     if (!p) return;
 
-    const next = clampZoom(p.base * p.scale);
+    const next = this.clampForView(p.base * p.scale);
     if (Math.abs(next - p.base) < 0.001) {
       // Nothing changed; drop the preview and put the scroll back.
       this.clearGestureState();

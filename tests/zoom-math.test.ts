@@ -10,6 +10,7 @@ import {
   clampZoom,
   focalScroll,
   formatZoom,
+  maxZoomForAxis,
   wheelZoomFactor,
 } from "../src/renderer/zoom-math";
 
@@ -147,5 +148,33 @@ describe("PinchTracker", () => {
     t.start([A, B]);
     expect(t.end([]).kind).toBe("commit");
     expect(t.end([]).kind).toBe("none");
+  });
+});
+
+describe("maxZoomForAxis", () => {
+  it("reports the honest ceiling for the pane, not the absolute maximum", () => {
+    // A phone pane: 390px of axis against the mobile pixel cap.
+    const phone = maxZoomForAxis(390, true);
+    expect(phone).toBeCloseTo(MAX_AXIS_PX_MOBILE / 390, 5);
+    expect(phone).toBeLessThan(MAX_ZOOM);
+
+    // The same pane on desktop can go much deeper.
+    expect(maxZoomForAxis(390, false)).toBeGreaterThan(phone * 5);
+  });
+
+  it("never exceeds the absolute zoom limit for a tiny pane", () => {
+    expect(maxZoomForAxis(1, false)).toBe(MAX_ZOOM);
+  });
+
+  it("stays usable for an implausibly wide pane", () => {
+    expect(maxZoomForAxis(1e9, true)).toBe(MIN_ZOOM);
+  });
+
+  it("matches what the renderer will actually draw", () => {
+    const base = 390;
+    const ceiling = maxZoomForAxis(base, true);
+    // at the ceiling the axis is exactly the cap; beyond it, nothing grows
+    expect(clampAxisSize(base * ceiling, true)).toBe(MAX_AXIS_PX_MOBILE);
+    expect(clampAxisSize(base * ceiling * 4, true)).toBe(MAX_AXIS_PX_MOBILE);
   });
 });

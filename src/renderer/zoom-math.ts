@@ -30,6 +30,19 @@ export function maxAxisPx(isMobile: boolean): number {
 /** Multiplier applied by one press of +/-. */
 export const ZOOM_STEP = 1.35;
 
+/**
+ * Highest zoom this container can actually render.
+ *
+ * The axis is capped in pixels, so past a certain factor the chart stops
+ * growing however far you pinch. Reporting the requested factor then is a lie:
+ * the number climbs while nothing moves. Clamp to what the renderer will
+ * really produce and the ceiling becomes visible instead.
+ */
+export function maxZoomForAxis(baseAxisPx: number, isMobile: boolean): number {
+  const base = Math.max(1, baseAxisPx);
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, maxAxisPx(isMobile) / base));
+}
+
 export function clampZoom(z: number): number {
   if (Number.isNaN(z)) return 1;
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));

@@ -96,6 +96,11 @@
   box-shadow: none;
 }
 
+.txs-view-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .txs-view-zoom .txs-view-zoom-label:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
