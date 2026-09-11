@@ -23,6 +23,12 @@ The plugin writes top-level `timeline_start` / `timeline_end` / `timeline_catego
 
 Defaults for every ` ```timeline ` block. Per-block YAML overrides these. See [Render block reference](render-block.md).
 
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| Keep event labels in view | on | Slides each event label along its bar while scrolling, so a span running off both edges of the screen still shows its name. Off pins the label to the bar's start. Per-block: `stickyLabels: false`. |
+
+The timeline view's own zoom (pinch, trackpad pinch / <kbd>Ctrl</kbd>+scroll, or the `−` / `+` buttons) is not a setting — see [Commands](commands.md#zooming-the-timeline-view).
+
 ## Category colors
 
 Categories discovered on import are listed here with a color picker + text field. CSS color values accepted (`#aabbcc`, `rgb(r,g,b)`, `hsl(...)`, bare `r,g,b`).

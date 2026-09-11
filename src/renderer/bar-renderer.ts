@@ -49,6 +49,8 @@ export interface BarRenderArgs {
   fuzzyGradientPercent?: number;
   /** CSS color for event labels. Empty/undefined = auto-contrast vs. fill. */
   eventLabelColor?: string;
+  /** Slide labels along their bar so they stay visible. Default on. */
+  stickyLabels?: boolean;
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -73,6 +75,15 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     args.eventLabelColor && args.eventLabelColor.trim()
       ? args.eventLabelColor.trim()
       : null;
+
+  // Labels that should slide along their bar while it is scrolled.
+  const sticky: {
+    g: SVGGElement;
+    from: number;
+    to: number;
+    cross: number;
+    width: number;
+  }[] = [];
 
   const lanes = assignLanes(events);
   const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
@@ -198,16 +209,24 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
         label.setAttribute("class", "txs-event-label");
         label.setAttribute("fill", textColor);
         label.textContent = text;
-        if (isVertical) {
-          anchored(svg, label, cross + LANE_THICKNESS / 2, a1, 90);
-        } else {
-          anchored(svg, label, a1, cross + LANE_THICKNESS / 2);
+        const group = isVertical
+          ? anchored(svg, label, cross + LANE_THICKNESS / 2, a1, 90)
+          : anchored(svg, label, a1, cross + LANE_THICKNESS / 2);
+        if (args.stickyLabels !== false) {
+          sticky.push({
+            g: group,
+            from: a1,
+            to: a2,
+            cross: isVertical ? cross + LANE_THICKNESS / 2 : cross + LANE_THICKNESS / 2,
+            width: text.length * CHAR_W + LABEL_PAD * 2,
+          });
         }
       }
     }
   });
 
   wrapper.appendChild(svg);
+  if (sticky.length) attachStickyLabels(wrapper, sticky, isVertical);
   return wrapper;
 }
 
@@ -226,12 +245,13 @@ function anchored(
   x: number,
   y: number,
   rotateDeg = 0
-): void {
+): SVGGElement {
   const g = document.createElementNS(SVG_NS, "g");
   const rotate = rotateDeg ? ` rotate(${rotateDeg})` : "";
   g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
   g.appendChild(child);
   parent.appendChild(g);
+  return g;
 }
 
 function attachEvents(
@@ -361,6 +381,56 @@ function drawEras(
       }
     }
   }
+}
+
+/**
+ * Keeps each label inside the visible slice of its own bar. Without this a
+ * span that runs off both edges of the viewport shows no text at all when
+ * zoomed in — the label sits at the bar's start, far off-screen.
+ */
+function attachStickyLabels(
+  wrapper: HTMLElement,
+  labels: {
+    g: SVGGElement;
+    from: number;
+    to: number;
+    cross: number;
+    width: number;
+  }[],
+  isVertical: boolean
+): void {
+  let frame: number | null = null;
+
+  const place = () => {
+    frame = null;
+    const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
+    const viewSize = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
+    const viewTo = viewFrom + viewSize;
+
+    for (const l of labels) {
+      // Nothing to do when the bar's start is already on screen.
+      const latest = Math.max(l.from, l.to - l.width);
+      const target = Math.min(Math.max(l.from, viewFrom + LABEL_PAD), latest);
+      // Skip bars that are entirely off screen — their position is irrelevant
+      // and writing to them costs layout.
+      if (l.to < viewFrom || l.from > viewTo) continue;
+      const rotate = isVertical ? " rotate(90)" : "";
+      const x = isVertical ? l.cross : target;
+      const y = isVertical ? target : l.cross;
+      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
+    }
+  };
+
+  wrapper.addEventListener(
+    "scroll",
+    () => {
+      if (frame != null) return;
+      frame = window.requestAnimationFrame(place);
+    },
+    { passive: true }
+  );
+  // Initial placement once the wrapper has a size.
+  window.requestAnimationFrame(place);
 }
 
 function saturateForLabel(era: TimelineEra): string {

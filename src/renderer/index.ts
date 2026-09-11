@@ -108,6 +108,7 @@ export function renderTimeline(args: RenderArgs): void {
         onOpenEra: args.onOpenEra,
         fuzzyGradientPercent: args.fuzzyGradientPercent,
         eventLabelColor: args.eventLabelColor,
+        stickyLabels: args.options.stickyLabels,
       });
     }
     if (mode === "list" || mode === "hybrid") {

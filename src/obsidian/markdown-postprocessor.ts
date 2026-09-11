@@ -261,6 +261,9 @@ export function parseBlockOptions(
   ) {
     opt.pointPaddingYears = parsed.pointPaddingYears;
   }
+  if (typeof parsed.stickyLabels === "boolean") {
+    opt.stickyLabels = parsed.stickyLabels;
+  }
   if (typeof parsed.showFilterUI === "boolean") {
     opt.showFilterUI = parsed.showFilterUI;
   }

@@ -773,7 +773,18 @@
   transform: scaleY(var(--txs-zoom-inv, 1));
 }
 
+/* The next chart is built here, at the real width, then swapped in. */
+.txs-view-staging {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .txs-view-body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;

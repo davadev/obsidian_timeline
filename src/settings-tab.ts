@@ -265,6 +265,11 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
             },
           },
           {
+            name: "Keep event labels in view",
+            desc: "Slides an event's label along its bar while you scroll, so a span that runs off both edges of the screen still shows its name. Turn off to pin labels to the start of the bar. Per-block override: stickyLabels: false.",
+            control: { type: "toggle", key: "renderDefaults.stickyLabels" },
+          },
+          {
             name: "Show in-render filter bar by default",
             desc: "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false.",
             control: { type: "toggle", key: "renderDefaults.showFilterUI" },

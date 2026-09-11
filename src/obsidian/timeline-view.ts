@@ -81,8 +81,18 @@ export class TimelineView extends ItemView {
   /** Zoom actually used by the last render — the base that +/- and pinch scale. */
   private effectiveZoom = 1;
   private zoomLabelEl: HTMLElement | null = null;
-  /** Scroll position the next render should land on, to keep the pinch focal point still. */
-  private pendingBarScroll: { left: number; top: number } | null = null;
+  /**
+   * Where the next render must land to keep the focal point still, expressed
+   * as a fraction of the content rather than a pixel offset: the rendered axis
+   * does not always grow by exactly the zoom ratio (the pixel cap, the auto
+   * zoom and rounding all interfere), and assuming it did was what slid the
+   * view sideways.
+   */
+  private pendingFocus: {
+    fraction: number;
+    focalPx: number;
+    vertical: boolean;
+  } | null = null;
   private zoomFrame: number | null = null;
   /** Live pinch/wheel gesture: scales the rendered SVG until the user lets go. */
   private preview: {
@@ -333,23 +343,33 @@ export class TimelineView extends ItemView {
       barScrolls.push(b.scrollLeft);
     });
 
-    body.empty();
-    if (!this.cachedDoc) return;
+    if (!this.cachedDoc) {
+      body.empty();
+      return;
+    }
     const { getSettings } = this.args;
     const settings = getSettings();
 
     let filtered = applyFilters(this.cachedDoc.events, this.filters);
     if (!filtered.length) {
+      body.empty();
       body.createDiv({ text: "No events match current filters." });
       return;
     }
+
+    // Build the new chart alongside the old one and swap in a single frame.
+    // Emptying first left a blank pane for a frame, which reads as a flicker
+    // when zooming. The staging div stays in the document (hidden, same
+    // width) because the renderer sizes the chart from its container.
+    const previous = Array.from(body.children);
+    const staging = body.createDiv({ cls: "txs-view-staging" });
 
     const fullViewport = autoViewport(filtered);
     const computedZoom = pickAutoZoom(filtered.length, fullViewport, body);
     const autoZoom = this.filters.zoom != null ? this.filters.zoom : computedZoom;
     this.effectiveZoom = autoZoom;
     renderTimeline({
-      container: body,
+      container: staging,
       events: filtered,
       categories: this.cachedDoc.categories,
       eras: this.cachedDoc.eras,
@@ -375,18 +395,24 @@ export class TimelineView extends ItemView {
       eventLabelColor: settings.eventLabelColor,
     });
 
-    const plan = this.pendingBarScroll;
-    this.pendingBarScroll = null;
+    for (const el of previous) el.remove();
+    staging.removeClass("txs-view-staging");
+
+    const focus = this.pendingFocus;
+    this.pendingFocus = null;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         body.scrollTop = bodyScrollTop;
         body
           .querySelectorAll<HTMLElement>(".txs-timeline-bar")
           .forEach((b, i) => {
-            if (plan) {
-              // Zoom: keep whatever was under the pointer/fingers in place.
-              b.scrollLeft = plan.left;
-              b.scrollTop = plan.top;
+            if (focus) {
+              // Zoom: put the same slice of content back under the pointer,
+              // measured against what was actually rendered.
+              const size = focus.vertical ? b.scrollHeight : b.scrollWidth;
+              const target = focus.fraction * size - focus.focalPx;
+              if (focus.vertical) b.scrollTop = Math.max(0, target);
+              else b.scrollLeft = Math.max(0, target);
             } else if (i < barScrolls.length) {
               b.scrollLeft = barScrolls[i];
             }
@@ -422,20 +448,14 @@ export class TimelineView extends ItemView {
 
     const scroller = this.barScroller();
     if (scroller) {
-      const ratio = clamped / from;
       const rect = scroller.getBoundingClientRect();
       const vertical = scroller.hasClass("txs-vertical");
-      const fx = focalClient ? focalClient.x - rect.left : rect.width / 2;
-      const fy = focalClient ? focalClient.y - rect.top : rect.height / 2;
-      this.pendingBarScroll = vertical
-        ? {
-            left: scroller.scrollLeft,
-            top: focalScroll(scroller.scrollTop, fy, ratio),
-          }
-        : {
-            left: focalScroll(scroller.scrollLeft, fx, ratio),
-            top: scroller.scrollTop,
-          };
+      const focalPx = focalClient
+        ? vertical
+          ? focalClient.y - rect.top
+          : focalClient.x - rect.left
+        : (vertical ? rect.height : rect.width) / 2;
+      this.pendingFocus = focusFraction(scroller, vertical, focalPx);
     }
 
     this.filters.zoom = clamped;
@@ -446,7 +466,7 @@ export class TimelineView extends ItemView {
   private resetZoom(): void {
     if (this.filters.zoom == null) return;
     this.filters.zoom = null;
-    this.pendingBarScroll = null;
+    this.pendingFocus = null;
     this.updateZoomLabel();
     this.scheduleZoomRender();
   }
@@ -492,7 +512,9 @@ export class TimelineView extends ItemView {
         wheelCommit = window.setTimeout(() => {
           wheelCommit = null;
           this.commitPreview();
-        }, 140);
+          // Long enough that a continuous trackpad pinch rebuilds the chart
+          // once at the end rather than several times a second.
+        }, 220);
       },
       { passive: false }
     );
@@ -657,15 +679,35 @@ export class TimelineView extends ItemView {
 
     // Scroll is derived from where the gesture STARTED, so the preview's own
     // scrolling is not counted twice.
-    // Only the time axis grew. Scaling the cross-axis scroll too was what
-    // threw the view off vertically after a horizontal zoom.
-    this.pendingBarScroll = p.vertical
-      ? { left: p.startLeft, top: focalScroll(p.startTop, p.focalY, p.scale) }
-      : { left: focalScroll(p.startLeft, p.focalX, p.scale), top: p.startTop };
+    // Anchor on the content fraction under the fingers, measured from where
+    // the gesture STARTED so the preview's own scrolling is not counted twice.
+    const focalPx = p.vertical ? p.focalY : p.focalX;
+    const startScroll = p.vertical ? p.startTop : p.startLeft;
+    const contentSize = p.vertical ? p.baseHeight : p.baseWidth;
+    this.pendingFocus = {
+      fraction: contentSize > 0 ? (startScroll + focalPx) / contentSize : 0,
+      focalPx,
+      vertical: p.vertical,
+    };
     this.filters.zoom = next;
     this.updateZoomLabel();
     this.scheduleZoomRender();
   }
+}
+
+/** Fraction of the scroller's content sitting under `focalPx`. */
+function focusFraction(
+  scroller: HTMLElement,
+  vertical: boolean,
+  focalPx: number
+): { fraction: number; focalPx: number; vertical: boolean } {
+  const size = vertical ? scroller.scrollHeight : scroller.scrollWidth;
+  const scroll = vertical ? scroller.scrollTop : scroller.scrollLeft;
+  return {
+    fraction: size > 0 ? (scroll + focalPx) / size : 0,
+    focalPx,
+    vertical,
+  };
 }
 
 /** The touches currently down, in viewport coordinates. */

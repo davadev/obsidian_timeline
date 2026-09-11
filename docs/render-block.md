@@ -31,6 +31,7 @@ The plugin renders the block in place. Embedded notes work too — `![[Some Note
 | `search` | string | _(empty)_ | Case-insensitive substring match over title/description/category. |
 | `event` / `events` | string / list | _(none)_ | Show only events whose title contains one of these substrings. |
 | `zoom` | number | `1` | Time-axis scale. `2` = 2× wider with horizontal scroll. |
+| `stickyLabels` | boolean | `true` | Slide an event's label along its bar while scrolling so a long span still shows its name. `false` pins it to the bar's start. |
 | `orientation` | `horizontal` / `vertical` | `horizontal` | Vertical reads top→bottom; lanes become columns. |
 | `pointPaddingYears` | number | _(settings)_ | Years padded on each side of a single-point viewport. |
 | `viewport` | boolean | _(omitted)_ | See **Viewport** below. |
