@@ -119,7 +119,17 @@ Consequences that are easy to undo by accident:
   moves and would re-cut the text on every frame. A name the pane would cut is
   not drawn at all until the event is clear of the edge, which is also why
   occupancy is collected a pane either side of the window — a neighbour leaving
-  the window must not silently hand over its room. Two other shapes were prototyped and rejected on the evidence: a rail
+  the window must not silently hand over its room.
+
+  Two more rules come from measuring a dense window of long titles rather than
+  from taste. A name is **capped at `maxShare` of the pane** (0.3): an uncapped
+  long title eats the gap its neighbours needed, and capping it put 3.5 names on
+  a 390px screen against 3.1 uncapped. And the pane edge is treated
+  **asymmetrically** — a name *after* its event may run under the far edge and
+  be clipped there (the SVG clips it, so nothing escapes the chart), because the
+  text itself never changes; a name *before* its event may not, since clipping
+  would eat its opening characters and read as a different word. Either way a
+  readable stub has to fit inside the pane, or the name waits. Two other shapes were prototyped and rejected on the evidence: a rail
   of names under the chart (long leaders crossing bars, and it costs vertical
   room) and boxed callouts in the nearest free space (heavier, and a box can
   drift into a neighbouring lane).

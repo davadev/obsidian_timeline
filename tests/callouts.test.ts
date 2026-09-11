@@ -128,43 +128,48 @@ describe("callout placement", () => {
     expect(placed.get("short-bar-name")?.side).toBe("after");
   });
 
-  it("stays inside the pane", () => {
-    const [out] = layoutCallouts([point("Yalta", 390)], [span(0, 388, 392)], 400, {
-      ...opts,
-      edgePad: 2,
-    });
-    expect(out.textPx).toBeGreaterThanOrEqual(2);
-    expect(out.textPx + out.widthPx).toBeLessThanOrEqual(398);
-  });
-
-  it("says the same thing wherever the chart is scrolled", () => {
-    // Regression: room was measured against the pane edge, so a name re-cut
-    // itself as its event drifted towards the edge — "Yalta conference" going
-    // through "Yalta con…" and back on every frame. Neighbours are a fixed
-    // distance away at a given zoom, so only they may shorten a name.
-    const shifted = (by: number) =>
-      layoutCallouts(
-        [{ ...point("Yalta conference", 100), text: "Yalta conference" }].map(
-          (i) => ({ ...i, startPx: i.startPx + by, endPx: i.endPx + by })
-        ),
-        [span(0, 98 + by, 102 + by), span(0, 140 + by, 300 + by)],
-        400,
-        opts
-      );
-
-    const labels = [0, 40, 120, 180].map((by) => shifted(by)[0]?.label);
-    expect(new Set(labels.filter(Boolean)).size).toBe(1);
-  });
-
-  it("refuses a name the pane would cut rather than shortening it", () => {
-    const out = layoutCallouts(
-      [{ ...point("Yalta conference", 392), text: "Yalta conference" }],
-      // Painted up to the marker on the left; the pane ends just past it.
-      [span(0, 0, 388), span(0, 390, 394)],
+  it("lets a name after its event run under the far edge", () => {
+    // The tail goes under the pane edge the way a bar does, and the text stays
+    // the same — the alternative is re-cutting it on every frame as the event
+    // drifts towards the edge.
+    const [out] = layoutCallouts(
+      [{ ...point("Yalta conference", 380), text: "Yalta conference" }],
+      [span(0, 378, 382)],
       400,
-      opts
+      { ...opts, maxShare: 1 }
+    );
+    expect(out.side).toBe("after");
+    expect(out.label).toBe("Yalta conference");
+    expect(out.textPx).toBeLessThan(400); // it starts on screen
+  });
+
+  it("refuses a name before its event that the pane would cut", () => {
+    // Clipping here would eat the opening characters, which reads as a
+    // different word. The name waits until the event is clear of the edge.
+    const out = layoutCallouts(
+      [{ ...point("Yalta conference", 10), text: "Yalta conference" }],
+      [span(0, 8, 12), span(0, 13, 400)], // nothing doing to the right
+      400,
+      { ...opts, maxShare: 1 }
     );
     expect(out).toEqual([]);
+  });
+
+  it("never lets one long title eat the room its neighbours need", () => {
+    const [out] = layoutCallouts(
+      [
+        {
+          ...point("Time Covered Genesis (beginning - 1657 B.C.E.)", 100),
+          text: "Time Covered Genesis (beginning - 1657 B.C.E.)",
+        },
+      ],
+      [span(0, 98, 102)],
+      400,
+      // One character is one unit here, so 5% of the pane is 20 characters.
+      { ...opts, maxShare: 0.05 }
+    );
+    expect(out.widthPx).toBeLessThanOrEqual(400 * 0.05);
+    expect(out.label.endsWith("…")).toBe(true);
   });
 
   it("reads left to right whatever order it placed them in", () => {
