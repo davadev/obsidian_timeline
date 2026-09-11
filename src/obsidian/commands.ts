@@ -11,6 +11,7 @@ import { writeTimelineXml } from "../timeline/xml-writer";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { logDebug, logDump } from "../logger";
+import { contentFingerprint } from "./sync-policy";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
@@ -469,11 +470,17 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   }
 
 
-  // Persist the XML mtime so external-change detection has a baseline.
-  if (xmlMtime != null) {
-    s.lastWrittenXmlMtime = xmlMtime;
-    await ctx.saveSettings();
+  // Persist the XML mtime and fingerprint so external-change detection has a
+  // baseline for both "when" and "what".
+  if (xmlMtime != null) s.lastWrittenXmlMtime = xmlMtime;
+  try {
+    s.lastSeenXmlFingerprint = contentFingerprint(
+      await ctx.vault.readText(s.sourceXmlPath)
+    );
+  } catch {
+    s.lastSeenXmlFingerprint = null;
   }
+  await ctx.saveSettings();
   ctx.cache.resetIndex();
   if (skipped.length) {
     void ctx.appendSyncLog(
@@ -693,12 +700,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     await ctx.vault.writeText(s.sourceXmlPath, xml);
   }, [s.sourceXmlPath]);
   ctx.cache.invalidateXml(s.sourceXmlPath);
-  // Stamp last-written mtime so external-change detection has a baseline.
+  // Stamp mtime AND a fingerprint of what we wrote, so a sync client that
+  // later re-downloads the same bytes is recognised as a touch rather than
+  // reported as somebody else's edit.
   const writtenMtime = ctx.vault.getMtime(s.sourceXmlPath);
-  if (writtenMtime != null) {
-    s.lastWrittenXmlMtime = writtenMtime;
-    await ctx.saveSettings();
-  }
+  s.lastSeenXmlFingerprint = contentFingerprint(xml);
+  if (writtenMtime != null) s.lastWrittenXmlMtime = writtenMtime;
+  await ctx.saveSettings();
   new Notice(`Timeline XML regenerated — ${notes.length} events.`);
 }
 

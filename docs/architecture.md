@@ -77,7 +77,7 @@ Three rings, inner depends on nothing in outer:
 ## Multi-device safety primitives
 
 - `last_synced_xml_mtime` stamp on every plugin-written event/era MD note — used to skip overwrite on `importXml` when the file is locally newer.
-- `lastWrittenXmlMtime` setting — used to detect external XML changes (`shouldAbortXmlWrite` CAS guard on regenerate, plus a 30-second interval watch that fires a one-shot Notice).
+- `lastWrittenXmlMtime` + `lastSeenXmlFingerprint` settings — used to detect external XML changes (`shouldAbortXmlWrite` CAS guard on regenerate, plus a 30-second interval watch). A moved mtime alone is not an edit: sync clients rewrite a file when they re-download it, so the watch reads the file and compares fingerprints (`classifyExternalXml`) before warning, and adopts the new mtime silently when the bytes are unchanged.
 - Per-path self-write Map with 5-second TTL — replaces a single 300ms `__SELF__` flag that was too short for remote-sync landing latency.
 - Append-only `_logs/timeline-sync.log` rotated at ~200KB.
 
