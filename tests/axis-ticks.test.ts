@@ -153,3 +153,52 @@ describe("visibleAxisTicks", () => {
     expect(ticks.some((t) => t.label.includes("2000") || t.label.includes("1999"))).toBe(true);
   });
 });
+
+describe("hour ticks", () => {
+  const DAY = 1;
+
+  it("descends to hours once a day is spread across a pane", () => {
+    // one day across 2400px: 100px per hour
+    const step = pickStep(DAY, 2400, 90);
+    expect(step.unit).toBe("hour");
+    expect(step.count).toBe(1);
+  });
+
+  it("uses coarser hour rungs when a day is tighter", () => {
+    expect(pickStep(DAY, 600, 120).unit).toBe("hour");
+    expect(pickStep(DAY, 600, 120).count).toBeGreaterThan(1);
+  });
+
+  it("lands marks on the clock, aligned to midnight", () => {
+    const ticks = axisTicks(
+      { year: 2024, month: 3, day: 10, hour: 1 },
+      { year: 2024, month: 3, day: 10, hour: 23 },
+      2000,
+      120
+    );
+    expect(ticks.length).toBeGreaterThan(2);
+    for (const t of ticks) {
+      // "06:00" or the day name at midnight
+      expect(t.label).toMatch(/^(\d{2}:00|\d+ [A-Z][a-z]{2} \d+)$/);
+    }
+  });
+
+  it("names the day at midnight and the clock elsewhere", () => {
+    expect(formatTick({ year: 1984, month: 7, day: 4, hour: 0, minute: 0 }, "hour")).toBe(
+      "4 Jul 1984"
+    );
+    expect(formatTick({ year: 1984, month: 7, day: 4, hour: 14, minute: 0 }, "hour")).toBe(
+      "14:00"
+    );
+  });
+
+  it("crosses midnight into the next day", () => {
+    const ticks = axisTicks(
+      { year: 2024, month: 3, day: 10, hour: 18 },
+      { year: 2024, month: 3, day: 11, hour: 6 },
+      2400,
+      120
+    );
+    expect(ticks.some((t) => t.label === "11 Mar 2024")).toBe(true);
+  });
+});

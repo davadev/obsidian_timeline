@@ -18,7 +18,7 @@ import {
  * months, then days.
  */
 
-export type TickUnit = "year" | "month" | "day";
+export type TickUnit = "year" | "month" | "day" | "hour";
 
 export interface AxisTick {
   /** Position along the axis, 0..1 of the viewport. */
@@ -52,6 +52,10 @@ const STEPS: TickStep[] = [
   { unit: "day", count: 5 },
   { unit: "day", count: 2 },
   { unit: "day", count: 1 },
+  { unit: "hour", count: 12 },
+  { unit: "hour", count: 6 },
+  { unit: "hour", count: 3 },
+  { unit: "hour", count: 1 },
 ];
 
 const DAYS_PER_YEAR = 365.2425;
@@ -80,6 +84,8 @@ export function stepDays(step: TickStep): number {
       return step.count * DAYS_PER_YEAR;
     case "month":
       return (step.count * DAYS_PER_YEAR) / 12;
+    case "hour":
+      return step.count / 24;
     default:
       return step.count;
   }
@@ -160,6 +166,18 @@ function* boundaries(
     }
   }
 
+  if (step.unit === "hour") {
+    // Walk real hours from the boundary at or before the window start.
+    const startJ = toJulian(start);
+    const stepDay = step.count / 24;
+    // Align to midnight so the marks land on 00:00, 06:00, 12:00 ...
+    const midnight = Math.floor(startJ + 0.5) - 0.5;
+    for (let j = midnight; ; j += stepDay) {
+      if (j > endJ) return;
+      if (j >= startJ) yield fromJulian(j);
+    }
+  }
+
   if (step.unit === "day") {
     // Walk real days so month lengths and leap years look after themselves.
     let y = start.year;
@@ -201,7 +219,13 @@ export function formatTick(d: TimelineDate, unit: TickUnit): string {
   if (unit === "year") return year;
   const month = MONTHS[(d.month ?? 1) - 1];
   if (unit === "month") return `${month} ${year}`;
-  return `${d.day ?? 1} ${month} ${year}`;
+  const day = `${d.day ?? 1} ${month} ${year}`;
+  if (unit === "day") return day;
+  const hh = String(d.hour ?? 0).padStart(2, "0");
+  const mm = String(d.minute ?? 0).padStart(2, "0");
+  // Midnight names the day it opens; every other mark is just a clock time, so
+  // a screenful of hours does not repeat the date on every label.
+  return hh === "00" && mm === "00" ? day : `${hh}:${mm}`;
 }
 
 
