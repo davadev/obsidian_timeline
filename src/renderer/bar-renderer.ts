@@ -4,6 +4,7 @@ import { assignLanes } from "../timeline/overlap";
 import { fractionalPosition } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
 import { clampAxisSize } from "./zoom-math";
+import { axisTicks } from "./axis-ticks";
 import type { Orientation } from "./render-options";
 
 /**
@@ -125,8 +126,8 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       const cx = isVertical ? cross + LANE_THICKNESS / 2 : along;
       const cy = isVertical ? along : cross + LANE_THICKNESS / 2;
       const circle = document.createElementNS(SVG_NS, "circle");
-      circle.setAttribute("cx", String(cx));
-      circle.setAttribute("cy", String(cy));
+      circle.setAttribute("cx", "0");
+      circle.setAttribute("cy", "0");
       circle.setAttribute("r", String(POINT_RADIUS));
       const pointFuzzy = ev.fuzzyStart === true || ev.fuzzyEnd === true || ev.fuzzy === true;
       if (pointFuzzy) {
@@ -140,7 +141,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       circle.setAttribute("stroke-width", "1");
       circle.classList.add("txs-event-point");
       attachEvents(circle, ev, container, onOpenEvent, isMobile);
-      svg.appendChild(circle);
+      anchored(svg, circle, cx, cy);
     } else {
       const a1 =
         fractionalPosition(ev.start, viewport.start, viewport.end) *
@@ -188,30 +189,49 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       if (maxChars >= 4) {
         const label = document.createElementNS(SVG_NS, "text");
         const text = truncate(ev.text, maxChars);
-        if (isVertical) {
-          const tx = cross + LANE_THICKNESS / 2;
-          const ty = a1 + LABEL_PAD;
-          label.setAttribute("x", String(tx));
-          label.setAttribute("y", String(ty));
-          label.setAttribute(
-            "transform",
-            `rotate(90 ${tx} ${ty})`
-          );
-          label.setAttribute("text-anchor", "start");
-        } else {
-          label.setAttribute("x", String(a1 + LABEL_PAD));
-          label.setAttribute("y", String(cross + LANE_THICKNESS / 2));
-        }
+        // The gap lives on the text, not on the anchor: inside the
+        // counter-scaled child it keeps its pixel width through a pinch,
+        // whereas an anchor offset would stretch with the bar.
+        label.setAttribute("x", String(LABEL_PAD));
+        label.setAttribute("y", "0");
+        if (isVertical) label.setAttribute("text-anchor", "start");
         label.setAttribute("class", "txs-event-label");
         label.setAttribute("fill", textColor);
         label.textContent = text;
-        svg.appendChild(label);
+        if (isVertical) {
+          anchored(svg, label, cross + LANE_THICKNESS / 2, a1, 90);
+        } else {
+          anchored(svg, label, a1, cross + LANE_THICKNESS / 2);
+        }
       }
     }
   });
 
   wrapper.appendChild(svg);
   return wrapper;
+}
+
+/**
+ * Puts `child` at its anchor point via a wrapping <g translate(...)>, leaving
+ * the child itself at the local origin.
+ *
+ * That is what lets the pinch preview counter-scale labels and point markers
+ * about their own anchor: the ancestor transform moves the group with the
+ * bars, while the child's own scale has an origin that sits exactly on the
+ * anchor, so nothing drifts sideways.
+ */
+function anchored(
+  parent: SVGElement,
+  child: SVGElement,
+  x: number,
+  y: number,
+  rotateDeg = 0
+): void {
+  const g = document.createElementNS(SVG_NS, "g");
+  const rotate = rotateDeg ? ` rotate(${rotateDeg})` : "";
+  g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
+  g.appendChild(child);
+  parent.appendChild(g);
 }
 
 function attachEvents(
@@ -314,14 +334,12 @@ function drawEras(
       // band already gives the subtle wash.
       if (era.name && span > 30) {
         const label = document.createElementNS(SVG_NS, "text");
+        label.setAttribute("x", "0");
+        label.setAttribute("y", "0");
         if (isVertical) {
-          label.setAttribute("x", "6");
-          label.setAttribute("y", String((a1 + a2) / 2));
           label.setAttribute("text-anchor", "start");
           label.setAttribute("dominant-baseline", "middle");
         } else {
-          label.setAttribute("x", String((a1 + a2) / 2));
-          label.setAttribute("y", String(AXIS_PAD + 4));
           label.setAttribute("text-anchor", "middle");
           label.setAttribute("dominant-baseline", "hanging");
         }
@@ -335,7 +353,11 @@ function drawEras(
             onOpenEra(era.id);
           });
         }
-        svg.appendChild(label);
+        if (isVertical) {
+          anchored(svg, label, 6, (a1 + a2) / 2);
+        } else {
+          anchored(svg, label, (a1 + a2) / 2, AXIS_PAD + 4);
+        }
       }
     }
   }
@@ -414,12 +436,11 @@ function drawAxis(
   line.setAttribute("class", "txs-axis-line");
   svg.appendChild(line);
 
-  const tickCount = Math.min(
-    16,
-    Math.max(4, Math.floor(timeSize / (isVertical ? 80 : 120)))
-  );
-  for (let i = 0; i <= tickCount; i++) {
-    const t = i / tickCount;
+  // Marks sit on real calendar boundaries picked for the current axis length,
+  // so zooming in names years, then months, then days instead of repeating a
+  // rounded year every few thousand pixels.
+  const ticks = axisTicks(vp.start, vp.end, timeSize, isVertical ? 80 : 120);
+  for (const { t, label } of ticks) {
     const along = t * timeSize;
 
     // tick mark
@@ -459,26 +480,16 @@ function drawAxis(
     // label
     const text = document.createElementNS(SVG_NS, "text");
     text.setAttribute("class", "txs-axis-text");
+    text.setAttribute("x", "0");
+    text.setAttribute("y", "0");
+    if (isVertical) text.setAttribute("text-anchor", "end");
+    text.textContent = label;
     if (isVertical) {
-      text.setAttribute("x", String(AXIS_PAD - 16));
-      text.setAttribute("y", String(clampLabel(along, height)));
-      text.setAttribute("text-anchor", "end");
+      anchored(svg, text, AXIS_PAD - 16, clampLabel(along, height));
     } else {
-      text.setAttribute("x", String(clampLabel(along, width)));
-      text.setAttribute("y", String(AXIS_PAD - 16));
+      anchored(svg, text, clampLabel(along, width), AXIS_PAD - 16);
     }
-    text.textContent = interpolateYearLabel(vp, t);
-    svg.appendChild(text);
   }
-}
-
-function interpolateYearLabel(vp: ViewportRange, t: number): string {
-  const y = vp.start.year + (vp.end.year - vp.start.year) * t;
-  return formatYear(Math.round(y));
-}
-
-function formatYear(y: number): string {
-  return y < 0 ? `${-y} BCE` : `${y}`;
 }
 
 function clampLabel(coord: number, size: number): number {

@@ -324,6 +324,9 @@ export class TimelineView extends ItemView {
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
     if (!body) return;
+    // A rebuild always ends any gesture styling; the old scroller is about to
+    // be thrown away regardless.
+    this.clearGestureState();
     const bodyScrollTop = body.scrollTop;
     const barScrolls: number[] = [];
     body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
@@ -421,12 +424,18 @@ export class TimelineView extends ItemView {
     if (scroller) {
       const ratio = clamped / from;
       const rect = scroller.getBoundingClientRect();
+      const vertical = scroller.hasClass("txs-vertical");
       const fx = focalClient ? focalClient.x - rect.left : rect.width / 2;
       const fy = focalClient ? focalClient.y - rect.top : rect.height / 2;
-      this.pendingBarScroll = {
-        left: focalScroll(scroller.scrollLeft, fx, ratio),
-        top: focalScroll(scroller.scrollTop, fy, ratio),
-      };
+      this.pendingBarScroll = vertical
+        ? {
+            left: scroller.scrollLeft,
+            top: focalScroll(scroller.scrollTop, fy, ratio),
+          }
+        : {
+            left: focalScroll(scroller.scrollLeft, fx, ratio),
+            top: scroller.scrollTop,
+          };
     }
 
     this.filters.zoom = clamped;
@@ -506,9 +515,38 @@ export class TimelineView extends ItemView {
       { passive: false }
     );
 
-    const endPinch = (e: TouchEvent) => this.applyPinch(pinch.end(points(e)));
+    const endPinch = (e: TouchEvent) => {
+      this.applyPinch(pinch.end(points(e)));
+      // Whatever the tracker thought, no fingers means no gesture: the
+      // scroller must never be left with touch-action: none, or vertical
+      // panning stays dead until the view is rebuilt.
+      if (e.touches.length === 0) this.clearGestureState();
+    };
     body.addEventListener("touchend", endPinch);
     body.addEventListener("touchcancel", endPinch);
+
+    // Backgrounding the app can swallow the touchend entirely.
+    this.registerDomEvent(document, "visibilitychange", () => {
+      if (document.hidden) {
+        this.applyPinch(pinch.end([]));
+        this.clearGestureState();
+      }
+    });
+  }
+
+  /** Drop every trace of an in-flight gesture. Safe to call at any time. */
+  private clearGestureState(): void {
+    this.contentEl
+      .querySelectorAll<HTMLElement>(".txs-timeline-bar.is-scaling")
+      .forEach((el) => {
+        el.removeClass("is-scaling");
+        el.setCssProps({
+          "--txs-zoom-scale": "1",
+          "--txs-zoom-inv": "1",
+          "--txs-zoom-extra": "0px",
+        });
+      });
+    this.contentEl.querySelector(".txs-view-body")?.removeClass("is-pinching");
   }
 
   private applyPinch(action: PinchAction): void {
@@ -619,10 +657,11 @@ export class TimelineView extends ItemView {
 
     // Scroll is derived from where the gesture STARTED, so the preview's own
     // scrolling is not counted twice.
-    this.pendingBarScroll = {
-      left: focalScroll(p.startLeft, p.focalX, p.scale),
-      top: focalScroll(p.startTop, p.focalY, p.scale),
-    };
+    // Only the time axis grew. Scaling the cross-axis scroll too was what
+    // threw the view off vertically after a horizontal zoom.
+    this.pendingBarScroll = p.vertical
+      ? { left: p.startLeft, top: focalScroll(p.startTop, p.focalY, p.scale) }
+      : { left: focalScroll(p.startLeft, p.focalX, p.scale), top: p.startTop };
     this.filters.zoom = next;
     this.updateZoomLabel();
     this.scheduleZoomRender();
