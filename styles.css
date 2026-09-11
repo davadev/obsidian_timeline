@@ -73,12 +73,32 @@
   color: var(--text-muted);
 }
 
-.txs-view-zoom-row {
+/* Header zoom group: −  Auto  + */
+.txs-view-zoom {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 6px;
+}
+
+.txs-view-zoom button {
+  padding: 2px 8px;
   font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+
+.txs-view-zoom .txs-view-zoom-label {
+  min-width: 52px;
+  text-align: center;
   color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.txs-view-zoom .txs-view-zoom-label:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
 
 .txs-era-strip {
@@ -603,8 +623,10 @@
 }
 
 .txs-view-filters {
-  /* <details> element. When closed only the summary shows, so the body has
-   * full screen for the timeline — important on phones. */
+  /* Collapsible panel. Deliberately not a <details>: WebKit toggles the
+   * disclosure for clicks anywhere inside one, which collapsed the panel every
+   * time a control in it was tapped. When collapsed only the header button
+   * shows, so the body has full screen for the timeline — important on phones. */
   flex: 0 0 auto;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
@@ -612,13 +634,11 @@
   background: var(--background-secondary);
 }
 
-.txs-view-filters[open] {
+.txs-view-filters.is-open {
   padding: 4px 6px 6px;
   /* Capped against the pane (not the viewport), so a short split pane or a
    * phone can't leave rows stranded below the fold — the panel itself scrolls
-   * and the timeline below keeps the rest of the space. Scrolling the
-   * <details> directly (rather than an inner flex child) because a flex
-   * <details> does not shrink its content box in WebKit/Blink. */
+   * and the timeline below keeps the rest of the space. */
   max-height: 50%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -626,15 +646,18 @@
 }
 
 .txs-view-filters > .txs-view-filters-summary {
-  /* Stays put while the panel scrolls under it. Kept as list-item: a summary
-   * with `display: flex` stops acting as the disclosure box in WebKit, which
-   * makes clicks on the panel's own controls collapse the panel. The flex row
-   * lives on the inner span instead. */
-  display: list-item;
-  list-style: none;
+  /* Stays put while the panel scrolls under it. */
   position: sticky;
   top: -4px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
   background: var(--background-secondary);
   cursor: pointer;
   user-select: none;
@@ -643,14 +666,8 @@
   color: var(--text-muted);
 }
 
-.txs-view-filters-summary-inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.txs-view-filters > .txs-view-filters-summary::-webkit-details-marker {
-  display: none;
+.txs-view-filters > .txs-view-filters-summary:hover {
+  background: var(--background-modifier-hover);
 }
 
 .txs-view-filters > .txs-view-filters-summary::before {
@@ -661,7 +678,7 @@
   color: var(--text-faint);
 }
 
-.txs-view-filters[open] > .txs-view-filters-summary::before {
+.txs-view-filters.is-open > .txs-view-filters-summary::before {
   transform: rotate(90deg);
 }
 
@@ -669,10 +686,14 @@
   font-weight: 500;
 }
 
-/* Scroll box holding the expanded filter controls. Capped so the timeline
- * body keeps room, and scrollable so no row can end up stranded under
+/* Controls live here; shown only while the panel is open. The panel itself is
+ * the scroll box (capped above), so nothing can end up stranded under
  * Obsidian's bottom bar on a phone. */
 .txs-view-filters-body {
+  display: none;
+}
+
+.txs-view-filters.is-open > .txs-view-filters-body {
   display: block;
 }
 
@@ -697,6 +718,16 @@
 .txs-view-year {
   width: 70px;
   padding: 4px 6px;
+}
+
+.txs-view-body.is-pinching .txs-bar-hit {
+  pointer-events: none;
+}
+
+.txs-view-body .txs-timeline-bar {
+  /* Scrolling stays native; two-finger pinch reaches our pointer handlers
+   * instead of zooming the app chrome. */
+  touch-action: pan-x pan-y;
 }
 
 .txs-view-body {
@@ -803,10 +834,6 @@
 }
 
 /* Numeric zoom overrides in the view header and the filter panel. */
-.txs-view-zoom-input {
-  width: 80px;
-}
-
 .txs-filter-zoom-input {
   width: 100px;
 }

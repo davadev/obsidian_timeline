@@ -25,7 +25,24 @@ The workspace **Timeline view** (above) is opened via the ribbon icon or the **O
 | Open timeline sync diagnostics | Dumps current diagnostics to the developer console. |
 | Rebuild internal index/cache | Re-runs validation + refreshes in-memory diagnostics. |
 | Export note: render timelines to images | Walks the active note for ` ```timeline ` blocks, renders each to a PNG via the browser canvas, writes the image into the vault, and replaces the fenced block with the image + a static list. |
-| Re-enable Timeline XML Sync (clear crash flag) | Only registered when the plugin auto-disabled itself after a crash. Clears the flag so it loads next time. |
+| Re-enable after crash (clear crash flag) | Only registered when the plugin auto-disabled itself after a crash. Clears the flag so it loads next time. |
+
+## Zooming the Timeline view
+
+The time axis is scaled to fit by default. To look closer:
+
+- **Touch** — pinch with two fingers anywhere on the timeline. The point between
+  your fingers stays put.
+- **Desktop** — pinch on the trackpad, or hold <kbd>Ctrl</kbd> and scroll. The
+  point under the cursor stays put.
+- **Buttons** — `−` / `+` in the view header. The label between them shows the
+  current factor (`Auto` while it is being fitted automatically); click it to go
+  back to automatic.
+
+Zoom is a view setting, not a filter: it is not counted in the Filters badge,
+though **Clear filters** does reset it to automatic. Inline ` ```timeline `
+blocks keep their own `zoom:` option — see
+[render-block.md](./render-block.md).
 
 ## Ribbon
 

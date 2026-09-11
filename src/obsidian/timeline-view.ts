@@ -10,6 +10,13 @@ import {
   renderFilterBar,
   type RichFilterState,
 } from "../renderer/filter-bar";
+import {
+  ZOOM_STEP,
+  clampZoom,
+  focalScroll,
+  formatZoom,
+  wheelZoomFactor,
+} from "../renderer/zoom-math";
 
 export const VIEW_TYPE_TIMELINE = "txs-timeline-view";
 
@@ -68,6 +75,12 @@ export class TimelineView extends ItemView {
 
   /** Survives a full re-render; mobile starts collapsed to save screen. */
   private filtersOpen = !Platform.isMobile;
+  /** Zoom actually used by the last render — the base that +/- and pinch scale. */
+  private effectiveZoom = 1;
+  private zoomLabelEl: HTMLElement | null = null;
+  /** Scroll position the next render should land on, to keep the pinch focal point still. */
+  private pendingBarScroll: { left: number; top: number } | null = null;
+  private zoomFrame: number | null = null;
 
   async onOpen(): Promise<void> {
     await this.fullRender();
@@ -99,6 +112,27 @@ export class TimelineView extends ItemView {
 
     const header = this.contentEl.createDiv({ cls: "txs-view-header" });
     header.createEl("h3", { text: "Timeline" });
+
+    // Zoom: pinch on touch and ctrl/trackpad-pinch on desktop do the real
+    // work; these are the discoverable fallback (and the reset).
+    const zoomGroup = header.createDiv({ cls: "txs-view-zoom" });
+    const zoomOut = zoomGroup.createEl("button", {
+      text: "−",
+      attr: { type: "button", "aria-label": "Zoom out" },
+    });
+    this.zoomLabelEl = zoomGroup.createEl("button", {
+      cls: "txs-view-zoom-label",
+      attr: { type: "button", "aria-label": "Reset zoom to automatic" },
+    });
+    const zoomIn = zoomGroup.createEl("button", {
+      text: "+",
+      attr: { type: "button", "aria-label": "Zoom in" },
+    });
+    zoomOut.addEventListener("click", () => this.zoomBy(1 / ZOOM_STEP));
+    zoomIn.addEventListener("click", () => this.zoomBy(ZOOM_STEP));
+    this.zoomLabelEl.addEventListener("click", () => this.resetZoom());
+    this.updateZoomLabel();
+
     const refreshBtn = header.createEl("button", { text: "Refresh" });
     refreshBtn.addEventListener("click", () => {
       cache.invalidateXml();
@@ -119,7 +153,8 @@ export class TimelineView extends ItemView {
     }
 
     this.buildFilterPanel(settings);
-    this.contentEl.createDiv({ cls: "txs-view-body" });
+    const body = this.contentEl.createDiv({ cls: "txs-view-body" });
+    this.attachZoomGestures(body);
     this.bodyRender();
   }
 
@@ -127,26 +162,25 @@ export class TimelineView extends ItemView {
     const doc = this.cachedDoc;
     if (!doc) return;
 
-    const panel = this.contentEl.createEl("details", {
-      cls: "txs-view-filters",
-    });
-    panel.open = this.filtersOpen;
-    panel.addEventListener("toggle", () => {
-      this.filtersOpen = panel.open;
-    });
+    // Deliberately NOT a <details>. WebKit toggles the disclosure for clicks
+    // anywhere inside it once the summary is styled, which collapsed the panel
+    // whenever a control in it was tapped. A div + button has no such
+    // behaviour to fight.
+    const panel = this.contentEl.createDiv({ cls: "txs-view-filters" });
+    panel.toggleClass("is-open", this.filtersOpen);
 
-    const summary = panel.createEl("summary", {
+    const summary = panel.createEl("button", {
       cls: "txs-view-filters-summary",
+      attr: { type: "button", "aria-expanded": String(this.filtersOpen) },
     });
-    // The flex layout lives on an inner span, never on the <summary> itself:
-    // a summary with `display: flex` stops being the disclosure box in WebKit,
-    // and clicks on the panel's own controls then toggle the <details> shut.
-    const summaryInner = summary.createSpan({
-      cls: "txs-view-filters-summary-inner",
-    });
-    const badge = summaryInner.createSpan({
+    const badge = summary.createSpan({
       cls: "txs-view-filters-badge",
       text: "Filters",
+    });
+    summary.addEventListener("click", () => {
+      this.filtersOpen = !this.filtersOpen;
+      panel.toggleClass("is-open", this.filtersOpen);
+      summary.setAttr("aria-expanded", String(this.filtersOpen));
     });
 
     // Every control lives in its own scrollable box: the panel is taller than
@@ -154,10 +188,6 @@ export class TimelineView extends ItemView {
     // rows past the fold sit under Obsidian's bottom bar with no way to reach
     // them. The summary stays pinned above it.
     const controls = panel.createDiv({ cls: "txs-view-filters-body" });
-    // Belt and braces for the same quirk: a click on a filter control has no
-    // business reaching the <details>, so it never gets the chance to collapse
-    // the panel out from under the user mid-edit.
-    controls.addEventListener("click", (e) => e.stopPropagation());
 
     const updateBadge = () => {
       const n =
@@ -165,8 +195,7 @@ export class TimelineView extends ItemView {
         (this.filters.start ? 1 : 0) +
         (this.filters.end ? 1 : 0) +
         (this.filters.labels.length ? 1 : 0) +
-        (this.filters.hiddenCategories.size ? 1 : 0) +
-        (this.filters.zoom != null ? 1 : 0);
+        (this.filters.hiddenCategories.size ? 1 : 0);
       badge.textContent = n ? `Filters (${n} active)` : "Filters";
     };
 
@@ -260,37 +289,15 @@ export class TimelineView extends ItemView {
       }
     }
 
-    // Zoom override
-    const zoomRow = controls.createDiv({ cls: "txs-view-zoom-row" });
-    zoomRow.createSpan({ text: "Zoom override:" });
-    const zoomInput = zoomRow.createEl("input", {
-      type: "number",
-      placeholder: "auto",
-    });
-    zoomInput.addClass("txs-view-zoom-input");
-    zoomInput.step = "0.5";
-    zoomInput.min = "0.5";
-    if (this.filters.zoom != null) zoomInput.value = String(this.filters.zoom);
-    zoomInput.addEventListener("input", () => {
-      const v = zoomInput.value.trim();
-      if (v === "") this.filters.zoom = null;
-      else {
-        const n = parseFloat(v);
-        this.filters.zoom = Number.isFinite(n) && n > 0 ? n : null;
-      }
-      updateBadge();
-      scheduleRender();
-    });
-
     // Clear
     const clearBtn = controls.createEl("button", { text: "Clear filters" });
     clearBtn.addEventListener("click", () => {
       this.filters = EMPTY_FILTERS();
       searchInput.value = "";
       labelsInput.value = "";
-      zoomInput.value = "";
       startGroup.reset();
       endGroup.reset();
+      this.updateZoomLabel();
       updateBadge();
       this.bodyRender();
     });
@@ -321,6 +328,7 @@ export class TimelineView extends ItemView {
     const fullViewport = autoViewport(filtered);
     const computedZoom = pickAutoZoom(filtered.length, fullViewport, body);
     const autoZoom = this.filters.zoom != null ? this.filters.zoom : computedZoom;
+    this.effectiveZoom = autoZoom;
     renderTimeline({
       container: body,
       events: filtered,
@@ -348,16 +356,144 @@ export class TimelineView extends ItemView {
       eventLabelColor: settings.eventLabelColor,
     });
 
+    const plan = this.pendingBarScroll;
+    this.pendingBarScroll = null;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         body.scrollTop = bodyScrollTop;
         body
           .querySelectorAll<HTMLElement>(".txs-timeline-bar")
           .forEach((b, i) => {
-            if (i < barScrolls.length) b.scrollLeft = barScrolls[i];
+            if (plan) {
+              // Zoom: keep whatever was under the pointer/fingers in place.
+              b.scrollLeft = plan.left;
+              b.scrollTop = plan.top;
+            } else if (i < barScrolls.length) {
+              b.scrollLeft = barScrolls[i];
+            }
           });
       });
     });
+  }
+
+  /** The horizontally (or vertically) scrolling box the bar chart lives in. */
+  private barScroller(): HTMLElement | null {
+    return this.contentEl.querySelector(".txs-timeline-bar");
+  }
+
+  private updateZoomLabel(): void {
+    if (!this.zoomLabelEl) return;
+    const z = this.filters.zoom;
+    this.zoomLabelEl.textContent = z == null ? "Auto" : `${formatZoom(z)}×`;
+  }
+
+  /** Multiply the current zoom, keeping `focalClient` (px, viewport) steady. */
+  private zoomBy(factor: number, focalClient?: { x: number; y: number }): void {
+    const from = this.filters.zoom ?? this.effectiveZoom;
+    this.setZoom(from * factor, from, focalClient);
+  }
+
+  private setZoom(
+    next: number,
+    from: number,
+    focalClient?: { x: number; y: number }
+  ): void {
+    const clamped = clampZoom(next);
+    if (Math.abs(clamped - from) < 0.001) return;
+
+    const scroller = this.barScroller();
+    if (scroller) {
+      const ratio = clamped / from;
+      const rect = scroller.getBoundingClientRect();
+      const fx = focalClient ? focalClient.x - rect.left : rect.width / 2;
+      const fy = focalClient ? focalClient.y - rect.top : rect.height / 2;
+      this.pendingBarScroll = {
+        left: focalScroll(scroller.scrollLeft, fx, ratio),
+        top: focalScroll(scroller.scrollTop, fy, ratio),
+      };
+    }
+
+    this.filters.zoom = clamped;
+    this.updateZoomLabel();
+    this.scheduleZoomRender();
+  }
+
+  private resetZoom(): void {
+    if (this.filters.zoom == null) return;
+    this.filters.zoom = null;
+    this.pendingBarScroll = null;
+    this.updateZoomLabel();
+    this.scheduleZoomRender();
+  }
+
+  /** One render per frame, so a pinch does not queue dozens of them. */
+  private scheduleZoomRender(): void {
+    if (this.zoomFrame != null) return;
+    this.zoomFrame = window.requestAnimationFrame(() => {
+      this.zoomFrame = null;
+      this.bodyRender();
+    });
+  }
+
+  /**
+   * Pinch to zoom on touch, ctrl+wheel (which is what a trackpad pinch sends)
+   * on desktop. Both keep the point under the fingers/cursor anchored.
+   */
+  private attachZoomGestures(body: HTMLElement): void {
+    body.addEventListener(
+      "wheel",
+      (e: WheelEvent) => {
+        if (!e.ctrlKey) return; // plain scrolling stays scrolling
+        e.preventDefault();
+        this.zoomBy(wheelZoomFactor(e.deltaY), { x: e.clientX, y: e.clientY });
+      },
+      { passive: false }
+    );
+
+    const points = new Map<number, { x: number; y: number }>();
+    let startDist = 0;
+    let startZoom = 1;
+
+    const spread = (): number => {
+      const [a, b] = Array.from(points.values());
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const centre = (): { x: number; y: number } => {
+      const [a, b] = Array.from(points.values());
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+    const endPinch = () => {
+      if (points.size >= 2) return;
+      startDist = 0;
+      // Let the tap-suppression outlive the gesture by a frame or two, so
+      // lifting a finger over a bar does not open that event.
+      window.setTimeout(() => body.removeClass("is-pinching"), 250);
+    };
+
+    body.addEventListener("pointerdown", (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 2) {
+        startDist = spread();
+        startZoom = this.filters.zoom ?? this.effectiveZoom;
+        body.addClass("is-pinching");
+      }
+    });
+
+    body.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!points.has(e.pointerId)) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size !== 2 || startDist <= 0) return;
+      e.preventDefault();
+      this.setZoom((startZoom * spread()) / startDist, startZoom, centre());
+    });
+
+    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) {
+      body.addEventListener(ev, (e: Event) => {
+        points.delete((e as PointerEvent).pointerId);
+        endPinch();
+      });
+    }
   }
 }
 
