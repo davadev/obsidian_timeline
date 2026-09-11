@@ -43,10 +43,11 @@ The axis re-scales with the zoom: fitted out it marks centuries, zoomed in it
 moves to decades, years, months and finally individual days, so a label near
 the pointer always says where you are.
 
-Zoom runs from 0.25× (fitted out) to 500×. Very deep zoom is bounded by a
+Zoom runs from 0.25× (fitted out) to 2000×. Very deep zoom is bounded by a
 pixel cap on the rendered axis (`MAX_AXIS_PX` in `src/renderer/zoom-math.ts`,
-150 000 px — roughly 75 px per year across two millennia), so the chart stops
-growing before a device has to paint something it cannot.
+1 000 000 px — roughly 340 px per year across two millennia, enough for the
+axis to name months on a span that long), so the chart stops growing before a
+device has to paint something it cannot.
 
 Zoom is a view setting, not a filter: it is not counted in the Filters badge,
 though **Clear filters** does reset it to automatic. Inline ` ```timeline `

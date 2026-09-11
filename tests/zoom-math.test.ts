@@ -16,7 +16,7 @@ describe("clampZoom", () => {
   it("keeps values inside the supported range", () => {
     expect(clampZoom(1)).toBe(1);
     expect(clampZoom(0.01)).toBe(MIN_ZOOM);
-    expect(clampZoom(1000)).toBe(MAX_ZOOM);
+    expect(clampZoom(MAX_ZOOM * 10)).toBe(MAX_ZOOM);
   });
 
   it("falls back to 1 for junk", () => {
@@ -44,6 +44,12 @@ describe("clampAxisSize", () => {
     // a typical pane is ~800px wide; max zoom must not be able to outrun the
     // pixel cap unnoticed
     expect(clampAxisSize(800 * MAX_ZOOM)).toBe(MAX_AXIS_PX);
+  });
+
+  it("allows a millennia-long span to reach month-level detail", () => {
+    // 2930 years across the widest axis we will draw
+    const pxPerYear = MAX_AXIS_PX / 2930;
+    expect(pxPerYear / 12).toBeGreaterThan(20); // a month is a visible slice
   });
 });
 

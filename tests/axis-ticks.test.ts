@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { axisTicks, formatTick, pickStep, stepDays } from "../src/renderer/axis-ticks";
+import {
+  axisTicks,
+  formatTick,
+  pickStep,
+  stepDays,
+  visibleAxisTicks,
+} from "../src/renderer/axis-ticks";
 
 const YEAR = 365.2425;
 
@@ -94,5 +100,56 @@ describe("formatTick", () => {
     expect(formatTick({ year: -44 }, "year")).toBe("44 BCE");
     expect(formatTick({ year: 1984, month: 7 }, "month")).toBe("Jul 1984");
     expect(formatTick({ year: 1984, month: 7, day: 4 }, "day")).toBe("4 Jul 1984");
+  });
+});
+
+describe("visibleAxisTicks", () => {
+  it("labels the window you are looking at, not the whole axis", () => {
+    // 2930 years drawn across a million pixels; look at a 400px slice
+    const ticks = visibleAxisTicks(
+      { year: -900 },
+      { year: 2030 },
+      1_000_000,
+      500_000,
+      500_400,
+      120
+    );
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(ticks.length).toBeLessThan(60); // a window, not the whole axis
+    // every mark sits within the window plus its margin
+    for (const t of ticks) {
+      expect(t.px).toBeGreaterThan(400_000);
+      expect(t.px).toBeLessThan(600_000);
+    }
+  });
+
+  it("reaches month labels for a long span once the axis is wide enough", () => {
+    const ticks = visibleAxisTicks(
+      { year: -900 },
+      { year: 2030 },
+      1_000_000,
+      500_000,
+      500_400,
+      120
+    );
+    expect(ticks.some((t) => /^[A-Z][a-z]{2} /.test(t.label))).toBe(true);
+  });
+
+  it("keeps year labels when the whole span fits the pane", () => {
+    const ticks = visibleAxisTicks({ year: -900 }, { year: 2030 }, 800, 0, 800, 120);
+    expect(ticks.every((t) => /^\d+( BCE)?$/.test(t.label))).toBe(true);
+  });
+
+  it("covers the far end of the axis, not just the start", () => {
+    const ticks = visibleAxisTicks(
+      { year: 1000 },
+      { year: 2000 },
+      500_000,
+      499_000,
+      500_000,
+      120
+    );
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(ticks.some((t) => t.label.includes("2000") || t.label.includes("1999"))).toBe(true);
   });
 });

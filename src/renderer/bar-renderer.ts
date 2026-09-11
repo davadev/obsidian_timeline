@@ -4,7 +4,7 @@ import { assignLanes } from "../timeline/overlap";
 import { fractionalPosition } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
 import { clampAxisSize } from "./zoom-math";
-import { axisTicks } from "./axis-ticks";
+import { visibleAxisTicks } from "./axis-ticks";
 import type { Orientation } from "./render-options";
 
 /**
@@ -77,13 +77,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       : null;
 
   // Labels that should slide along their bar while it is scrolled.
-  const sticky: {
-    g: SVGGElement;
-    from: number;
-    to: number;
-    cross: number;
-    width: number;
-  }[] = [];
+  const sticky: StickyLabel[] = [];
 
   const lanes = assignLanes(events);
   const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
@@ -121,7 +115,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     drawEras(svg, args.eras, viewport, isVertical, width, height, args.onOpenEra);
   }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
-  drawAxis(svg, viewport, isVertical, width, height);
+  const paintAxis = drawAxis(svg, viewport, isVertical, width, height);
 
   const isMobile = args.isMobile;
 
@@ -217,8 +211,9 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
             g: group,
             from: a1,
             to: a2,
-            cross: isVertical ? cross + LANE_THICKNESS / 2 : cross + LANE_THICKNESS / 2,
+            cross: cross + LANE_THICKNESS / 2,
             width: text.length * CHAR_W + LABEL_PAD * 2,
+            at: a1,
           });
         }
       }
@@ -226,7 +221,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   });
 
   wrapper.appendChild(svg);
-  if (sticky.length) attachStickyLabels(wrapper, sticky, isVertical);
+  attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
   return wrapper;
 }
 
@@ -383,37 +378,63 @@ function drawEras(
   }
 }
 
+interface StickyLabel {
+  g: SVGGElement;
+  from: number;
+  to: number;
+  cross: number;
+  width: number;
+  /** Last position written, so an unchanged frame costs nothing. */
+  at: number;
+}
+
 /**
- * Keeps each label inside the visible slice of its own bar. Without this a
- * span that runs off both edges of the viewport shows no text at all when
- * zoomed in — the label sits at the bar's start, far off-screen.
+ * One scroll listener drives everything that depends on what is on screen:
+ * the axis marks for the visible stretch, and each label's position inside
+ * its own bar (a span running off both edges would otherwise show no text at
+ * all when zoomed in).
+ *
+ * Both are kept cheap enough for a fast flick: labels are sorted by start so
+ * the visible run can be found by binary search instead of a full scan, and a
+ * label whose position has not meaningfully changed is left alone.
  */
-function attachStickyLabels(
+function attachViewportPainters(
   wrapper: HTMLElement,
-  labels: {
-    g: SVGGElement;
-    from: number;
-    to: number;
-    cross: number;
-    width: number;
-  }[],
-  isVertical: boolean
+  isVertical: boolean,
+  paintAxis: (viewFrom: number, viewTo: number) => void,
+  labels: StickyLabel[]
 ): void {
+  labels.sort((a, b) => a.from - b.from);
+  const ends = labels.map((l) => l.to);
   let frame: number | null = null;
 
-  const place = () => {
+  /** First label whose bar could still be on screen. */
+  const firstVisible = (viewFrom: number): number => {
+    let lo = 0;
+    let hi = labels.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ends[mid] < viewFrom) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+
+  const paint = () => {
     frame = null;
     const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
-    const viewSize = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
-    const viewTo = viewFrom + viewSize;
+    const size = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
+    const viewTo = viewFrom + size;
 
-    for (const l of labels) {
-      // Nothing to do when the bar's start is already on screen.
+    paintAxis(viewFrom, viewTo);
+
+    for (let i = firstVisible(viewFrom); i < labels.length; i++) {
+      const l = labels[i];
+      if (l.from > viewTo) break; // sorted: everything after is off screen too
       const latest = Math.max(l.from, l.to - l.width);
       const target = Math.min(Math.max(l.from, viewFrom + LABEL_PAD), latest);
-      // Skip bars that are entirely off screen — their position is irrelevant
-      // and writing to them costs layout.
-      if (l.to < viewFrom || l.from > viewTo) continue;
+      if (Math.abs(target - l.at) < 1) continue;
+      l.at = target;
       const rotate = isVertical ? " rotate(90)" : "";
       const x = isVertical ? l.cross : target;
       const y = isVertical ? target : l.cross;
@@ -425,12 +446,12 @@ function attachStickyLabels(
     "scroll",
     () => {
       if (frame != null) return;
-      frame = window.requestAnimationFrame(place);
+      frame = window.requestAnimationFrame(paint);
     },
     { passive: true }
   );
-  // Initial placement once the wrapper has a size.
-  window.requestAnimationFrame(place);
+  // First paint once the wrapper has a size.
+  window.requestAnimationFrame(paint);
 }
 
 function saturateForLabel(era: TimelineEra): string {
@@ -482,15 +503,23 @@ function drawLaneStripes(
   }
 }
 
+/**
+ * Draws the axis baseline and returns a painter for its marks.
+ *
+ * Marks are drawn for the visible stretch only and repainted on scroll:
+ * labelling a million-pixel axis up front would emit tens of thousands of
+ * nodes, and capping that count silently truncates the far end of the
+ * timeline — which is why months never appeared on a long span.
+ */
 function drawAxis(
   svg: SVGSVGElement,
   vp: ViewportRange,
   isVertical: boolean,
   width: number,
   height: number
-): void {
+): (viewFrom: number, viewTo: number) => void {
   const timeSize = isVertical ? height : width;
-  // Axis baseline
+
   const line = document.createElementNS(SVG_NS, "line");
   if (isVertical) {
     line.setAttribute("x1", String(AXIS_PAD - 6));
@@ -506,60 +535,69 @@ function drawAxis(
   line.setAttribute("class", "txs-axis-line");
   svg.appendChild(line);
 
-  // Marks sit on real calendar boundaries picked for the current axis length,
-  // so zooming in names years, then months, then days instead of repeating a
-  // rounded year every few thousand pixels.
-  const ticks = axisTicks(vp.start, vp.end, timeSize, isVertical ? 80 : 120);
-  for (const { t, label } of ticks) {
-    const along = t * timeSize;
+  const group = document.createElementNS(SVG_NS, "g");
+  group.setAttribute("class", "txs-axis-marks");
+  svg.appendChild(group);
 
-    // tick mark
-    const tick = document.createElementNS(SVG_NS, "line");
-    if (isVertical) {
-      tick.setAttribute("x1", String(AXIS_PAD - 12));
-      tick.setAttribute("y1", String(along));
-      tick.setAttribute("x2", String(AXIS_PAD - 2));
-      tick.setAttribute("y2", String(along));
-    } else {
-      tick.setAttribute("x1", String(along));
-      tick.setAttribute("y1", String(AXIS_PAD - 12));
-      tick.setAttribute("x2", String(along));
-      tick.setAttribute("y2", String(AXIS_PAD - 2));
-    }
-    tick.setAttribute("class", "txs-axis-tick");
-    svg.appendChild(tick);
+  const target = isVertical ? 80 : 120;
 
-    // grid line
-    const grid = document.createElementNS(SVG_NS, "line");
-    if (isVertical) {
-      grid.setAttribute("x1", String(AXIS_PAD));
-      grid.setAttribute("y1", String(along));
-      grid.setAttribute("x2", String(width - TAIL_PAD));
-      grid.setAttribute("y2", String(along));
-    } else {
-      grid.setAttribute("x1", String(along));
-      grid.setAttribute("y1", String(AXIS_PAD));
-      grid.setAttribute("x2", String(along));
-      grid.setAttribute("y2", String(height - TAIL_PAD));
-    }
-    grid.setAttribute("stroke", "var(--background-modifier-border)");
-    grid.setAttribute("stroke-width", "1");
-    grid.setAttribute("opacity", "0.4");
-    svg.appendChild(grid);
+  return (viewFrom: number, viewTo: number) => {
+    const ticks = visibleAxisTicks(
+      vp.start,
+      vp.end,
+      timeSize,
+      viewFrom,
+      viewTo,
+      target
+    );
+    group.replaceChildren();
 
-    // label
-    const text = document.createElementNS(SVG_NS, "text");
-    text.setAttribute("class", "txs-axis-text");
-    text.setAttribute("x", "0");
-    text.setAttribute("y", "0");
-    if (isVertical) text.setAttribute("text-anchor", "end");
-    text.textContent = label;
-    if (isVertical) {
-      anchored(svg, text, AXIS_PAD - 16, clampLabel(along, height));
-    } else {
-      anchored(svg, text, clampLabel(along, width), AXIS_PAD - 16);
+    for (const { px: along, label } of ticks) {
+      const tick = document.createElementNS(SVG_NS, "line");
+      if (isVertical) {
+        tick.setAttribute("x1", String(AXIS_PAD - 12));
+        tick.setAttribute("y1", String(along));
+        tick.setAttribute("x2", String(AXIS_PAD - 2));
+        tick.setAttribute("y2", String(along));
+      } else {
+        tick.setAttribute("x1", String(along));
+        tick.setAttribute("y1", String(AXIS_PAD - 12));
+        tick.setAttribute("x2", String(along));
+        tick.setAttribute("y2", String(AXIS_PAD - 2));
+      }
+      tick.setAttribute("class", "txs-axis-tick");
+      group.appendChild(tick);
+
+      const grid = document.createElementNS(SVG_NS, "line");
+      if (isVertical) {
+        grid.setAttribute("x1", String(AXIS_PAD));
+        grid.setAttribute("y1", String(along));
+        grid.setAttribute("x2", String(width - TAIL_PAD));
+        grid.setAttribute("y2", String(along));
+      } else {
+        grid.setAttribute("x1", String(along));
+        grid.setAttribute("y1", String(AXIS_PAD));
+        grid.setAttribute("x2", String(along));
+        grid.setAttribute("y2", String(height - TAIL_PAD));
+      }
+      grid.setAttribute("stroke", "var(--background-modifier-border)");
+      grid.setAttribute("stroke-width", "1");
+      grid.setAttribute("opacity", "0.4");
+      group.appendChild(grid);
+
+      const text = document.createElementNS(SVG_NS, "text");
+      text.setAttribute("class", "txs-axis-text");
+      text.setAttribute("x", "0");
+      text.setAttribute("y", "0");
+      if (isVertical) text.setAttribute("text-anchor", "end");
+      text.textContent = label;
+      if (isVertical) {
+        anchored(group, text, AXIS_PAD - 16, clampLabel(along, height));
+      } else {
+        anchored(group, text, clampLabel(along, width), AXIS_PAD - 16);
+      }
     }
-  }
+  };
 }
 
 function clampLabel(coord: number, size: number): number {

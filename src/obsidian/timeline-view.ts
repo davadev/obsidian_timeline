@@ -334,9 +334,6 @@ export class TimelineView extends ItemView {
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
     if (!body) return;
-    // A rebuild always ends any gesture styling; the old scroller is about to
-    // be thrown away regardless.
-    this.clearGestureState();
     const bodyScrollTop = body.scrollTop;
     const barScrolls: number[] = [];
     body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
@@ -395,29 +392,36 @@ export class TimelineView extends ItemView {
       eventLabelColor: settings.eventLabelColor,
     });
 
+    // Swap: the stretched preview leaves with the old nodes, so there is no
+    // frame showing the old zoom un-transformed.
     for (const el of previous) el.remove();
     staging.removeClass("txs-view-staging");
+    this.clearGestureState();
 
     const focus = this.pendingFocus;
     this.pendingFocus = null;
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        body.scrollTop = bodyScrollTop;
-        body
-          .querySelectorAll<HTMLElement>(".txs-timeline-bar")
-          .forEach((b, i) => {
-            if (focus) {
-              // Zoom: put the same slice of content back under the pointer,
-              // measured against what was actually rendered.
-              const size = focus.vertical ? b.scrollHeight : b.scrollWidth;
-              const target = focus.fraction * size - focus.focalPx;
-              if (focus.vertical) b.scrollTop = Math.max(0, target);
-              else b.scrollLeft = Math.max(0, target);
-            } else if (i < barScrolls.length) {
-              b.scrollLeft = barScrolls[i];
-            }
-          });
+
+    const restore = () => {
+      body.scrollTop = bodyScrollTop;
+      body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b, i) => {
+        if (focus) {
+          // Zoom: put the same slice of content back under the pointer,
+          // measured against what was actually rendered.
+          const size = focus.vertical ? b.scrollHeight : b.scrollWidth;
+          const target = focus.fraction * size - focus.focalPx;
+          if (focus.vertical) b.scrollTop = Math.max(0, target);
+          else b.scrollLeft = Math.max(0, target);
+        } else if (i < barScrolls.length) {
+          b.scrollLeft = barScrolls[i];
+        }
       });
+    };
+
+    // Immediately, so the new chart is never painted at the wrong offset...
+    restore();
+    // ...and again once layout has definitely settled.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(restore);
     });
   }
 
@@ -660,22 +664,18 @@ export class TimelineView extends ItemView {
     this.preview = null;
     if (!p) return;
 
-    p.scroller.removeClass("is-scaling");
-    p.scroller.setCssProps({
-      "--txs-zoom-scale": "1",
-      "--txs-zoom-inv": "1",
-      "--txs-zoom-extra": "0px",
-    });
-    const body = this.contentEl.querySelector(".txs-view-body");
-    window.setTimeout(() => body?.removeClass("is-pinching"), 250);
-
     const next = clampZoom(p.base * p.scale);
     if (Math.abs(next - p.base) < 0.001) {
-      // Nothing changed; put the scroll back where the preview found it.
+      // Nothing changed; drop the preview and put the scroll back.
+      this.clearGestureState();
       p.scroller.scrollLeft = p.startLeft;
       p.scroller.scrollTop = p.startTop;
       return;
     }
+
+    // The stretched SVG stays on screen until the real one replaces it —
+    // clearing it here would show one frame at the old zoom, which is exactly
+    // the flicker. bodyRender() drops it as part of the swap.
 
     // Scroll is derived from where the gesture STARTED, so the preview's own
     // scrolling is not counted twice.

@@ -164,6 +164,26 @@ export function fractionalPosition(
  * monotone across BCE/CE. Sub-day components contribute a fractional part.
  * This is for proportional layout only — never used for semantic comparison.
  */
+/**
+ * Inverse of {@link toJulian}: a Julian Day Number back to a proleptic
+ * Gregorian date. Used to turn a position along the axis into the date it
+ * represents, so the axis can label only the stretch currently on screen.
+ */
+export function fromJulian(j: number): TimelineDate {
+  const jdn = Math.floor(j + 0.5);
+  const a = jdn + 32044;
+  const b = Math.floor((4 * a + 3) / 146097);
+  const c = a - Math.floor((146097 * b) / 4);
+  const d2 = Math.floor((4 * c + 3) / 1461);
+  const e = c - Math.floor((1461 * d2) / 4);
+  const m = Math.floor((5 * e + 2) / 153);
+
+  const day = e - Math.floor((153 * m + 2) / 5) + 1;
+  const month = m + 3 - 12 * Math.floor(m / 10);
+  const year = 100 * b + d2 - 4800 + Math.floor(m / 10);
+  return { year, month, day };
+}
+
 export function toJulian(d: TimelineDate): number {
   const c = complete(d);
   const a = Math.floor((14 - c.month) / 12);

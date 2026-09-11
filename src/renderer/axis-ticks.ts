@@ -1,4 +1,9 @@
-import { fractionalPosition, toJulian, type TimelineDate } from "../timeline/date";
+import {
+  fractionalPosition,
+  fromJulian,
+  toJulian,
+  type TimelineDate,
+} from "../timeline/date";
 
 /**
  * Axis tick selection.
@@ -197,4 +202,55 @@ export function formatTick(d: TimelineDate, unit: TickUnit): string {
   const month = MONTHS[(d.month ?? 1) - 1];
   if (unit === "month") return `${month} ${year}`;
   return `${d.day ?? 1} ${month} ${year}`;
+}
+
+
+/**
+ * Ticks for the slice of the axis currently on screen.
+ *
+ * Labelling the whole axis does not scale: zoomed in far enough to name months
+ * across two millennia, a full pass would emit tens of thousands of nodes, and
+ * any cap on that count silently truncates the far end of the timeline. This
+ * generates marks for `[viewFromPx, viewToPx]` only, so the step reflects what
+ * the user is actually looking at and the node count stays flat at any zoom.
+ *
+ * Positions come back in absolute axis pixels.
+ */
+export function visibleAxisTicks(
+  start: TimelineDate,
+  end: TimelineDate,
+  axisPx: number,
+  viewFromPx: number,
+  viewToPx: number,
+  targetSpacingPx: number
+): { px: number; label: string }[] {
+  if (!(axisPx > 0)) return [];
+
+  const startJ = toJulian(start);
+  const endJ = toJulian(end);
+  const spanJ = endJ - startJ;
+  if (!(spanJ > 0)) return [];
+
+  // A margin either side keeps labels from popping in at the edges.
+  const margin = Math.max(targetSpacingPx * 2, (viewToPx - viewFromPx) * 0.25);
+  const fromPx = Math.max(0, viewFromPx - margin);
+  const toPx = Math.min(axisPx, viewToPx + margin);
+  if (!(toPx > fromPx)) return [];
+
+  const windowStart = fromJulian(startJ + (fromPx / axisPx) * spanJ);
+  const windowEnd = fromJulian(startJ + (toPx / axisPx) * spanJ);
+
+  // The step is chosen for the visible window, at the same pixel density as
+  // the full axis, so it matches what the eye can actually separate.
+  const windowPx = toPx - fromPx;
+  const ticks = axisTicks(windowStart, windowEnd, windowPx, targetSpacingPx);
+
+  return ticks.map((t) => ({
+    px: fractionalPosition(
+      fromJulian(toJulian(windowStart) + t.t * (toJulian(windowEnd) - toJulian(windowStart))),
+      start,
+      end
+    ) * axisPx,
+    label: t.label,
+  }));
 }
