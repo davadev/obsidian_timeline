@@ -1,7 +1,7 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import { assignLanes } from "../timeline/overlap";
 import { fromJulian, toJulian } from "../timeline/date";
-import { crossAxisSizeFor, renderBar } from "./bar-renderer";
+import { crossAxisSizeFor, drawEdgeLabel, renderBar } from "./bar-renderer";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
@@ -66,6 +66,9 @@ const TILE_RADIUS = 2;
 export class WindowedChart {
   private readonly scroller: HTMLElement;
   private readonly spacer: HTMLElement;
+  /** Pinned to the viewport's leading edge; names bars that start off-screen. */
+  private readonly edgeLayer: HTMLElement;
+  private edgeSvg: SVGSVGElement | null = null;
   private readonly tiles = new Map<number, HTMLElement>();
   private readonly resize: ResizeObserver | null = null;
   private readonly pinch = new PinchTracker();
@@ -80,10 +83,17 @@ export class WindowedChart {
   private paneW = 1;
   private syncing = false;
   private frame: number | null = null;
+  private zoomFrame: number | null = null;
+  private pendingZoom: { zoom: number; focalPx: number } | null = null;
 
   constructor(private args: WindowedChartArgs) {
     this.scroller = args.container.createDiv({ cls: "txs-chart" });
     this.scroller.toggleClass("txs-vertical", this.vertical);
+    // Order matters: a sticky element can only be pushed FORWARD from where it
+    // would naturally sit, so the edge layer has to flow before the spacer or
+    // it would be pinned somewhere off the end of the timeline. Zero-sized, so
+    // it takes no part in the scroll content.
+    this.edgeLayer = this.scroller.createDiv({ cls: "txs-chart-edge" });
     this.spacer = this.scroller.createDiv({ cls: "txs-chart-spacer" });
 
     this.scroller.addEventListener("scroll", () => this.onScroll(), {
@@ -150,17 +160,41 @@ export class WindowedChart {
 
   /** Multiply the zoom, keeping `focalPx` (px inside the pane) on the same date. */
   zoomBy(factor: number, focalPx?: number): void {
-    const at = focalPx ?? this.paneW / 2;
-    const dateUnderPointer =
-      this.window.from + (at / this.paneW) * windowDays(this.window);
+    // Compose against whatever is already queued: two wheel notches in one
+    // frame have to multiply, not overwrite each other.
+    const base = this.pendingZoom?.zoom ?? this.zoom;
+    this.zoomTo(base * factor, focalPx);
+  }
 
-    const zoom = clampZoomFor(this.zoom * factor, this.span);
-    const days = (this.span.to - this.span.from) / zoom;
-    // Put that date back where it was rather than centring on it.
-    const centre = dateUnderPointer + (0.5 - at / this.paneW) * days;
+  /**
+   * Zoom to an absolute factor, coalesced to one rebuild per frame.
+   *
+   * A pinch fires touchmove far faster than a chart can be rebuilt, and each
+   * rebuild also re-seeks the scroller — doing that per event made the gesture
+   * fight itself and crawl.
+   */
+  zoomTo(zoom: number, focalPx?: number): void {
+    this.pendingZoom = {
+      zoom: clampZoomFor(zoom, this.span),
+      focalPx: focalPx ?? this.paneW / 2,
+    };
+    if (this.zoomFrame != null) return;
+    this.zoomFrame = window.requestAnimationFrame(() => {
+      this.zoomFrame = null;
+      const next = this.pendingZoom;
+      this.pendingZoom = null;
+      if (!next) return;
 
-    this.window = windowFor(zoom, centre, this.span);
-    this.rebuild(true);
+      const at = next.focalPx;
+      const dateUnderPointer =
+        this.window.from + (at / this.paneW) * windowDays(this.window);
+      const days = (this.span.to - this.span.from) / next.zoom;
+      // Put that date back where it was rather than centring on it.
+      const centre = dateUnderPointer + (0.5 - at / this.paneW) * days;
+
+      this.window = windowFor(next.zoom, centre, this.span);
+      this.rebuild(true);
+    });
   }
 
   /** Back to the framing the view opened with. */
@@ -206,7 +240,46 @@ export class WindowedChart {
     }
 
     this.paintTiles();
+    this.paintEdgeLabels();
     this.args.onWindowChange?.(this.window, this.zoom, this.maxZoom);
+  }
+
+  /**
+   * One label per bar is drawn by the tile its start falls in. A bar whose
+   * start is off-screen would therefore be nameless, so it gets a label here,
+   * pinned to the edge. Only bars crossing that edge qualify — at most one per
+   * lane — so nothing is ever labelled twice.
+   */
+  private paintEdgeLabels(): void {
+    const cross = crossAxisSizeFor(this.laneCount);
+    if (!this.edgeSvg) {
+      this.edgeSvg = this.edgeLayer.createSvg("svg");
+    }
+    const svg = this.edgeSvg;
+    const along = this.vertical ? cross : this.paneW;
+    const across = this.vertical ? this.paneW : cross;
+    svg.setAttribute("width", String(this.vertical ? along : this.paneW));
+    svg.setAttribute("height", String(this.vertical ? this.paneW : cross));
+    svg.setAttribute(
+      "viewBox",
+      `0 0 ${this.vertical ? along : this.paneW} ${this.vertical ? this.paneW : across}`
+    );
+    svg.replaceChildren();
+
+    const perPx = windowDays(this.window) / Math.max(1, this.paneW);
+    for (const ev of this.events) {
+      const from = toJulian(ev.start);
+      const to = toJulian(ev.end);
+      // Crosses the leading edge: starts before the window, ends inside it.
+      if (from >= this.window.from || to <= this.window.from) continue;
+      drawEdgeLabel(svg, ev, {
+        lane: this.laneByEventId.get(ev.id) ?? 0,
+        endPx: (to - this.window.from) / perPx,
+        isVertical: this.vertical,
+        categoryColors: this.args.categoryColors,
+        labelColorOverride: this.args.eventLabelColor,
+      });
+    }
   }
 
   private onScroll(): void {
@@ -231,6 +304,7 @@ export class WindowedChart {
       }
 
       this.paintTiles();
+      this.paintEdgeLabels();
       this.args.onWindowChange?.(this.window, this.zoom, this.maxZoom);
     });
   }
@@ -336,7 +410,13 @@ export class WindowedChart {
       "touchstart",
       (e: TouchEvent) => {
         const action = this.pinch.start(points(e));
-        if (action.kind === "begin") startZoom = this.zoom;
+        if (action.kind === "begin") {
+          startZoom = this.zoom;
+          // Native panning has to stop for the duration, or the WebView takes
+          // the gesture over and the pinch dies after a few pixels — which is
+          // why each pinch only nudged the zoom.
+          this.scroller.addClass("is-pinching");
+        }
       },
       { passive: true }
     );
@@ -351,14 +431,17 @@ export class WindowedChart {
         const at = this.vertical
           ? action.focal.y - rect.top
           : action.focal.x - rect.left;
-        // Scale from where the gesture started, not from the last frame, so
-        // rounding cannot accumulate across a long pinch.
-        this.zoomBy((startZoom * action.scale) / this.zoom, at);
+        // Absolute, from where the gesture started: relative steps would
+        // compound rounding across a long pinch.
+        this.zoomTo(startZoom * action.scale, at);
       },
       { passive: false }
     );
 
-    const end = (e: TouchEvent) => this.pinch.end(points(e));
+    const end = (e: TouchEvent) => {
+      this.pinch.end(points(e));
+      if (e.touches.length === 0) this.scroller.removeClass("is-pinching");
+    };
     this.scroller.addEventListener("touchend", end);
     this.scroller.addEventListener("touchcancel", end);
   }

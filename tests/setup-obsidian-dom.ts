@@ -75,6 +75,18 @@ if (proto) {
       return this.classList.contains(cls);
     };
   }
+  if (!proto.createSvg) {
+    proto.createSvg = function (tag: string, opts?: CreateOpts): SVGElement {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      if (opts?.cls) el.setAttribute("class", opts.cls);
+      if (opts?.text) el.textContent = opts.text;
+      if (opts?.attr) {
+        for (const k of Object.keys(opts.attr)) el.setAttribute(k, opts.attr[k]);
+      }
+      this.appendChild(el);
+      return el;
+    };
+  }
   if (!proto.setCssProps) {
     proto.setCssProps = function (props: Record<string, string>): void {
       for (const [k, v] of Object.entries(props)) {

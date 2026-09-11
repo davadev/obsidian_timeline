@@ -32,6 +32,51 @@ const TAIL_PAD = 10;
  * scroller would collapse to the height of its (1px) spacer — a scroller with
  * no chart in it.
  */
+/**
+ * Draws the label for a bar that runs off the left (or top) edge of the
+ * viewport, into a layer the caller pins to that edge.
+ *
+ * Tiles label a bar in the tile its start falls in — exactly once, so a name no
+ * longer repeats at every seam. That leaves long bars nameless once you scroll
+ * past their start, which this covers: a bar can only cross the viewport's
+ * leading edge in one lane, so there is never a second copy to collide with.
+ */
+export function drawEdgeLabel(
+  svg: SVGSVGElement,
+  ev: TimelineEvent,
+  opts: {
+    lane: number;
+    /** Where the bar ends, in viewport px (may be past the far edge). */
+    endPx: number;
+    isVertical: boolean;
+    categoryColors: Record<string, string>;
+    labelColorOverride?: string | null;
+  }
+): void {
+  const room = Math.min(opts.endPx, svgSize(svg, opts.isVertical)) - LABEL_PAD * 2;
+  const maxChars = Math.floor(room / CHAR_W);
+  if (maxChars < 4) return;
+
+  const cross = AXIS_PAD + opts.lane * (LANE_THICKNESS + LANE_GAP);
+  const fill = colorFor(ev, opts.categoryColors);
+  const label = document.createElementNS(SVG_NS, "text");
+  label.setAttribute("x", String(LABEL_PAD));
+  label.setAttribute("y", "0");
+  label.setAttribute("class", "txs-event-label");
+  label.setAttribute("fill", opts.labelColorOverride || contrastTextColor(fill));
+  label.textContent = truncate(ev.text, maxChars);
+  if (opts.isVertical) {
+    label.setAttribute("text-anchor", "start");
+    anchored(svg, label, cross + LANE_THICKNESS / 2, 0, 90);
+  } else {
+    anchored(svg, label, 0, cross + LANE_THICKNESS / 2);
+  }
+}
+
+function svgSize(svg: SVGSVGElement, isVertical: boolean): number {
+  return Number(svg.getAttribute(isVertical ? "height" : "width")) || 0;
+}
+
 export function crossAxisSizeFor(laneCount: number): number {
   return (
     AXIS_PAD + Math.max(1, laneCount) * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD
@@ -112,6 +157,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   // Labels that slide along their bar while it is scrolled.
   const sticky: StickyLabel[] = [];
 
+  // In tile mode a bar that continues past the tile must keep its true
+  // geometry and simply be clipped: clamping it to the tile's edge is what put
+  // rounded ends and fuzzy fades in the middle of an event, at every seam.
+  const along = (d: Parameters<typeof fractionalPosition>[0]): number =>
+    fractionalPosition(d, viewport.start, viewport.end, !tile) * timeAxisSize;
+
   const lanes = tile
     ? events.map((e) => tile.laneByEventId.get(e.id) ?? 0)
     : assignLanes(events);
@@ -152,7 +203,16 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
 
   // Eras paint FIRST so they sit behind stripes + axis grid + events.
   if (args.eras && args.eras.length) {
-    drawEras(svg, args.eras, viewport, isVertical, width, height, args.onOpenEra);
+    drawEras(
+      svg,
+      args.eras,
+      viewport,
+      isVertical,
+      width,
+      height,
+      args.onOpenEra,
+      Boolean(tile)
+    );
   }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
   const paintAxis = drawAxis(
@@ -172,11 +232,9 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     const color = colorFor(ev, categoryColors);
     const textColor = labelColorOverride ?? contrastTextColor(color);
     if (ev.isPoint) {
-      const along =
-        fractionalPosition(ev.start, viewport.start, viewport.end) *
-        timeAxisSize;
-      const cx = isVertical ? cross + LANE_THICKNESS / 2 : along;
-      const cy = isVertical ? along : cross + LANE_THICKNESS / 2;
+      const at = along(ev.start);
+      const cx = isVertical ? cross + LANE_THICKNESS / 2 : at;
+      const cy = isVertical ? at : cross + LANE_THICKNESS / 2;
       const circle = document.createElementNS(SVG_NS, "circle");
       circle.setAttribute("cx", "0");
       circle.setAttribute("cy", "0");
@@ -195,11 +253,8 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(circle, ev, container, onOpenEvent, isMobile);
       anchored(svg, circle, cx, cy);
     } else {
-      const a1 =
-        fractionalPosition(ev.start, viewport.start, viewport.end) *
-        timeAxisSize;
-      const a2 =
-        fractionalPosition(ev.end, viewport.start, viewport.end) * timeAxisSize;
+      const a1 = along(ev.start);
+      const a2 = along(ev.end);
       const span = Math.max(MIN_BAR_THICKNESS, a2 - a1);
       const rect = document.createElementNS(SVG_NS, "rect");
       if (isVertical) {
@@ -237,8 +292,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
 
+      // Exactly one label per event. Every tile overlapping a long bar used
+      // to draw its own copy, which showed up as the same name repeating at
+      // each seam.
+      const ownsLabel = !tile || (a1 >= 0 && a1 < timeAxisSize);
       const maxChars = Math.floor((span - LABEL_PAD * 2) / CHAR_W);
-      if (maxChars >= 4) {
+      if (maxChars >= 4 && ownsLabel) {
         const label = document.createElementNS(SVG_NS, "text");
         const text = truncate(ev.text, maxChars);
         // The gap lives on the text, not on the anchor: inside the
@@ -360,7 +419,8 @@ function drawEras(
   isVertical: boolean,
   width: number,
   height: number,
-  onOpenEra?: (id: string) => void
+  onOpenEra?: (id: string) => void,
+  isTile = false
 ): void {
   const timeSize = isVertical ? height : width;
   for (const era of eras) {
@@ -371,10 +431,10 @@ function drawEras(
       !(era.start.year > viewport.end.year || era.end.year < viewport.start.year)
     ) {
       const a1Frac = clamp01(
-        fractionalPosition(era.start, viewport.start, viewport.end)
+        fractionalPosition(era.start, viewport.start, viewport.end, !isTile)
       );
       const a2Frac = clamp01(
-        fractionalPosition(era.end, viewport.start, viewport.end)
+        fractionalPosition(era.end, viewport.start, viewport.end, !isTile)
       );
       const a1 = a1Frac * timeSize;
       const a2 = a2Frac * timeSize;

@@ -55,6 +55,9 @@ const spacerWidth = (scroller: HTMLElement) =>
     (scroller.querySelector(".txs-chart-spacer") as HTMLElement).style.width
   );
 
+/** Zoom is coalesced to one rebuild per frame; let that frame run. */
+const settle = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+
 const tiles = (scroller: HTMLElement) =>
   Array.from(scroller.querySelectorAll(".txs-tile-host")) as HTMLElement[];
 
@@ -90,14 +93,16 @@ describe("windowed chart", () => {
     expect(Number(svg?.getAttribute("height"))).toBeCloseTo(height, 0);
   });
 
-  it("keeps the drawn node count flat as the zoom deepens", () => {
+  it("keeps the drawn node count flat as the zoom deepens", async () => {
     const { chart, scroller } = chartWith(DATA, 1);
 
     for (let i = 0; i < 20; i++) chart.zoomBy(2);
+    await settle();
     const deep = scroller.querySelectorAll("*").length;
     expect(chart.zoom).toBeGreaterThan(1000);
 
     for (let i = 0; i < 20; i++) chart.zoomBy(2);
+    await settle();
     const deeper = scroller.querySelectorAll("*").length;
 
     // The whole point: a million times the zoom draws the same handful of
@@ -108,15 +113,16 @@ describe("windowed chart", () => {
     expect(tiles(scroller).length).toBeLessThanOrEqual(5);
   });
 
-  it("stops at a one-hour window", () => {
+  it("stops at a one-hour window", async () => {
     const { chart } = chartWith(DATA, 1);
     for (let i = 0; i < 60; i++) chart.zoomBy(4);
+    await settle();
     // maxZoom is ~2.5e7 here, so compare proportionally rather than in absolute
     // days.
     expect(chart.zoom / chart.maxZoom).toBeCloseTo(1, 6);
   });
 
-  it("assigns lanes across the whole set, so a bar keeps its row", () => {
+  it("assigns lanes across the whole set, so a bar keeps its row", async () => {
     // Two overlapping events must land on different lanes wherever they are
     // drawn, including when only one of them is in view.
     const overlapping = [ev("x", 1000, 1200), ev("y", 1100, 1300)];
@@ -127,13 +133,15 @@ describe("windowed chart", () => {
     };
     const before = laneOf("x");
     chart.zoomBy(8);
+    await settle();
     expect(Number.isNaN(before)).toBe(false);
     expect(Number.isNaN(laneOf("x"))).toBe(false);
   });
 
-  it("pages the scroller instead of asking for an impossible width", () => {
+  it("pages the scroller instead of asking for an impossible width", async () => {
     const { chart, scroller } = chartWith(DATA, 1);
     for (let i = 0; i < 60; i++) chart.zoomBy(4); // to the hour floor
+    await settle();
     // 2930 years at an hour per pane would be ~2e10px; the page caps it.
     expect(spacerWidth(scroller)).toBeLessThanOrEqual(2_000_000);
     expect(spacerWidth(scroller)).toBeGreaterThan(PANE);
@@ -153,9 +161,10 @@ describe("windowed chart", () => {
     expect(chart.zoom).toBeCloseTo(before, 6);
   });
 
-  it("holds the window across a data change, rather than jumping to the start", () => {
+  it("holds the window across a data change, rather than jumping to the start", async () => {
     const { chart } = chartWith(DATA, 20);
-    chart.zoomBy(1); // settle
+    chart.zoomBy(1);
+    await settle();
     const windowBefore = (chart as unknown as { window: { from: number } }).window
       .from;
 

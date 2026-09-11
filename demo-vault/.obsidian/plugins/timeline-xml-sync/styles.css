@@ -966,11 +966,30 @@
   overscroll-behavior-x: contain;
 }
 
+/* While two fingers are down the scroller must not also pan, or the WebView
+ * takes the gesture over and the pinch stops after a few pixels. */
+.txs-chart.is-pinching {
+  touch-action: none;
+}
+
 .txs-chart.txs-vertical {
   overflow-x: hidden;
   overflow-y: auto;
   touch-action: pan-y;
   max-height: 80vh;
+}
+
+/* Zero-sized and sticky, so it rides the viewport's leading edge without
+ * joining the scroll content. Holds the names of bars that start off-screen. */
+.txs-chart-edge {
+  position: sticky;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* Unpainted: it exists only to give the scroller a range. */
