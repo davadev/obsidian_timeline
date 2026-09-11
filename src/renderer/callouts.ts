@@ -112,67 +112,78 @@ export function layoutCallouts(
     const after = item.isPoint ? item.startPx + o.pointRadius : item.endPx;
     const before = item.isPoint ? item.startPx - o.pointRadius : item.startPx;
 
-    // Room is measured from the far end of the leader to the next painted
-    // thing. A position that falls *inside* something already painted has no
-    // room at all — the check has to be containment, not "what starts later",
-    // or two names in one lane quietly print on top of each other.
-    const rightStart = after + o.leader;
-    let rightRoom = -1;
-    if (!covers(taken, rightStart)) {
-      let end = paneSize - o.edgePad;
-      for (const [from] of taken) {
-        if (from >= rightStart && from - o.gap < end) end = from - o.gap;
-      }
-      rightRoom = end - rightStart;
-    }
+    // Room is measured against the neighbouring bars only, never against the
+    // edge of the pane. The distance between two events is fixed at a given
+    // zoom, so a name shortened by its neighbour keeps the same text however
+    // the chart is scrolled; a name shortened by the pane edge would re-cut
+    // itself on every frame — "Yalta conference" flickering through "Yalta
+    // con…" and back as it drifted towards the edge.
+    const placement =
+      tryside("after", after + o.leader, taken, item, o, measure, paneSize) ??
+      tryside("before", before - o.leader, taken, item, o, measure, paneSize);
+    if (!placement) continue; // no honest place for it; scrolling makes one
 
-    const leftEnd = before - o.leader;
-    let leftRoom = -1;
-    if (!covers(taken, leftEnd)) {
-      let start = o.edgePad;
-      for (const [, to] of taken) {
-        if (to <= leftEnd && to + o.gap > start) start = to + o.gap;
-      }
-      leftRoom = leftEnd - start;
-    }
-
-    const full = measure(item.text);
-    // The shortest form worth drawing: any less and the name says nothing.
-    const least = measure(`${item.text.slice(0, o.minChars)}…`);
-
-    let side: "after" | "before";
-    let room: number;
-    if (rightRoom >= Math.min(full, least)) {
-      side = "after";
-      room = rightRoom;
-    } else if (leftRoom >= Math.min(full, least)) {
-      side = "before";
-      room = leftRoom;
-    } else {
-      continue; // no honest place for it; zooming in will make one
-    }
-
-    const label = fit(item.text, room, measure);
-    if (!label) continue;
-    const widthPx = measure(label);
-    const textPx = side === "after" ? rightStart : leftEnd - widthPx;
-
-    taken.push([textPx - o.gap, textPx + widthPx + o.gap]);
+    taken.push([
+      placement.textPx - o.gap,
+      placement.textPx + placement.widthPx + o.gap,
+    ]);
     lanes.set(item.lane, taken);
     out.push({
       id: item.id,
       lane: item.lane,
-      textPx,
-      anchorPx: side === "after" ? after : before,
-      side,
-      label,
-      widthPx,
+      anchorPx: placement.side === "after" ? after : before,
+      ...placement,
     });
   }
 
   // Back into reading order, so the drawn output does not depend on which
   // event happened to be shortest.
   return out.sort((a, b) => a.textPx - b.textPx);
+}
+
+/**
+ * One side's attempt: how much room the neighbours leave, what text fits it,
+ * and whether the result lands inside the pane.
+ *
+ * A name that would be cut by the pane edge is refused rather than shortened —
+ * the event is a few pixels from the edge and is about to be scrolled clear of
+ * it, at which point the name appears whole and stays that way.
+ */
+function tryside(
+  side: "after" | "before",
+  edge: number,
+  taken: Array<[number, number]>,
+  item: CalloutItem,
+  o: Required<Omit<CalloutOptions, "measure">>,
+  measure: Measure,
+  paneSize: number
+): { side: "after" | "before"; textPx: number; label: string; widthPx: number } | null {
+  if (covers(taken, edge)) return null;
+
+  let room = Number.POSITIVE_INFINITY;
+  if (side === "after") {
+    let end = Number.POSITIVE_INFINITY;
+    for (const [from] of taken) {
+      if (from >= edge && from - o.gap < end) end = from - o.gap;
+    }
+    room = end - edge;
+  } else {
+    let start = Number.NEGATIVE_INFINITY;
+    for (const [, to] of taken) {
+      if (to <= edge && to + o.gap > start) start = to + o.gap;
+    }
+    room = edge - start;
+  }
+
+  const least = measure(`${item.text.slice(0, o.minChars)}…`);
+  if (room < Math.min(measure(item.text), least)) return null;
+
+  const label = fit(item.text, room, measure);
+  if (!label) return null;
+  const widthPx = measure(label);
+  const textPx = side === "after" ? edge : edge - widthPx;
+  if (textPx < o.edgePad || textPx + widthPx > paneSize - o.edgePad) return null;
+  return { side, textPx, label, widthPx };
 }
 
 /** True when `x` falls inside something already painted in this lane. */

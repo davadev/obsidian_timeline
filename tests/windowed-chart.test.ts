@@ -2,6 +2,7 @@
 import "./setup-obsidian-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WindowedChart } from "../src/renderer/windowed-chart";
+import { splitLabelling } from "../src/renderer/bar-renderer";
 import { toJulian } from "../src/timeline/date";
 import type { TimelineEvent } from "../src/timeline/model";
 
@@ -336,6 +337,42 @@ describe("windowed chart", () => {
       1
     );
     expect(scroller.querySelectorAll(".txs-callout-label").length).toBe(0);
+  });
+
+  it("decides shortness from the bar, not from how far it is scrolled", () => {
+    // Regression: a long bar scrolled halfway out has little *visible* room, so
+    // judging by the sliver gave it a callout that vanished again when it came
+    // back — a name flickering beside a bar that was never short.
+    const long = ev("long", 1000, 1900);
+    const { needCallout } = splitLabelling(
+      [{ ev: long, lane: 0, startPx: -5000, endPx: 40 }],
+      PANE
+    );
+    expect(needCallout).toEqual([]);
+  });
+
+  it("waits until an event is fully on screen before naming it", () => {
+    const short = ev("short", 1000, 1001);
+    const straddling = splitLabelling(
+      [{ ev: short, lane: 0, startPx: -3, endPx: 4 }],
+      PANE
+    );
+    expect(straddling.needCallout).toEqual([]);
+
+    const inside = splitLabelling(
+      [{ ev: short, lane: 0, startPx: 100, endPx: 107 }],
+      PANE
+    );
+    expect(inside.needCallout.map((c) => c.id)).toEqual(["short"]);
+  });
+
+  it("still counts a scrolled-out bar as occupied, so nothing lands on it", () => {
+    const long = ev("long", 1000, 1900);
+    const { occupied } = splitLabelling(
+      [{ ev: long, lane: 0, startPx: -5000, endPx: 40 }],
+      PANE
+    );
+    expect(occupied).toEqual([{ lane: 0, from: -5000, to: 40 }]);
   });
 
   it("tears down cleanly", () => {

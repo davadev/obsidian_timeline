@@ -107,7 +107,19 @@ Consequences that are easy to undo by accident:
   part of its own lane (`callouts.ts`, pure; widths come from `text-metrics.ts`
   because a character-count estimate is up to 15% out and prints names over the
   next bar). Where a lane has no room, the event stays unnamed — zooming makes
-  room. Two other shapes were prototyped and rejected on the evidence: a rail
+  room.
+
+  Two rules keep that from flickering during a scroll, and both are easy to
+  undo by accident. **Shortness is a property of the event, not of the
+  viewport** — measured on the bar's own width, never on the visible sliver, or
+  every long bar gains a name as it is scrolled halfway out and loses it coming
+  back. And **a name may only be shortened by its neighbours, never by the edge
+  of the pane**: the gap between two events is fixed at a given zoom, so a name
+  cut to fit it reads the same at every scroll position, whereas the pane edge
+  moves and would re-cut the text on every frame. A name the pane would cut is
+  not drawn at all until the event is clear of the edge, which is also why
+  occupancy is collected a pane either side of the window — a neighbour leaving
+  the window must not silently hand over its room. Two other shapes were prototyped and rejected on the evidence: a rail
   of names under the chart (long leaders crossing bars, and it costs vertical
   room) and boxed callouts in the nearest free space (heavier, and a box can
   drift into a neighbouring lane).

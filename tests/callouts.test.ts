@@ -137,6 +137,36 @@ describe("callout placement", () => {
     expect(out.textPx + out.widthPx).toBeLessThanOrEqual(398);
   });
 
+  it("says the same thing wherever the chart is scrolled", () => {
+    // Regression: room was measured against the pane edge, so a name re-cut
+    // itself as its event drifted towards the edge — "Yalta conference" going
+    // through "Yalta con…" and back on every frame. Neighbours are a fixed
+    // distance away at a given zoom, so only they may shorten a name.
+    const shifted = (by: number) =>
+      layoutCallouts(
+        [{ ...point("Yalta conference", 100), text: "Yalta conference" }].map(
+          (i) => ({ ...i, startPx: i.startPx + by, endPx: i.endPx + by })
+        ),
+        [span(0, 98 + by, 102 + by), span(0, 140 + by, 300 + by)],
+        400,
+        opts
+      );
+
+    const labels = [0, 40, 120, 180].map((by) => shifted(by)[0]?.label);
+    expect(new Set(labels.filter(Boolean)).size).toBe(1);
+  });
+
+  it("refuses a name the pane would cut rather than shortening it", () => {
+    const out = layoutCallouts(
+      [{ ...point("Yalta conference", 392), text: "Yalta conference" }],
+      // Painted up to the marker on the left; the pane ends just past it.
+      [span(0, 0, 388), span(0, 390, 394)],
+      400,
+      opts
+    );
+    expect(out).toEqual([]);
+  });
+
   it("reads left to right whatever order it placed them in", () => {
     const out = layoutCallouts(
       [point("late", 300), point("early", 100)],

@@ -141,9 +141,18 @@ export function drawCallout(
  * Splits events into the ones whose name fits inside their own bar and the ones
  * that need a callout, and returns the lane occupancy the layout needs.
  *
+ * "Too short" is a property of the **event**, not of where the viewport happens
+ * to be: a bar wide enough to hold its name keeps it, even when most of it is
+ * currently off-screen (a sliding label brings it into view). Judging by the
+ * visible sliver instead put a callout on every long bar the moment it was
+ * scrolled halfway out, and took it away again when it came back — a name
+ * flickering in and out beside a bar that was never short.
+ *
+ * The other half of the same rule: an event is only named while it is fully on
+ * screen, so a name cannot half-appear as its event crosses the pane edge.
+ *
  * `startPx` / `endPx` are positions along the time axis; in the windowed chart
- * they are viewport coordinates and may fall outside the pane, which is exactly
- * what decides whether a bar has any visible room left for its name.
+ * they are viewport coordinates and may fall outside the pane.
  */
 export function splitLabelling(
   entries: Array<{ ev: TimelineEvent; lane: number; startPx: number; endPx: number }>,
@@ -151,17 +160,33 @@ export function splitLabelling(
 ): { needCallout: CalloutItem[]; occupied: LaneSpan[] } {
   const needCallout: CalloutItem[] = [];
   const occupied: LaneSpan[] = [];
+  const onScreen = (from: number, to: number): boolean =>
+    from >= 0 && to <= paneSize;
+
   for (const { ev, lane, startPx, endPx } of entries) {
     if (ev.isPoint) {
-      occupied.push({ lane, from: startPx - POINT_RADIUS, to: startPx + POINT_RADIUS });
-      needCallout.push({ id: ev.id, text: ev.text, lane, startPx, endPx: startPx, isPoint: true });
+      const from = startPx - POINT_RADIUS;
+      const to = startPx + POINT_RADIUS;
+      occupied.push({ lane, from, to });
+      // A point has no width at any zoom, so it is always a callout — but only
+      // once the marker and the room its leader needs are actually in view.
+      if (onScreen(from, to)) {
+        needCallout.push({
+          id: ev.id,
+          text: ev.text,
+          lane,
+          startPx,
+          endPx: startPx,
+          isPoint: true,
+        });
+      }
       continue;
     }
     const width = Math.max(MIN_BAR_THICKNESS, endPx - startPx);
     occupied.push({ lane, from: startPx, to: startPx + width });
-    const room =
-      Math.min(startPx + width, paneSize) - Math.max(startPx, 0) - LABEL_PAD * 2;
-    if (Math.floor(room / CHAR_W) < MIN_LABEL_CHARS) {
+    const room = width - LABEL_PAD * 2;
+    const tooShort = Math.floor(room / CHAR_W) < MIN_LABEL_CHARS;
+    if (tooShort && onScreen(startPx, startPx + width)) {
       needCallout.push({
         id: ev.id,
         text: ev.text,

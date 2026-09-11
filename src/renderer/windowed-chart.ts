@@ -327,10 +327,17 @@ export class WindowedChart {
       startPx: number;
       endPx: number;
     }> = [];
+    // A pane of slack either side: an event just off-screen still occupies its
+    // lane, so a callout beside it keeps the same text as the chart scrolls. If
+    // occupancy stopped at the pane edge, a neighbour leaving the window would
+    // hand its room over and the name would silently re-cut itself.
+    const slack = windowDays(this.window);
     for (const ev of this.events) {
       const from = toJulian(ev.start);
       const to = ev.isPoint ? from : toJulian(ev.end);
-      if (to <= this.window.from || from >= this.window.to) continue; // off-screen
+      if (to <= this.window.from - slack || from >= this.window.to + slack) {
+        continue;
+      }
       entries.push({
         ev,
         lane: this.laneByEventId.get(ev.id) ?? 0,
