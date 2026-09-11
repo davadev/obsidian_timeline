@@ -25,11 +25,16 @@ import type { TimelineXmlSyncSettings } from "../settings";
  *   metadataCache (no YAML reparse) and kept incrementally up to date by the
  *   plugin's file event handlers.
  */
+/** Shortest gap between index rebuilds triggered by a lookup miss. */
+const INDEX_REBUILD_COOLDOWN_MS = 2000;
+
 export class TimelineCache {
   private xml = new Map<string, { mtime: number; doc: TimelineDoc }>();
   private idToPath = new Map<string, string>();
   private pathToId = new Map<string, string>();
   private indexBuilt = false;
+  /** Epoch-ms of the last index build, so a miss cannot rebuild in a loop. */
+  private indexBuiltAt = 0;
 
   constructor(
     private app: App,
@@ -88,6 +93,7 @@ export class TimelineCache {
     const dir = this.getSettings().eventNotesDir;
     if (!dir) {
       this.indexBuilt = true;
+      this.indexBuiltAt = Date.now();
       return;
     }
     for (const f of this.vault.getMarkdownFiles()) {
@@ -99,11 +105,30 @@ export class TimelineCache {
       }
     }
     this.indexBuilt = true;
+    this.indexBuiltAt = Date.now();
   }
 
+  /**
+   * Note path for an event id.
+   *
+   * A miss triggers one rebuild (rate-limited) before giving up. The index is
+   * built from Obsidian's metadataCache, which parses frontmatter
+   * asynchronously: build it while that is still cold — during startup, or
+   * just after remote sync drops a batch of files — and the notes it could not
+   * read yet stay missing until the app is restarted. That is exactly what
+   * "no note found for event ..." was.
+   */
   resolvePath(id: string): string | null {
     if (!this.indexBuilt) this.buildIndex();
-    return this.idToPath.get(id) ?? null;
+    const hit = this.idToPath.get(id);
+    if (hit) return hit;
+
+    if (Date.now() - this.indexBuiltAt > INDEX_REBUILD_COOLDOWN_MS) {
+      this.resetIndex();
+      this.buildIndex();
+      return this.idToPath.get(id) ?? null;
+    }
+    return null;
   }
 
   /** Update index for one file (called on vault create/modify/rename). */
@@ -270,5 +295,5 @@ const MD_DOC_TTL_MS = 30_000;
 const BATCH = 25;
 
 function yieldToUi(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 0));
+  return new Promise((r) => window.setTimeout(r, 0));
 }

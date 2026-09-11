@@ -1,11 +1,13 @@
 {
   "name": "obsidian-timeline-xml-sync",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "description": "Two-way sync between Timeline Project XML save files and Obsidian Markdown event notes, with timeline render blocks.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint . --max-warnings 0",
+    "check-release": "node scripts/check-release.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -noEmit -skipLibCheck",
@@ -20,15 +22,16 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/node": "^20.11.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "builtin-modules": "^4.0.0",
     "esbuild": "^0.20.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "jsdom": "^29.1.1",
-    "obsidian": "latest",
+    "obsidian": "^1.13.1",
     "tslib": "^2.6.0",
     "typescript": "^5.4.0",
+    "typescript-eslint": "^8.70.0",
     "vitest": "^1.4.0"
   },
   "dependencies": {

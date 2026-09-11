@@ -52,10 +52,14 @@ export class VaultAdapter {
     return this.app.vault.createBinary(np, data);
   }
 
+  /**
+   * Routes through FileManager so the user's "deleted files" preference
+   * (system trash / vault .trash / permanent) is respected.
+   */
   async deleteFile(path: string): Promise<void> {
     const file = this.getFile(path);
     if (!file) return;
-    await this.app.vault.delete(file);
+    await this.app.fileManager.trashFile(file);
   }
 
   async ensureFolder(path: string): Promise<void> {
@@ -154,7 +158,7 @@ export class VaultAdapter {
     all.sort((a, b) => b.stat.mtime - a.stat.mtime); // newest first
     let deleted = 0;
     for (const f of all.slice(Math.max(0, keep))) {
-      await this.app.vault.delete(f);
+      await this.app.fileManager.trashFile(f);
       deleted++;
     }
     return deleted;
@@ -179,7 +183,7 @@ export class VaultAdapter {
       .sort((a, b) => b.name.localeCompare(a.name)); // newest first
     let deleted = 0;
     for (const f of matches.slice(Math.max(0, keep))) {
-      await this.app.vault.delete(f, true);
+      await this.app.fileManager.trashFile(f);
       deleted++;
     }
     return deleted;

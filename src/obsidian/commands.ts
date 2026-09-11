@@ -10,6 +10,7 @@ import type { TimelineCache } from "./cache";
 import { writeTimelineXml } from "../timeline/xml-writer";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import { parseEventNote } from "../timeline/markdown-parser";
+import { logDebug, logDump } from "../logger";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
@@ -86,7 +87,7 @@ export function registerCommands(ctx: CommandsContext): void {
   plugin.addCommand({
     id: "txs-diagnostics",
     name: "Open timeline sync diagnostics",
-    callback: () => openDiagnostics(ctx).catch(reportErr),
+    callback: () => openDiagnostics(ctx),
   });
 
   plugin.addCommand({
@@ -152,7 +153,7 @@ function pickFromList(app: App, title: string, items: string[]): Promise<string 
   // Use SuggestModal-style: a temporary modal built from Obsidian's Modal.
   return new Promise((resolve) => {
     // Lazy import to avoid pulling Modal-related types into pure logic modules.
-    import("obsidian").then(({ Modal, Setting }) => {
+    void import("obsidian").then(({ Modal, Setting }) => {
       const modal = new Modal(app);
       modal.titleEl.setText(title);
       let picked: string | null = null;
@@ -185,9 +186,9 @@ export async function autoDetectEventNotes(
   const matches: { path: string; id?: string }[] = [];
   for (const f of ctx.app.vault.getMarkdownFiles()) {
     const meta = ctx.app.metadataCache.getFileCache(f);
-    const fm = meta?.frontmatter as Record<string, unknown> | undefined;
+    const fm = meta?.frontmatter;
     if (!fm) continue;
-    const tl = fm.timeline;
+    const tl: unknown = fm.timeline;
     if (!tl || typeof tl !== "object" || Array.isArray(tl)) continue;
     if ((tl as Record<string, unknown>).enabled !== true) continue;
     const id = (tl as Record<string, unknown>).id;
@@ -269,12 +270,12 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   if (s.backupEnabled) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
     if (bak) {
-      console.log("[Timeline XML Sync] pre-reimport backup:", bak);
+      logDebug("pre-reimport backup:", bak);
       const pruned = await ctx.vault.pruneXmlBackups(
         s.sourceXmlPath,
         s.backupRetention
       );
-      if (pruned > 0) console.log(`[Timeline XML Sync] pruned ${pruned} old XML backup(s)`);
+      if (pruned > 0) logDebug(`pruned ${pruned} old XML backup(s)`);
     }
   }
   // Back up MD notes BEFORE deletion. Critical for the multi-device case:
@@ -291,7 +292,7 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
       backupRoot
     );
     if (prunedFolders > 0) {
-      console.log(`[Timeline XML Sync] pruned ${prunedFolders} old MD backup folder(s)`);
+      logDebug(`pruned ${prunedFolders} old MD backup folder(s)`);
     }
   }
   const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
@@ -615,7 +616,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     const now = ctx.vault.getMtime(s.sourceXmlPath);
     if (shouldAbortXmlWrite(baseMtime, now, s.lastWrittenXmlMtime)) {
       new Notice(
-        "Timeline XML changed externally — refusing to overwrite. Run \"Import XML\" to pull remote changes, then \"Regenerate XML\" again.",
+        "Timeline XML changed externally — refusing to overwrite. Run \"import XML\" to pull remote changes, then \"regenerate XML\" again.",
         10000
       );
       void ctx.appendSyncLog(
@@ -630,12 +631,12 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   if (s.backupEnabled && ctx.vault.exists(s.sourceXmlPath)) {
     const bak = await ctx.vault.backup(s.sourceXmlPath);
     if (bak) {
-      console.log("[Timeline XML Sync] backup:", bak);
+      logDebug("backup:", bak);
       const pruned = await ctx.vault.pruneXmlBackups(
         s.sourceXmlPath,
         s.backupRetention
       );
-      if (pruned > 0) console.log(`[Timeline XML Sync] pruned ${pruned} XML backup(s)`);
+      if (pruned > 0) logDebug(`pruned ${pruned} XML backup(s)`);
     }
   }
 
@@ -670,7 +671,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
       xmlNow > metaStamp + 2000;
     if (metaStale) {
       new Notice(
-        "Timeline metadata note is older than the XML — keeping XML's categories/eras/view. Run \"Import XML\" to refresh the metadata note.",
+        "Timeline metadata note is older than the XML — keeping XML's categories/eras/view. Run \"import XML\" to refresh the metadata note.",
         10000
       );
       void ctx.appendSyncLog(
@@ -701,12 +702,12 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   new Notice(`Timeline XML regenerated — ${notes.length} events.`);
 }
 
-export async function openDiagnostics(ctx: CommandsContext): Promise<void> {
-  // For now, just dump diagnostics into the developer console.
-  // The settings tab also surfaces the latest list.
-  console.log("[Timeline XML Sync] diagnostics:");
-  console.log((ctx as unknown as { _diag?: string[] })._diag || []);
-  new Notice("Timeline diagnostics printed to developer console.");
+export function openDiagnostics(ctx: CommandsContext): void {
+  // Printing to the console IS this command: the user explicitly asked for a
+  // dump they can copy into a bug report. The settings tab shows the same
+  // list. Not gated on logLevel for that reason.
+  logDump("diagnostics:", (ctx as unknown as { _diag?: string[] })._diag ?? []);
+  new Notice("Timeline diagnostics printed to the developer console (verbose).");
 }
 
 export async function rebuildIndex(ctx: CommandsContext): Promise<void> {

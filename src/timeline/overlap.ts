@@ -34,7 +34,7 @@ export function assignLanes(events: TimelineEvent[]): number[] {
   const indexed = events.map((e, i) => ({ e, i }));
   indexed.sort((a, b) => compare(a.e.start, b.e.start));
   const laneEnds: TimelineDate[] = [];
-  const out: number[] = new Array(events.length).fill(0);
+  const out: number[] = Array.from({ length: events.length }, () => 0);
   for (const { e, i } of indexed) {
     let placed = -1;
     for (let l = 0; l < laneEnds.length; l++) {

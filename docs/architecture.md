@@ -88,6 +88,11 @@ npm test               # vitest run
 npm run test:watch     # watch mode
 npm run typecheck      # tsc -noEmit
 npm run build          # production esbuild
+npm run lint           # eslint-plugin-obsidianmd, review severities, zero-warning gate
+npm run check-release  # version/asset guard (see docs/releasing.md)
 ```
+
+The release workflow runs exactly this set plus artifact validation before it
+publishes anything — see [releasing.md](./releasing.md).
 
 Test environment is `node` by default; `tests/renderer-display.test.ts` opts into `jsdom` via `// @vitest-environment jsdom`.

@@ -30,6 +30,13 @@ export interface RenderOptions {
   /** Show the in-rendered filter chip bar above the timeline. */
   showFilterUI: boolean;
   /**
+   * Keep an event's label inside the visible part of its bar while scrolling.
+   * Zoomed in, a long span runs far past the viewport and a label pinned to
+   * the bar's start scrolls out of sight; with this on it slides along the bar
+   * and stays readable. Off pins it to the start, as it was before.
+   */
+  stickyLabels?: boolean;
+  /**
    * Render only the events whose text matches one of these strings (case-insensitive
    * substring). Useful when embedding a timeline in a note that isn't itself an
    * event — e.g. a topic note that should display a curated subset.
@@ -68,4 +75,5 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   zoom: 1,
   orientation: "horizontal",
   showFilterUI: true,
+  stickyLabels: true,
 };

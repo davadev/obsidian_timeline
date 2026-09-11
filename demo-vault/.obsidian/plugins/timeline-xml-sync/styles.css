@@ -73,12 +73,37 @@
   color: var(--text-muted);
 }
 
-.txs-view-zoom-row {
+/* Header zoom group: −  Auto  + */
+.txs-view-zoom {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 6px;
+}
+
+.txs-view-zoom button {
+  padding: 2px 8px;
   font-size: var(--font-ui-small);
+  line-height: 1.4;
+}
+
+.txs-view-zoom .txs-view-zoom-label {
+  min-width: 52px;
+  text-align: center;
   color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.txs-view-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.txs-view-zoom .txs-view-zoom-label:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
 
 .txs-era-strip {
@@ -343,7 +368,7 @@
 }
 
 .txs-tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   background: var(--background-primary);
   color: var(--text-normal);
@@ -603,8 +628,10 @@
 }
 
 .txs-view-filters {
-  /* <details> element. When closed only the summary shows, so the body has
-   * full screen for the timeline — important on phones. */
+  /* Collapsible panel. Deliberately not a <details>: WebKit toggles the
+   * disclosure for clicks anywhere inside one, which collapsed the panel every
+   * time a control in it was tapped. When collapsed only the header button
+   * shows, so the body has full screen for the timeline — important on phones. */
   flex: 0 0 auto;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
@@ -612,34 +639,54 @@
   background: var(--background-secondary);
 }
 
-.txs-view-filters[open] {
+.txs-view-filters.is-open {
   padding: 4px 6px 6px;
+  /* Capped against the pane (not the viewport), so a short split pane or a
+   * phone can't leave rows stranded below the fold — the panel itself scrolls
+   * and the timeline below keeps the rest of the space. */
+  max-height: 50%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .txs-view-filters > .txs-view-filters-summary {
-  list-style: none;
+  /* Stays put while the panel scrolls under it. */
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  /* Obsidian's own button styling centres label text — the panel header reads
+   * as a heading, so pin it to the left. */
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  background: var(--background-secondary);
   cursor: pointer;
   user-select: none;
   padding: 6px 10px;
   font-size: var(--font-ui-small);
   color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
-.txs-view-filters > .txs-view-filters-summary::-webkit-details-marker {
-  display: none;
+.txs-view-filters > .txs-view-filters-summary:hover {
+  background: var(--background-modifier-hover);
 }
 
 .txs-view-filters > .txs-view-filters-summary::before {
   content: "▸";
   display: inline-block;
+  margin-right: 6px;
   transition: transform 0.1s ease;
   color: var(--text-faint);
 }
 
-.txs-view-filters[open] > .txs-view-filters-summary::before {
+.txs-view-filters.is-open > .txs-view-filters-summary::before {
   transform: rotate(90deg);
 }
 
@@ -647,7 +694,18 @@
   font-weight: 500;
 }
 
-.txs-view-filters > *:not(summary) {
+/* Controls live here; shown only while the panel is open. The panel itself is
+ * the scroll box (capped above), so nothing can end up stranded under
+ * Obsidian's bottom bar on a phone. */
+.txs-view-filters-body {
+  display: none;
+}
+
+.txs-view-filters.is-open > .txs-view-filters-body {
+  display: block;
+}
+
+.txs-view-filters-body > * {
   display: inline-flex;
   align-items: center;
   margin-right: 6px;
@@ -670,7 +728,79 @@
   padding: 4px 6px;
 }
 
+.txs-view-body.is-pinching .txs-bar-hit {
+  pointer-events: none;
+}
+
+.txs-view-body .txs-timeline-bar {
+  /* Scrolling stays native; two-finger pinch reaches our touch handlers
+   * instead of zooming the app chrome. */
+  touch-action: pan-x pan-y;
+}
+
+/* Live pinch feedback: the rendered SVG is stretched along the time axis
+ * while the gesture is in flight. Recomputing the chart per frame is far too
+ * slow on a phone, so the real render happens once, on release. */
+.txs-timeline-bar > svg {
+  transform-origin: 0 0;
+}
+
+.txs-timeline-bar.is-scaling {
+  /* Once it is definitely a pinch, the WebView must stop panning as well —
+   * otherwise the gesture fights the scroller and feels stuck. */
+  touch-action: none;
+}
+
+.txs-timeline-bar.is-scaling > svg {
+  transform: scaleX(var(--txs-zoom-scale, 1));
+  /* A transform does not grow the scroll area; this does. */
+  margin-right: var(--txs-zoom-extra, 0);
+}
+
+.txs-timeline-bar.is-scaling.txs-vertical > svg {
+  transform: scaleY(var(--txs-zoom-scale, 1));
+  margin-right: 0;
+  margin-bottom: var(--txs-zoom-extra, 0);
+}
+
+/* Undo the stretch for anything that should keep its shape. Labels and point
+ * markers are rendered at the origin of a <g> that carries their anchor
+ * position (see `anchored()` in bar-renderer.ts), so scaling them about that
+ * origin keeps them pinned to their bar — no sideways drift, no smearing. */
+.txs-timeline-bar.is-scaling > svg text,
+.txs-timeline-bar.is-scaling > svg .txs-event-point {
+  transform-origin: 0 0;
+  transform: scaleX(var(--txs-zoom-inv, 1));
+}
+
+.txs-timeline-bar.is-scaling.txs-vertical > svg text,
+.txs-timeline-bar.is-scaling.txs-vertical > svg .txs-event-point {
+  transform: scaleY(var(--txs-zoom-inv, 1));
+}
+
+/* The next chart is built here, at the real width, then swapped in. */
+.txs-view-staging {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Visible, still overlaying the outgoing chart, for the one frame it takes to
+ * paint. Prevents a blank flash when a very wide SVG has to rasterise. */
+.txs-view-swapping {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  z-index: 1;
+  background: var(--background-primary);
+}
+
 .txs-view-body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -704,4 +834,117 @@
   padding: 8px;
   border-left: 3px solid var(--text-error);
   background: var(--background-secondary);
+}
+
+/* ------------------------------------------------------------------ *
+ * Classes replacing inline style assignments. Obsidian's plugin review
+ * (eslint-plugin-obsidianmd/no-static-styles-assignment) requires static
+ * styling to live here so themes and snippets can override it.
+ * ------------------------------------------------------------------ */
+
+/* Off-screen stage used while rasterising a timeline for PNG export. */
+.txs-export-stage {
+  position: fixed;
+  left: -99999px;
+  top: -99999px;
+  width: 1200px;
+}
+
+/* Modal forms (new era / new event). */
+.txs-modal-input-wide {
+  width: 100%;
+}
+
+.txs-modal-date-row {
+  display: flex;
+  gap: 6px;
+}
+
+.txs-modal-date-part {
+  width: 60px;
+}
+
+.txs-modal-actions {
+  margin-top: 12px;
+}
+
+.txs-modal-cancel {
+  margin-left: 6px;
+}
+
+/* Settings tab: category colour rows + diagnostics dump. */
+.txs-category-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.txs-category-picker {
+  margin-right: 6px;
+}
+
+.txs-diagnostics-box {
+  max-height: 200px;
+  overflow: auto;
+}
+
+/* Inspector: era colour picker pairing. */
+.txs-inspector-color-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.txs-inspector-color-text {
+  flex: 1 1 0;
+}
+
+/* Numeric zoom overrides in the view header and the filter panel. */
+.txs-filter-zoom-input {
+  width: 100px;
+}
+
+/* List renderer inline affordances. */
+.txs-list-era-title {
+  margin-left: 4px;
+}
+
+.txs-list-link {
+  margin-left: 6px;
+}
+
+/* Bar renderer: tap target. touch-action suppresses the iOS 300ms delay. */
+.txs-bar-hit {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* Tooltip internals. */
+.txs-tooltip-title {
+  font-weight: 600;
+}
+
+.txs-tooltip-dates {
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.txs-tooltip-category {
+  margin-top: 2px;
+}
+
+.txs-tooltip-desc {
+  margin-top: 4px;
+  max-height: 120px;
+  overflow: hidden;
+}
+
+/* Applied while the tooltip is measured off-view, before placement. */
+.txs-tooltip.is-measuring {
+  visibility: hidden;
 }

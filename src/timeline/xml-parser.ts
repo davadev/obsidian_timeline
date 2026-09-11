@@ -48,7 +48,8 @@ export const PARSER_OPTIONS = {
  */
 export function decodeEntities(s: string): string {
   if (!s || s.indexOf("&") === -1) return s;
-  return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (full, body) => {
+  const ENTITY_RE = /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g;
+  return s.replace(ENTITY_RE, (full: string, body: string) => {
     if (body[0] === "#") {
       const hex = body[1] === "x" || body[1] === "X";
       const codepoint = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
@@ -113,10 +114,6 @@ const KNOWN_ERA_TAGS = new Set(["name", "start", "end", "color"]);
 const KNOWN_VIEW_TAGS = new Set(["displayed_period", "hidden_categories"]);
 
 const TEXT_KEY = "#text";
-
-function isRawNode(x: unknown): x is RawNode {
-  return typeof x === "object" && x !== null && !Array.isArray(x);
-}
 
 function nodeName(n: RawNode): string {
   for (const k of Object.keys(n)) {
@@ -278,7 +275,7 @@ export function parseTimelineXml(xml: string): TimelineDoc {
       const start = readDate(ch, "start");
       const end = readDate(ch, "end");
       if (!start || !end) continue; // skip malformed
-      const idAttr = (e[":@"] && (e[":@"] as Record<string, string>)["@_id"]) || undefined;
+      const idAttr = (e[":@"] && (e[":@"])["@_id"]) || undefined;
       const baseId = idAttr || slugify(text || "event");
       const id = uniqueSlug(baseId, usedIds);
       const ev: TimelineEvent = {
@@ -394,7 +391,7 @@ function extractUnknownEventNodes(node: RawNode): string[] | undefined {
 }
 
 function extractXmlAttrs(node: RawNode): Record<string, string> | undefined {
-  const attrs = (node[":@"] ?? {}) as Record<string, string>;
+  const attrs = (node[":@"] ?? {});
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "@_id") continue;

@@ -25,7 +25,40 @@ The workspace **Timeline view** (above) is opened via the ribbon icon or the **O
 | Open timeline sync diagnostics | Dumps current diagnostics to the developer console. |
 | Rebuild internal index/cache | Re-runs validation + refreshes in-memory diagnostics. |
 | Export note: render timelines to images | Walks the active note for ` ```timeline ` blocks, renders each to a PNG via the browser canvas, writes the image into the vault, and replaces the fenced block with the image + a static list. |
-| Re-enable Timeline XML Sync (clear crash flag) | Only registered when the plugin auto-disabled itself after a crash. Clears the flag so it loads next time. |
+| Re-enable after crash (clear crash flag) | Only registered when the plugin auto-disabled itself after a crash. Clears the flag so it loads next time. |
+
+## Zooming the Timeline view
+
+The time axis is scaled to fit by default. To look closer:
+
+- **Touch** — pinch with two fingers anywhere on the timeline. The point between
+  your fingers stays put.
+- **Desktop** — pinch on the trackpad, or hold <kbd>Ctrl</kbd> and scroll. The
+  point under the cursor stays put.
+- **Buttons** — `−` / `+` in the view header. The label between them shows the
+  current factor (`Auto` while it is being fitted automatically); click it to go
+  back to automatic.
+
+The axis re-scales with the zoom: fitted out it marks centuries, zoomed in it
+moves to decades, years, months and finally individual days, so a label near
+the pointer always says where you are.
+
+The factor shown between the buttons is what is actually being drawn: once the
+pane hits its ceiling the `+` button greys out rather than letting the number
+climb against a chart that has stopped growing.
+
+How deep the zoom goes is bounded by a pixel cap on the rendered axis, not by
+the zoom factor — the chart is one SVG, and its width is its compositing layer.
+`src/renderer/zoom-math.ts` caps it at 1 000 000 px on desktop and **120 000 px
+on mobile**: iOS refuses to allocate a multi-million-pixel layer and kills the
+app mid-gesture rather than degrading. The practical consequence is that a very
+long timeline reaches month labels on desktop but not on a phone; a shorter
+span (a century or two) reaches days on both.
+
+Zoom is a view setting, not a filter: it is not counted in the Filters badge,
+though **Clear filters** does reset it to automatic. Inline ` ```timeline `
+blocks keep their own `zoom:` option — see
+[render-block.md](./render-block.md).
 
 ## Ribbon
 

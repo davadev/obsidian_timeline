@@ -2,7 +2,6 @@ import {
   ItemView,
   MarkdownRenderer,
   Notice,
-  Platform,
   TFile,
   WorkspaceLeaf,
   type App,
@@ -168,7 +167,7 @@ export class InspectorView extends ItemView {
       });
       openBtn.addEventListener("click", () => {
         if (this.currentPath) {
-          this.app.workspace.openLinkText(this.currentPath, "", false);
+          void this.app.workspace.openLinkText(this.currentPath, "", false);
         }
       });
     }
@@ -183,7 +182,7 @@ export class InspectorView extends ItemView {
 
     const nameRow = body.createDiv({ cls: "txs-inspector-row" });
     nameRow.createEl("label", { text: "Name" });
-    const nameIn = nameRow.createEl("input", { type: "text" }) as HTMLInputElement;
+    const nameIn = nameRow.createEl("input", { type: "text" });
     nameIn.value = era.name;
     nameIn.addEventListener("input", () => {
       era.name = nameIn.value;
@@ -197,15 +196,12 @@ export class InspectorView extends ItemView {
 
     const colorRow = body.createDiv({ cls: "txs-inspector-row" });
     colorRow.createEl("label", { text: "Color" });
-    const colorWrap = colorRow.createDiv();
-    colorWrap.style.display = "flex";
-    colorWrap.style.gap = "6px";
-    colorWrap.style.alignItems = "center";
-    const picker = colorWrap.createEl("input", { type: "color" }) as HTMLInputElement;
+    const colorWrap = colorRow.createDiv({ cls: "txs-inspector-color-row" });
+    const picker = colorWrap.createEl("input", { type: "color" });
     picker.value = colorToHex(era.color ?? "#888888");
-    const colorIn = colorWrap.createEl("input", { type: "text" }) as HTMLInputElement;
+    const colorIn = colorWrap.createEl("input", { type: "text" });
     colorIn.value = era.color ?? "";
-    colorIn.style.flex = "1 1 0";
+    colorIn.addClass("txs-inspector-color-text");
     colorIn.placeholder = "r,g,b or #hex";
     picker.addEventListener("input", () => {
       // Store as the Timeline-XML-friendly "r,g,b" form so the round-trip
@@ -283,7 +279,7 @@ export class InspectorView extends ItemView {
     });
     openBtn.addEventListener("click", () => {
       if (this.currentPath) {
-        this.app.workspace.openLinkText(this.currentPath, "", false);
+        void this.app.workspace.openLinkText(this.currentPath, "", false);
       }
     });
 
@@ -408,9 +404,9 @@ export class InspectorView extends ItemView {
     if (ceSafe) {
       const pickerWrap = body.createDiv({ cls: "txs-inspector-row" });
       pickerWrap.createEl("label", { text: "Quick picker (CE only)" });
-      const sp = pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement;
+      const sp = pickerWrap.createEl("input", { type: "date" });
       const ep = ev.period
-        ? (pickerWrap.createEl("input", { type: "date" }) as HTMLInputElement)
+        ? (pickerWrap.createEl("input", { type: "date" }))
         : null;
       const startIso = toIsoDate(ev.start);
       const endIso = toIsoDate(ev.end);
@@ -427,7 +423,7 @@ export class InspectorView extends ItemView {
         }
       });
       ep?.addEventListener("change", () => {
-        const d = fromIsoDate(ep!.value);
+        const d = fromIsoDate(ep.value);
         if (d && (d.year !== ev.end.year || d.month !== ev.end.month || d.day !== ev.end.day)) {
           ev.end = d;
           this.markDirty();
@@ -445,15 +441,15 @@ export class InspectorView extends ItemView {
     // honors Obsidian wikilinks ([[Note]]) and transclusions (![[Note]]).
     const descRow = body.createDiv({ cls: "txs-inspector-row" });
     descRow.createEl("label", { text: "Description (Markdown / wikilinks / ![[embeds]])" });
-    const descArea = descRow.createEl("textarea") as HTMLTextAreaElement;
+    const descArea = descRow.createEl("textarea");
     descArea.rows = 6;
     descArea.value = ev.description ?? "";
     const previewToggle = descRow.createEl("label", {
       cls: "txs-inspector-preview-toggle",
     });
-    const previewCheck = previewToggle.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+    const previewCheck = previewToggle.createEl("input", { type: "checkbox" });
     previewCheck.checked = true;
-    previewToggle.createEl("span", { text: " Preview" });
+    previewToggle.createSpan({ text: " Preview" });
     const previewEl = descRow.createDiv({ cls: "txs-inspector-preview" });
     const renderPreview = () => {
       previewEl.empty();
@@ -522,11 +518,11 @@ export class InspectorView extends ItemView {
     const defaultColorWrap = defaultColorRow.createDiv({ cls: "txs-inspector-inline" });
     const defaultColorPicker = defaultColorWrap.createEl("input", {
       type: "color",
-    }) as HTMLInputElement;
+    });
     defaultColorPicker.value = colorToHex(ev.defaultColor ?? "#d3d3d3");
     const defaultColorInput = defaultColorWrap.createEl("input", {
       type: "text",
-    }) as HTMLInputElement;
+    });
     defaultColorInput.value = ev.defaultColor ?? "";
     defaultColorInput.placeholder = "r,g,b or #hex";
     defaultColorPicker.addEventListener("input", () => {
@@ -638,7 +634,7 @@ export class InspectorView extends ItemView {
         const img = imageRow.createEl("img", { cls: "txs-inspector-thumb" });
         img.src = url;
       }
-      imageRow.createEl("div", {
+      imageRow.createDiv({
         cls: "txs-inspector-meta",
         text: ev.iconAttachmentPath,
       });
@@ -646,27 +642,31 @@ export class InspectorView extends ItemView {
     const fileInput = imageRow.createEl("input", {
       type: "file",
       attr: { accept: "image/*" },
-    }) as HTMLInputElement;
-    fileInput.addEventListener("change", async () => {
-      const f = fileInput.files?.[0];
-      if (!f) return;
-      try {
-        const buf = await f.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        const ext = guessImageExtension(b64);
-        const settings = this.args.getSettings();
-        const att = `${settings.eventNotesDir}/_attachments/${ev.id}.${ext}`;
-        await this.args.vault.ensureFolder(`${settings.eventNotesDir}/_attachments`);
-        await this.args.withSelfWrite(async () => {
-          await this.args.vault.writeBinary(att, buf);
-        });
-        ev.iconAttachmentPath = att;
-        ev.icon = b64;
-        this.markDirty();
-        this.renderForm();
-      } catch (e) {
-        new Notice(`Image upload failed: ${(e as Error).message}`);
-      }
+    });
+    fileInput.addEventListener("change", () => {
+      void (async () => {
+        const f = fileInput.files?.[0];
+        if (!f) return;
+        try {
+          const buf = await f.arrayBuffer();
+          const b64 = arrayBufferToBase64(buf);
+          const ext = guessImageExtension(b64);
+          const settings = this.args.getSettings();
+          const att = `${settings.eventNotesDir}/_attachments/${ev.id}.${ext}`;
+          await this.args.vault.ensureFolder(
+            `${settings.eventNotesDir}/_attachments`
+          );
+          await this.args.withSelfWrite(async () => {
+            await this.args.vault.writeBinary(att, buf);
+          });
+          ev.iconAttachmentPath = att;
+          ev.icon = b64;
+          this.markDirty();
+          this.renderForm();
+        } catch (e) {
+          new Notice(`Image upload failed: ${(e as Error).message}`);
+        }
+      })();
     });
 
     const actions = root.createDiv({ cls: "txs-inspector-actions" });
@@ -800,7 +800,7 @@ function dateGroup(
   const yIn = ymd.createEl("input", {
     type: "number",
     placeholder: "year",
-  }) as HTMLInputElement;
+  });
   yIn.value = String(date.year);
   yIn.addEventListener("input", () => {
     const v = parseInt(yIn.value, 10);
@@ -813,7 +813,7 @@ function dateGroup(
     type: "number",
     placeholder: "mm",
     attr: { min: "1", max: "12" },
-  }) as HTMLInputElement;
+  });
   if (date.month != null) mIn.value = String(date.month);
   mIn.addEventListener("input", () => {
     const v = parseInt(mIn.value, 10);
@@ -824,7 +824,7 @@ function dateGroup(
     type: "number",
     placeholder: "dd",
     attr: { min: "1", max: "31" },
-  }) as HTMLInputElement;
+  });
   if (date.day != null) dIn.value = String(date.day);
   dIn.addEventListener("input", () => {
     const v = parseInt(dIn.value, 10);
@@ -836,7 +836,7 @@ function dateGroup(
       type: "number",
       placeholder: "hh",
       attr: { min: "0", max: "23" },
-    }) as HTMLInputElement;
+    });
     if (date.hour != null) hIn.value = String(date.hour);
     hIn.addEventListener("input", () => {
       const v = parseInt(hIn.value, 10);
@@ -847,7 +847,7 @@ function dateGroup(
       type: "number",
       placeholder: "min",
       attr: { min: "0", max: "59" },
-    }) as HTMLInputElement;
+    });
     if (date.minute != null) minIn.value = String(date.minute);
     minIn.addEventListener("input", () => {
       const v = parseInt(minIn.value, 10);
@@ -858,7 +858,7 @@ function dateGroup(
       type: "number",
       placeholder: "sec",
       attr: { min: "0", max: "59" },
-    }) as HTMLInputElement;
+    });
     if (date.second != null) sIn.value = String(date.second);
     sIn.addEventListener("input", () => {
       const v = parseInt(sIn.value, 10);
@@ -877,7 +877,7 @@ function boolField(
 ): HTMLInputElement {
   const row = parent.createDiv({ cls: "txs-inspector-toggle-row" });
   row.createSpan({ text: label });
-  const input = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+  const input = row.createEl("input", { type: "checkbox" });
   input.checked = value;
   input.addEventListener("change", () => onChange(input.checked));
   return input;
@@ -904,7 +904,7 @@ function eraDateGroup(
   row.createEl("label", { text: label });
   const ymd = row.createDiv({ cls: "txs-date-fields" });
   const mk = (placeholder: string, value: number | undefined): HTMLInputElement => {
-    const i = ymd.createEl("input", { type: "number", placeholder }) as HTMLInputElement;
+    const i = ymd.createEl("input", { type: "number", placeholder });
     if (value != null) i.value = String(value);
     return i;
   };
@@ -957,10 +957,10 @@ function hexToRgbTriple(hex: string): [number, number, number] | null {
 }
 
 function debounce(fn: () => void, ms: number): () => void {
-  let t: ReturnType<typeof setTimeout> | null = null;
+  let t: number | null = null;
   return () => {
-    if (t) clearTimeout(t);
-    t = setTimeout(() => {
+    if (t) window.clearTimeout(t);
+    t = window.setTimeout(() => {
       t = null;
       fn();
     }, ms);

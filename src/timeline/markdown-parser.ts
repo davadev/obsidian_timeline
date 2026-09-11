@@ -36,7 +36,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
 
   let front: Record<string, unknown>;
   try {
-    const parsed = YAML.parse(fmMatch[1]);
+    const parsed: unknown = YAML.parse(fmMatch[1]);
     if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
       return { errors: ["Frontmatter is not a YAML mapping"] };
     }
@@ -84,7 +84,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
       strOrUndef(timeline.category) ?? strOrUndef(front[mirrors.category]),
     container: strOrUndef(timeline.container),
     description: extractSection(body, "Description") || undefined,
-    hyperlink: timeline.hyperlink == null ? undefined : String(timeline.hyperlink),
+    hyperlink: strOrUndef(timeline.hyperlink),
     hyperlinks: arrayOfStrings(timeline.hyperlinks),
     labels: arrayOfStrings(timeline.labels),
     progress: numOrUndef(timeline.progress),
@@ -131,7 +131,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
   if ("tags" in front) extraFrontmatter.tags = front.tags;
 
   const mirrorsSeen: Record<string, unknown> = {};
-  for (const key of Object.values(mirrors)) {
+  for (const key of Object.values(mirrors) as string[]) {
     if (key in front) mirrorsSeen[key] = front[key];
   }
 

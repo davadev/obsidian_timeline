@@ -18,7 +18,7 @@ export function parseEraNote(raw: string, fallbackId: string): TimelineEra | nul
   if (!m) return null;
   let fm: Record<string, unknown>;
   try {
-    const p = YAML.parse(m[1]);
+    const p: unknown = YAML.parse(m[1]);
     if (!p || typeof p !== "object" || Array.isArray(p)) return null;
     fm = p as Record<string, unknown>;
   } catch {
@@ -33,14 +33,14 @@ export function parseEraNote(raw: string, fallbackId: string): TimelineEra | nul
   const id = idRaw || fallbackId;
   const name =
     (typeof fm.title === "string" && fm.title.trim()) ||
-    (typeof tl.name === "string" && (tl.name as string).trim()) ||
+    (typeof tl.name === "string" && (tl.name).trim()) ||
     fallbackId;
 
   const start = readDate(tl.start);
   const end = readDate(tl.end);
   if (!start || !end) return null;
-  const color = typeof tl.color === "string" && (tl.color as string).trim()
-    ? (tl.color as string).trim()
+  const color = typeof tl.color === "string" && (tl.color).trim()
+    ? (tl.color).trim()
     : undefined;
   const stampRaw = tl.last_synced_xml_mtime;
   const lastSyncedXmlMtime =
@@ -135,7 +135,7 @@ function formatDate(d: TimelineDate): string {
 function escapeYaml(s: string): string {
   if (!s) return '""';
   // Quote when the string contains anything YAML might treat specially.
-  if (/[:#&*!?{}\[\],"'|>%@`]/.test(s) || /^[-?\s]/.test(s)) {
+  if (/[:#&*!?{}[\],"'|>%@`]/.test(s) || /^[-?\s]/.test(s)) {
     return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   }
   return s;

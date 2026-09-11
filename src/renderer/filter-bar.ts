@@ -1,16 +1,20 @@
 import type { TimelineCategory, TimelineEvent } from "../timeline/model";
 import { compare, type TimelineDate } from "../timeline/date";
+import { readDevice, writeDevice } from "../obsidian/app-storage";
 
 /**
  * Renders a category chip bar above the timeline. Each chip toggles a
  * category's visibility for this render only. State is persisted to
- * localStorage keyed by `sourceKey` so the user's filter survives navigation.
+ * device-local storage keyed by `sourceKey` so the user's filter survives
+ * navigation (and never syncs to other devices).
  *
  * The bar is intentionally compact and uses native DOM only — no Obsidian
  * Modal — so it works identically on desktop and mobile.
  */
 
-const STORAGE_PREFIX = "txs:filter:hidden:";
+const STORAGE_PREFIX = "filter:hidden:";
+/** Raw localStorage prefix used before 0.9.4; migrated on first read. */
+const LEGACY_STORAGE_PREFIX = "txs:filter:hidden:";
 
 export interface FilterBarArgs {
   parent: HTMLElement;
@@ -59,11 +63,11 @@ export function renderFilterBar(args: FilterBarArgs): HTMLElement {
   const chipEls = new Map<string, HTMLElement>();
 
   for (const cat of args.allCategories) {
-    const chip = chipsBox.createEl("span", { cls: "txs-filter-chip" });
-    const swatch = chip.createEl("span", { cls: "txs-filter-swatch" });
+    const chip = chipsBox.createSpan({ cls: "txs-filter-chip" });
+    const swatch = chip.createSpan({ cls: "txs-filter-swatch" });
     swatch.style.background =
       args.categoryColors[cat] ?? "var(--text-muted)";
-    chip.createEl("span", { text: cat });
+    chip.createSpan({ text: cat });
     chip.addEventListener("click", () => {
       if (hidden.has(cat)) hidden.delete(cat);
       else hidden.add(cat);
@@ -88,25 +92,17 @@ function paintChip(el: HTMLElement, active: boolean): void {
 }
 
 export function loadHidden(sourceKey: string): string[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + sourceKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
+  const parsed = readDevice<unknown>(
+    STORAGE_PREFIX + sourceKey,
+    LEGACY_STORAGE_PREFIX + sourceKey
+  );
+  return Array.isArray(parsed)
+    ? (parsed as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
 }
 
 function persistHidden(sourceKey: string, hidden: Set<string>): void {
-  try {
-    localStorage.setItem(
-      STORAGE_PREFIX + sourceKey,
-      JSON.stringify(Array.from(hidden))
-    );
-  } catch {
-    /* ignore */
-  }
+  writeDevice(STORAGE_PREFIX + sourceKey, Array.from(hidden));
 }
 
 /** Helper for the postprocessor — collect distinct categories from events. */
@@ -154,7 +150,9 @@ export interface RichFilterHandle {
   state: RichFilterState;
 }
 
-const STORAGE_PREFIX_RICH = "txs:richfilter:";
+const STORAGE_PREFIX_RICH = "richfilter:";
+/** Raw localStorage prefix used before 0.9.4; migrated on first read. */
+const LEGACY_STORAGE_PREFIX_RICH = "txs:richfilter:";
 
 export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
   const persisted = loadRichState(args.sourceKey);
@@ -173,11 +171,11 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
 
   const panel = args.parent.createEl("details", {
     cls: "txs-filter-rich",
-  }) as HTMLDetailsElement;
+  });
   panel.open = args.defaultOpen;
 
   const summary = panel.createEl("summary", { cls: "txs-filter-rich-summary" });
-  const badge = summary.createEl("span", { text: "Filters" });
+  const badge = summary.createSpan({ text: "Filters" });
 
   const updateBadge = () => {
     const n =
@@ -195,11 +193,11 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
   // re-renders the timeline AND rewrites the block YAML, which makes typing
   // jarring (the body redraws under the input on every key). Keep the badge
   // updates instant for responsiveness; defer the heavy work to a debounce.
-  let fireTimer: ReturnType<typeof setTimeout> | null = null;
+  let fireTimer: number | null = null;
   const fire = () => {
     updateBadge();
-    if (fireTimer) clearTimeout(fireTimer);
-    fireTimer = setTimeout(() => {
+    if (fireTimer) window.clearTimeout(fireTimer);
+    fireTimer = window.setTimeout(() => {
       fireTimer = null;
       persistRichState(args.sourceKey, state);
       args.onChange(state);
@@ -214,7 +212,7 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
   const searchInput = searchRow.createEl("input", {
     type: "search",
     placeholder: "title / description / category",
-  }) as HTMLInputElement;
+  });
   searchInput.value = state.search;
   searchInput.addEventListener("input", () => {
     state.search = searchInput.value;
@@ -227,7 +225,7 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
   const labelsInput = labelsRow.createEl("input", {
     type: "text",
     placeholder: "label1 label2",
-  }) as HTMLInputElement;
+  });
   labelsInput.value = state.labels.join(" ");
   labelsInput.addEventListener("input", () => {
     state.labels = labelsInput.value
@@ -245,7 +243,7 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
     state.start = d;
     fire();
   });
-  dateBox.createEl("span", { text: "→" });
+  dateBox.createSpan({ text: "→" });
   const endCtl = inlineDateInputs(dateBox, state.end, args.precision, (d) => {
     state.end = d;
     fire();
@@ -257,8 +255,8 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
   const zoomInput = zoomRow.createEl("input", {
     type: "number",
     placeholder: "e.g. 3",
-  }) as HTMLInputElement;
-  zoomInput.style.width = "100px";
+  });
+  zoomInput.addClass("txs-filter-zoom-input");
   zoomInput.step = "0.5";
   zoomInput.min = "0.5";
   if (state.zoom != null) zoomInput.value = String(state.zoom);
@@ -280,10 +278,10 @@ export function renderRichFilterBar(args: RichFilterArgs): RichFilterHandle {
     const chipsBox = catRow.createDiv({ cls: "txs-filter-chips" });
     const chipEls = new Map<string, HTMLElement>();
     for (const cat of args.allCategories) {
-      const chip = chipsBox.createEl("span", { cls: "txs-filter-chip" });
-      const swatch = chip.createEl("span", { cls: "txs-filter-swatch" });
+      const chip = chipsBox.createSpan({ cls: "txs-filter-chip" });
+      const swatch = chip.createSpan({ cls: "txs-filter-swatch" });
       swatch.style.background = args.categoryColors[cat] ?? "var(--text-muted)";
-      chip.createEl("span", { text: cat });
+      chip.createSpan({ text: cat });
       chip.addEventListener("click", () => {
         if (state.hiddenCategories.has(cat)) state.hiddenCategories.delete(cat);
         else state.hiddenCategories.add(cat);
@@ -415,7 +413,7 @@ function inlineDateInputs(
   const wrap = parent.createDiv({ cls: "txs-filter-rich-date-group" });
   const inputs: HTMLInputElement[] = [];
   const mk = (placeholder: string, v: number | undefined, width: number) => {
-    const i = wrap.createEl("input", { type: "number", placeholder }) as HTMLInputElement;
+    const i = wrap.createEl("input", { type: "number", placeholder });
     i.style.width = `${width}px`;
     if (v != null) i.value = String(v);
     inputs.push(i);
@@ -474,35 +472,29 @@ interface PersistShape {
 }
 
 function loadRichState(sourceKey: string): PersistShape | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX_RICH + sourceKey);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Partial<PersistShape>;
-    return {
-      hiddenCategories: Array.isArray(p.hiddenCategories) ? p.hiddenCategories : [],
-      search: typeof p.search === "string" ? p.search : "",
-      labels: Array.isArray(p.labels) ? p.labels : [],
-      start: p.start ?? null,
-      end: p.end ?? null,
-      zoom: typeof p.zoom === "number" && p.zoom > 0 ? p.zoom : null,
-    };
-  } catch {
-    return null;
-  }
+  const p = readDevice<Partial<PersistShape>>(
+    STORAGE_PREFIX_RICH + sourceKey,
+    LEGACY_STORAGE_PREFIX_RICH + sourceKey
+  );
+  if (!p || typeof p !== "object") return null;
+  return {
+    hiddenCategories: Array.isArray(p.hiddenCategories) ? p.hiddenCategories : [],
+    search: typeof p.search === "string" ? p.search : "",
+    labels: Array.isArray(p.labels) ? p.labels : [],
+    start: p.start ?? null,
+    end: p.end ?? null,
+    zoom: typeof p.zoom === "number" && p.zoom > 0 ? p.zoom : null,
+  };
 }
 
 function persistRichState(sourceKey: string, s: RichFilterState): void {
-  try {
-    const shape: PersistShape = {
-      hiddenCategories: Array.from(s.hiddenCategories),
-      search: s.search,
-      labels: s.labels,
-      start: s.start,
-      end: s.end,
-      zoom: s.zoom,
-    };
-    localStorage.setItem(STORAGE_PREFIX_RICH + sourceKey, JSON.stringify(shape));
-  } catch {
-    /* ignore */
-  }
+  const shape: PersistShape = {
+    hiddenCategories: Array.from(s.hiddenCategories),
+    search: s.search,
+    labels: s.labels,
+    start: s.start,
+    end: s.end,
+    zoom: s.zoom,
+  };
+  writeDevice(STORAGE_PREFIX_RICH + sourceKey, shape);
 }

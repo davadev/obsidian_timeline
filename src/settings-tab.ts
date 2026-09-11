@@ -1,4 +1,10 @@
-import { Notice, PluginSettingTab, Setting, type App } from "obsidian";
+import {
+  Notice,
+  PluginSettingTab,
+  type App,
+  type SettingDefinition,
+  type SettingDefinitionItem,
+} from "obsidian";
 import type TimelineXmlSyncPlugin from "./main";
 import { DEFAULT_MIRROR_NAMES } from "./timeline/model";
 import { resolveBackupFolder, resolveLogFolder } from "./settings";
@@ -66,420 +72,493 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
     super(app, plugin);
   }
 
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
+  /**
+   * Declarative definitions (Obsidian 1.13+). Obsidian renders these itself
+   * and indexes them for settings search, so there is no display() here —
+   * every row below is either a `control` (bound through get/setControlValue),
+   * an `action` (button), or a `render` callback for the handful of rows that
+   * need custom DOM.
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
     const s = this.plugin.settings;
 
-    const help = containerEl.createDiv({ cls: "setting-item-description" });
-    help.appendText("Needs a .timeline save file from ");
-    help.createEl("a", {
-      text: "Timeline Project",
-      href: "http://thetimelineproj.sourceforge.net/",
-    }).setAttr("target", "_blank");
-    help.appendText(" (free desktop app). Docs: ");
-    help.createEl("a", {
-      text: "thetimelineproj.sourceforge.net/docs",
-      href: "https://thetimelineproj.sourceforge.net/docs/contents.html",
-    }).setAttr("target", "_blank");
-    help.appendText(". Plugin source / issues: ");
-    help.createEl("a", {
-      text: "github.com/davadev/obsidian_timeline",
-      href: "https://github.com/davadev/obsidian_timeline",
-    }).setAttr("target", "_blank");
-    help.appendText(".");
-
-    containerEl.createEl("h2", { text: "Paths" });
-
-    new Setting(containerEl)
-      .setName("XML save file path")
-      .setDesc("Vault-relative path to the .timeline file.")
-      .addText((t) =>
-        t
-          .setPlaceholder("timelines/main.timeline")
-          .setValue(s.sourceXmlPath)
-          .onChange(async (v) => {
-            s.sourceXmlPath = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Event notes directory")
-      .setDesc("Folder for one-Markdown-file-per-event.")
-      .addText((t) =>
-        t
-          .setValue(s.eventNotesDir)
-          .onChange(async (v) => {
-            s.eventNotesDir = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Templates directory")
-      .setDesc("Where the plugin writes its event-note template.")
-      .addText((t) =>
-        t
-          .setValue(s.templatesDir)
-          .onChange(async (v) => {
-            s.templatesDir = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Timeline id")
-      .setDesc("Logical id stored in each event's frontmatter (timeline.id).")
-      .addText((t) =>
-        t
-          .setValue(s.timelineId)
-          .onChange(async (v) => {
-            s.timelineId = v.trim() || "main";
-            await this.plugin.saveSettings();
-          })
-      );
-
-    containerEl.createEl("h2", { text: "Actions" });
-
-    new Setting(containerEl)
-      .setName("Import XML → Markdown")
-      .addButton((b) =>
-        b.setButtonText("Import").onClick(() => this.plugin.runCommand("txs-import"))
-      );
-
-    new Setting(containerEl)
-      .setName("Force regenerate XML from Markdown")
-      .addButton((b) =>
-        b
-          .setButtonText("Regenerate")
-          .setWarning()
-          .onClick(() => this.plugin.runCommand("txs-regenerate"))
-      );
-
-    new Setting(containerEl)
-      .setName("Validate all event notes")
-      .addButton((b) =>
-        b.setButtonText("Validate").onClick(() => this.plugin.runCommand("txs-validate"))
-      );
-
-    new Setting(containerEl)
-      .setName("New timeline event")
-      .setDesc(
-        "Recommended path. Prompts for a title, creates the note in the event notes folder, opens it, and reveals the Timeline inspector so you can fill in dates / category / description right away."
-      )
-      .addButton((b) =>
-        b
-          .setButtonText("New event")
-          .setCta()
-          .onClick(() => this.plugin.runCommand("txs-create-event"))
-      );
-
-    new Setting(containerEl)
-      .setName("Create/Update Obsidian Templates plugin file (advanced)")
-      .setDesc(
-        "Writes a template that the core Templates plugin can insert. Deprecated for normal use — prefer the New event button above."
-      )
-      .addButton((b) =>
-        b
-          .setButtonText("Write template")
-          .onClick(() => this.plugin.runCommand("txs-create-template"))
-      );
-
-    new Setting(containerEl)
-      .setName("Auto-detect event notes (scan vault)")
-      .setDesc(
-        "Walks the vault for notes with timeline.enabled: true and points the plugin at the longest common parent folder. Useful first-run action on mobile."
-      )
-      .addButton((b) =>
-        b
-          .setButtonText("Detect")
-          .onClick(() => this.plugin.runCommand("txs-auto-detect"))
-      );
-
-    new Setting(containerEl)
-      .setName("Event source for rendering")
-      .setDesc(
-        "auto: prefer XML when present, fall back to Markdown scan. xml: always read the .timeline XML. md: always build events from Markdown notes (mobile-friendly when XML is not synced)."
-      )
-      .addDropdown((d) =>
-        d
-          .addOption("auto", "auto")
-          .addOption("xml", "xml")
-          .addOption("md", "md")
-          .setValue(s.eventSource)
-          .onChange(async (v) => {
-            s.eventSource = v as typeof s.eventSource;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Wipe event notes and reimport from XML")
-      .setDesc(
-        "Use after a plugin upgrade that changed the event-note schema. Backs up the XML, deletes every .md in the event notes directory, then reimports."
-      )
-      .addButton((b) =>
-        b
-          .setButtonText("Wipe + reimport")
-          .setWarning()
-          .onClick(() => this.plugin.runCommand("txs-wipe-reimport"))
-      );
-
-    containerEl.createEl("h2", { text: "Mirror property names" });
-    const mirrorFields: (keyof typeof DEFAULT_MIRROR_NAMES)[] = [
-      "start",
-      "end",
-      "category",
-      "eventId",
-      "render",
-      "role",
-    ];
-    for (const key of mirrorFields) {
-      new Setting(containerEl)
-        .setName(`timeline.${key}`)
-        .setDesc("Schema-affecting — changing this will offer a reimport.")
-        .addText((t) =>
-          t
-            .setValue(s.mirrorNames[key])
-            .onChange((v) => {
-              const next = v.trim() || DEFAULT_MIRROR_NAMES[key];
-              if (next === s.mirrorNames[key]) return;
-              void this.plugin.applySchemaAffectingChange(() => {
-                s.mirrorNames[key] = next;
+    return [
+      {
+        name: "Timeline Project save file",
+        desc: this.introFragment(),
+        searchable: false,
+      },
+      {
+        type: "group",
+        heading: "Paths",
+        items: [
+          {
+            name: "XML save file path",
+            desc: "Vault-relative path to the .timeline file.",
+            control: {
+              type: "text",
+              key: "sourceXmlPath",
+              placeholder: "timelines/main.timeline",
+            },
+          },
+          {
+            name: "Event notes directory",
+            desc: "Folder for one-Markdown-file-per-event.",
+            control: { type: "text", key: "eventNotesDir" },
+          },
+          {
+            name: "Templates directory",
+            desc: "Where the plugin writes its event-note template.",
+            control: { type: "text", key: "templatesDir" },
+          },
+          {
+            name: "Timeline ID",
+            desc: "Logical ID stored in each event's frontmatter (timeline.id).",
+            control: { type: "text", key: "timelineId" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Actions",
+        items: [
+          {
+            name: "Import XML → Markdown",
+            action: () => this.plugin.runCommand("txs-import"),
+          },
+          {
+            name: "Force regenerate XML from Markdown",
+            action: () => this.plugin.runCommand("txs-regenerate"),
+          },
+          {
+            name: "Validate all event notes",
+            action: () => this.plugin.runCommand("txs-validate"),
+          },
+          {
+            name: "New timeline event",
+            desc: "Recommended path. Prompts for a title, creates the note in the event notes folder, opens it, and reveals the timeline inspector so you can fill in dates / category / description right away.",
+            action: () => this.plugin.runCommand("txs-create-event"),
+          },
+          {
+            name: "Create/update Obsidian templates plugin file (advanced)",
+            desc: "Writes a template that the core templates plugin can insert. Deprecated for normal use — prefer the new event action above.",
+            action: () => this.plugin.runCommand("txs-create-template"),
+          },
+          {
+            name: "Auto-detect event notes (scan vault)",
+            desc: "Walks the vault for notes with timeline.enabled: true and points the plugin at the longest common parent folder. Useful first-run action on mobile.",
+            action: () => this.plugin.runCommand("txs-auto-detect"),
+          },
+          {
+            name: "Event source for rendering",
+            desc: "Auto: prefer XML when present, fall back to a Markdown scan. XML: always read the .timeline XML. Markdown: always build events from Markdown notes (mobile-friendly when XML is not synced).",
+            control: {
+              type: "dropdown",
+              key: "eventSource",
+              options: { auto: "Auto", xml: "XML", md: "Markdown" },
+            },
+          },
+          {
+            name: "Wipe event notes and reimport from XML",
+            desc: "Use after a plugin upgrade that changed the event-note schema. Backs up the XML, deletes every .md in the event notes directory, then reimports.",
+            action: () => this.plugin.runCommand("txs-wipe-reimport"),
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Mirror property names",
+        items: MIRROR_FIELDS.map((key) => ({
+          name: `timeline.${key}`,
+          desc: "Schema-affecting — changing this will offer a reimport.",
+          control: { type: "text" as const, key: `mirrorNames.${key}` },
+        })),
+      },
+      {
+        type: "group",
+        heading: "Render defaults",
+        items: [
+          {
+            name: "Default render mode",
+            control: {
+              type: "dropdown",
+              key: "renderDefaults.mode",
+              options: { bar: "Bar", list: "List", hybrid: "Hybrid" },
+            },
+          },
+          {
+            name: "Default details style",
+            control: {
+              type: "dropdown",
+              key: "renderDefaults.details",
+              options: {
+                list: "List",
+                compact: "Compact",
+                table: "Table",
+                cards: "Cards",
+              },
+            },
+          },
+          {
+            name: "Default sort order",
+            control: {
+              type: "dropdown",
+              key: "renderDefaults.sort",
+              options: {
+                chronological: "Chronological",
+                "reverse-chronological": "Reverse chronological",
+                category: "Category",
+              },
+            },
+          },
+          {
+            name: "Click behavior in rendered timelines",
+            desc: "What happens when you tap an event in a render block or the timeline view.",
+            control: {
+              type: "dropdown",
+              key: "clickBehavior",
+              options: {
+                inspector: "Open in the timeline inspector (right sidebar)",
+                "open-note": "Open the underlying note",
+              },
+            },
+          },
+          {
+            name: "Default zoom factor",
+            desc: "Multiplier for the time axis. 1 = fits container, 4 = 4× wider (horizontal scroll). Per-block `zoom: N` overrides this.",
+            control: {
+              type: "number",
+              key: "renderDefaults.zoom",
+              min: 0.1,
+              validate: (v) => (v > 0 ? undefined : "Must be greater than 0."),
+            },
+          },
+          {
+            name: "Years of context for single-point notes",
+            desc: "When a viewer note's start = end, the viewport is padded by this many years on each side so neighbouring range events are visible. Per-block override: pointPaddingYears: <n>.",
+            control: {
+              type: "number",
+              key: "pointPaddingYears",
+              min: 0,
+              validate: (v) => (v >= 0 ? undefined : "Must be 0 or more."),
+            },
+          },
+          {
+            name: "Fuzzy edge fade length (%)",
+            desc: "How far across an event's bar the transparent → opaque gradient stretches when fuzzy_start / fuzzy_end is set. 20 = a 20% sliver at the fuzzy edge fades in. Clamped to 1-49 at render time.",
+            control: {
+              type: "number",
+              key: "fuzzyGradientPercent",
+              min: 1,
+              max: 49,
+              validate: (v) =>
+                v >= 1 && v <= 49 ? undefined : "Must be between 1 and 49.",
+            },
+          },
+          {
+            name: "Event label color",
+            desc: "CSS color (for example white, or rgb(20,20,20)) for the text drawn on top of event bars. Leave empty for the auto-contrast default. Useful when fuzzy gradients leave the label sitting over a faded edge.",
+            control: {
+              type: "text",
+              key: "eventLabelColor",
+              placeholder: "Auto — contrast with fill",
+            },
+          },
+          {
+            name: "Keep event labels in view",
+            desc: "Slides an event's label along its bar while you scroll, so a span that runs off both edges of the screen still shows its name. Turn off to pin labels to the start of the bar. Per-block override: stickyLabels: false.",
+            control: { type: "toggle", key: "renderDefaults.stickyLabels" },
+          },
+          {
+            name: "Show in-render filter bar by default",
+            desc: "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false.",
+            control: { type: "toggle", key: "renderDefaults.showFilterUI" },
+          },
+          {
+            name: "Global view date filter precision",
+            desc: "How many date components the filter row in the timeline view exposes. Year keeps things compact; day or time adds the extra inputs.",
+            control: {
+              type: "dropdown",
+              key: "globalFilterPrecision",
+              options: {
+                year: "Year only (default)",
+                day: "Year + month + day",
+                time: "Year + month + day + time",
+              },
+            },
+          },
+          {
+            name: "Globally hidden categories",
+            desc: "Comma-separated list. Hidden by default in every render; the in-render chip bar can re-enable per timeline.",
+            control: { type: "text", key: "hiddenCategories" },
+          },
+          {
+            name: "Default orientation",
+            control: {
+              type: "dropdown",
+              key: "renderDefaults.orientation",
+              options: { horizontal: "Horizontal", vertical: "Vertical" },
+            },
+          },
+          {
+            name: "Default fields shown",
+            desc: "Comma-separated: title,date,category,description,tags,links,source",
+            control: { type: "text", key: "renderDefaults.show" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Category colors",
+        items: [
+          {
+            name: "About category colors",
+            desc: "Categories discovered on import are listed here. Colors mirror the XML by default; edit to override. Use a CSS color (for example #88bb55 or rgb(120,180,90)).",
+            searchable: false,
+          },
+          ...this.categoryColorItems(),
+        ],
+      },
+      {
+        type: "group",
+        heading: "Sync & backup",
+        items: [
+          {
+            name: "Auto-sync Markdown → XML (global)",
+            desc: "Vault-wide default. The per-device override below can force this on or off for the current device only.",
+            control: { type: "toggle", key: "autoSync" },
+          },
+          {
+            name: "Auto-sync on this device",
+            desc: "Stored in this device's local storage — does not sync with the vault. Use 'force off' on phones if only the desktop should write the .timeline file.",
+            control: {
+              type: "dropdown",
+              key: DEVICE_SYNC_KEY,
+              options: {
+                global: "Use global setting",
+                on: "Force on (this device)",
+                off: "Force off (this device)",
+              },
+            },
+          },
+          {
+            name: "Auto-sync debounce (ms)",
+            control: {
+              type: "number",
+              key: "autoSyncDebounceMs",
+              min: 100,
+              validate: (v) => (v >= 100 ? undefined : "Must be 100 or more."),
+            },
+          },
+          {
+            name: "Backup XML before overwriting",
+            control: { type: "toggle", key: "backupEnabled" },
+          },
+          {
+            name: "Trim description whitespace on note write",
+            desc: "Enabled by default for cleaner notes. Disable if you need XML → Markdown → XML round-trips to preserve description edge whitespace more exactly.",
+            control: { type: "toggle", key: "trimDescriptionOnWrite" },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Multi-device sync (advanced)",
+        items: [
+          {
+            name: "About multi-device sync",
+            desc: "These guard against data loss when the vault is synced across devices (Nextcloud, iCloud, Remotely Save). Defaults are right for most users.",
+            searchable: false,
+          },
+          {
+            name: "Backup folder",
+            desc: `Vault-relative folder for MD snapshot backups (wipe-and-reimport). Empty = default to <event notes folder>/_backups, currently "${resolveBackupFolder(s)}". Existing backups at a previous path won't be moved automatically.`,
+            control: {
+              type: "text",
+              key: "backupFolder",
+              placeholder: `${s.eventNotesDir}/_backups`,
+            },
+          },
+          {
+            name: "Log folder",
+            desc: `Vault-relative folder for the sync log file (timeline-sync.log). Empty = default to <event notes folder>/_logs, currently "${resolveLogFolder(s)}".`,
+            control: {
+              type: "text",
+              key: "logFolder",
+              placeholder: `${s.eventNotesDir}/_logs`,
+            },
+          },
+          {
+            name: "Backup retention (count)",
+            desc: "Keep this many of each backup type: XML .bak-* siblings AND the backup folder's <label>-* subfolders. Older backups are trashed after each new one is created.",
+            control: {
+              type: "number",
+              key: "backupRetention",
+              min: 1,
+              validate: (v) => (v >= 1 ? undefined : "Must be 1 or more."),
+            },
+          },
+          {
+            name: "Prune backups now",
+            desc: "One-shot cleanup for piled-up backups from before retention was enforced.",
+            action: () => void this.pruneBackups(),
+          },
+          {
+            name: "Startup grace period (ms)",
+            desc: "Auto-sync is suppressed for this long after the plugin loads. Lets remote sync finish its initial pull before we start writing. Default 30000.",
+            control: {
+              type: "number",
+              key: "autoSyncStartupDelayMs",
+              min: 0,
+              validate: (v) => (v >= 0 ? undefined : "Must be 0 or more."),
+            },
+          },
+          {
+            name: "Self-write suppression TTL (ms)",
+            desc: "How long after the plugin writes a file we ignore vault events for that file. Raise if remote sync lands plugin-written files later than this. Default 5000.",
+            control: {
+              type: "number",
+              key: "selfWriteTtlMs",
+              min: 500,
+              validate: (v) => (v >= 500 ? undefined : "Must be 500 or more."),
+            },
+          },
+          {
+            name: "Sync log enabled",
+            desc: `Append events (import-skipped, regen-aborted, filter-persist-failed, external-xml-change, wipe-backup, meta-stale-skip) to ${resolveLogFolder(s)}/timeline-sync.log. Rotated at ~200 KB.`,
+            control: { type: "toggle", key: "syncLogEnabled" },
+          },
+          {
+            name: "Log level",
+            control: {
+              type: "dropdown",
+              key: "logLevel",
+              options: {
+                error: "Error",
+                warn: "Warn",
+                info: "Info",
+                debug: "Debug",
+              },
+            },
+          },
+        ],
+      },
+      {
+        type: "group",
+        heading: "Diagnostics",
+        items: [
+          {
+            name: "Recent diagnostics",
+            render: (setting) => {
+              const pre = setting.controlEl.createEl("pre", {
+                cls: "txs-diagnostics-box",
               });
-            })
-        );
+              pre.textContent = this.plugin.diagnostics.length
+                ? this.plugin.diagnostics.join("\n")
+                : "(no diagnostics)";
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  /** Reads the value behind a control key. Called on every render. */
+  getControlValue(key: string): unknown {
+    if (key === DEVICE_SYNC_KEY) return getDeviceSyncMode();
+
+    const s = this.plugin.settings;
+    if (key === "hiddenCategories") return s.hiddenCategories.join(",");
+    if (key === "renderDefaults.show") return s.renderDefaults.show.join(",");
+    return readPath(s as unknown as Record<string, unknown>, key);
+  }
+
+  /** Persists a changed control. */
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const s = this.plugin.settings;
+
+    if (key === DEVICE_SYNC_KEY) {
+      setDeviceSyncMode(String(value) as DeviceSyncMode);
+      return;
     }
 
-    containerEl.createEl("h2", { text: "Render defaults" });
+    // Mirror property names change the note schema, so they route through the
+    // plugin's reimport prompt rather than a plain save.
+    if (key.startsWith("mirrorNames.")) {
+      const field = key.slice("mirrorNames.".length) as MirrorField;
+      const next = String(value).trim() || DEFAULT_MIRROR_NAMES[field];
+      if (next === s.mirrorNames[field]) return;
+      await this.plugin.applySchemaAffectingChange(() => {
+        s.mirrorNames[field] = next;
+      });
+      return;
+    }
 
-    new Setting(containerEl)
-      .setName("Default render mode")
-      .addDropdown((d) =>
-        d
-          .addOption("bar", "bar")
-          .addOption("list", "list")
-          .addOption("hybrid", "hybrid")
-          .setValue(s.renderDefaults.mode)
-          .onChange(async (v) => {
-            s.renderDefaults.mode = v as typeof s.renderDefaults.mode;
-            await this.plugin.saveSettings();
-          })
+    if (key === "hiddenCategories") {
+      s.hiddenCategories = splitList(value);
+    } else if (key === "renderDefaults.show") {
+      s.renderDefaults.show = splitList(value) as typeof s.renderDefaults.show;
+    } else if (key === "timelineId") {
+      s.timelineId = String(value).trim() || "main";
+    } else {
+      writePath(
+        s as unknown as Record<string, unknown>,
+        key,
+        typeof value === "string" ? value.trim() : value
       );
+    }
 
-    new Setting(containerEl)
-      .setName("Default details style")
-      .addDropdown((d) =>
-        d
-          .addOption("list", "list")
-          .addOption("compact", "compact")
-          .addOption("table", "table")
-          .addOption("cards", "cards")
-          .setValue(s.renderDefaults.details)
-          .onChange(async (v) => {
-            s.renderDefaults.details = v as typeof s.renderDefaults.details;
-            await this.plugin.saveSettings();
-          })
-      );
+    await this.plugin.saveSettings();
+  }
 
-    new Setting(containerEl)
-      .setName("Default sort order")
-      .addDropdown((d) =>
-        d
-          .addOption("chronological", "chronological")
-          .addOption("reverse-chronological", "reverse-chronological")
-          .addOption("category", "category")
-          .setValue(s.renderDefaults.sort)
-          .onChange(async (v) => {
-            s.renderDefaults.sort = v as typeof s.renderDefaults.sort;
-            await this.plugin.saveSettings();
-          })
-      );
+  /** Intro blurb with links to the desktop app and the plugin repo. */
+  private introFragment(): DocumentFragment {
+    const frag = createFragment();
+    frag.appendText("Needs a .timeline save file from ");
+    linkTo(frag, "Timeline Project", "http://thetimelineproj.sourceforge.net/");
+    frag.appendText(" (free desktop app). Docs: ");
+    linkTo(
+      frag,
+      "thetimelineproj.sourceforge.net/docs",
+      "https://thetimelineproj.sourceforge.net/docs/contents.html"
+    );
+    frag.appendText(". Plugin source / issues: ");
+    linkTo(
+      frag,
+      "github.com/davadev/obsidian_timeline",
+      "https://github.com/davadev/obsidian_timeline"
+    );
+    frag.appendText(".");
+    return frag;
+  }
 
-    new Setting(containerEl)
-      .setName("Click behavior in rendered timelines")
-      .setDesc(
-        "What happens when you tap an event in a render block or the Timeline view."
-      )
-      .addDropdown((d) =>
-        d
-          .addOption("inspector", "Open in Timeline inspector (right sidebar)")
-          .addOption("open-note", "Open the underlying note")
-          .setValue(s.clickBehavior)
-          .onChange(async (v) => {
-            s.clickBehavior = v as typeof s.clickBehavior;
-            await this.plugin.saveSettings();
-          })
-      );
+  /**
+   * One row per known category: swatch, native color picker, free-text color,
+   * and a button that drops the override. Custom DOM, so these are `render`
+   * definitions rather than `control` ones.
+   */
+  private categoryColorItems(): SettingDefinition[] {
+    const s = this.plugin.settings;
+    const names = Array.from(
+      new Set<string>([...s.knownCategories, ...Object.keys(s.categoryColors)])
+    ).sort();
 
-    new Setting(containerEl)
-      .setName("Default zoom factor")
-      .setDesc(
-        "Multiplier for the time axis. 1 = fits container, 4 = 4× wider (horizontal scroll). Per-block `zoom: N` overrides this."
-      )
-      .addText((t) =>
-        t
-          .setValue(String(s.renderDefaults.zoom))
-          .onChange(async (v) => {
-            const n = parseFloat(v);
-            if (Number.isFinite(n) && n > 0) {
-              s.renderDefaults.zoom = n;
-              await this.plugin.saveSettings();
-            }
-          })
-      );
+    if (!names.length) {
+      return [
+        {
+          name: "No categories yet",
+          desc: "Run the import command to populate this list.",
+          searchable: false,
+        },
+      ];
+    }
 
-    new Setting(containerEl)
-      .setName("Years of context for single-point notes")
-      .setDesc(
-        "When a viewer note's start = end, the viewport is padded by this many years on each side so neighbouring range events are visible. Per-block override: pointPaddingYears: <n>."
-      )
-      .addText((t) =>
-        t.setValue(String(s.pointPaddingYears)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n) && n >= 0) {
-            s.pointPaddingYears = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Fuzzy edge fade length (%)")
-      .setDesc(
-        "How far across an event's bar the transparent → opaque gradient stretches when fuzzy_start / fuzzy_end is set. 20 = a 20% sliver at the fuzzy edge fades in. Clamped to 1-49 at render time."
-      )
-      .addText((t) =>
-        t.setValue(String(s.fuzzyGradientPercent)).onChange(async (v) => {
-          const n = parseFloat(v);
-          if (Number.isFinite(n) && n >= 1 && n <= 49) {
-            s.fuzzyGradientPercent = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Event label color")
-      .setDesc(
-        "CSS color (e.g. #1a1a1a, white, rgb(20,20,20)) for the text drawn on top of event bars. Leave empty for the auto-contrast default. Useful when fuzzy gradients leave the label sitting over a faded edge."
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder("auto (contrast vs. fill)")
-          .setValue(s.eventLabelColor ?? "")
-          .onChange(async (v) => {
-            s.eventLabelColor = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Show in-render filter bar by default")
-      .setDesc(
-        "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false."
-      )
-      .addToggle((t) =>
-        t.setValue(s.renderDefaults.showFilterUI).onChange(async (v) => {
-          s.renderDefaults.showFilterUI = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Global view date filter precision")
-      .setDesc(
-        "How many date components the filter row in the Timeline view exposes. Year keeps things compact; Day or Time adds the extra inputs."
-      )
-      .addDropdown((d) =>
-        d
-          .addOption("year", "Year only (default)")
-          .addOption("day", "Year + month + day")
-          .addOption("time", "Year + month + day + time")
-          .setValue(s.globalFilterPrecision)
-          .onChange(async (v) => {
-            s.globalFilterPrecision = v as typeof s.globalFilterPrecision;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Globally hidden categories")
-      .setDesc(
-        "Comma-separated list. Hidden by default in every render; the in-render chip bar can re-enable per timeline."
-      )
-      .addText((t) =>
-        t
-          .setValue(s.hiddenCategories.join(","))
-          .onChange(async (v) => {
-            s.hiddenCategories = v
-              .split(",")
-              .map((x) => x.trim())
-              .filter(Boolean);
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Default orientation")
-      .addDropdown((d) =>
-        d
-          .addOption("horizontal", "horizontal")
-          .addOption("vertical", "vertical")
-          .setValue(s.renderDefaults.orientation)
-          .onChange(async (v) => {
-            s.renderDefaults.orientation = v as typeof s.renderDefaults.orientation;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Default fields shown")
-      .setDesc("Comma-separated: title,date,category,description,tags,links,source")
-      .addText((t) =>
-        t
-          .setValue(s.renderDefaults.show.join(","))
-          .onChange(async (v) => {
-            s.renderDefaults.show = v
-              .split(",")
-              .map((x) => x.trim())
-              .filter(Boolean) as typeof s.renderDefaults.show;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    containerEl.createEl("h2", { text: "Category colors" });
-    containerEl.createEl("div", {
-      text:
-        "Categories discovered on import are listed here. Colors mirror the XML by default; edit to override. Use a CSS color (e.g. #88bb55 or rgb(120,180,90)).",
-      cls: "setting-item-description",
-    });
-    const colorsBox = containerEl.createDiv();
-    const renderColors = () => {
-      colorsBox.empty();
-      const all = new Set<string>([
-        ...s.knownCategories,
-        ...Object.keys(s.categoryColors),
-      ]);
-      const names = Array.from(all).sort();
-      if (!names.length) {
-        colorsBox.createDiv({
-          text: "(no categories yet — run the Import command to populate)",
-        });
-      }
-      for (const name of names) {
-        const swatch = document.createElement("span");
-        swatch.style.display = "inline-block";
-        swatch.style.width = "16px";
-        swatch.style.height = "16px";
-        swatch.style.marginRight = "8px";
-        swatch.style.verticalAlign = "middle";
-        swatch.style.border = "1px solid var(--background-modifier-border)";
-        swatch.style.borderRadius = "3px";
+    return names.map((name) => ({
+      name,
+      render: (setting) => {
+        const swatch = createSpan({ cls: "txs-category-swatch" });
         swatch.style.background =
           s.categoryColors[name] ?? "var(--background-secondary)";
-        const setting = new Setting(colorsBox).setName(name);
         setting.nameEl.prepend(swatch);
 
         // Track the text input so the color picker can keep them in sync.
@@ -487,244 +566,112 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
 
         // Native color picker — `<input type=color>` only understands
         // #rrggbb, so we normalise from rgb(...) / hsl(...) when seeding.
-        const picker = document.createElement("input");
+        const picker = createEl("input");
         picker.type = "color";
         picker.value = toHexColor(s.categoryColors[name] ?? "#888888");
-        picker.style.marginRight = "6px";
-        picker.addEventListener("input", async () => {
+        picker.addClass("txs-category-picker");
+        picker.addEventListener("input", () => {
           s.categoryColors[name] = picker.value;
           swatch.style.background = picker.value;
           textComponent?.setValue(picker.value);
-          await this.plugin.saveSettings();
+          void this.plugin.saveSettings();
         });
         setting.controlEl.prepend(picker);
 
         setting.addText((t) => {
           textComponent = t;
           return t
-            .setPlaceholder("#aabbcc or rgb(…)")
+            .setPlaceholder("Hex or rgb(…)")
             .setValue(s.categoryColors[name] ?? "")
-            .onChange(async (v) => {
+            .onChange((v) => {
               const val = v.trim();
               if (val) s.categoryColors[name] = val;
               else delete s.categoryColors[name];
               swatch.style.background =
                 s.categoryColors[name] ?? "var(--background-secondary)";
               picker.value = toHexColor(s.categoryColors[name] ?? "#888888");
-              await this.plugin.saveSettings();
+              void this.plugin.saveSettings();
             });
         });
+
         setting.addExtraButton((b) =>
           b
             .setIcon("trash")
             .setTooltip("Remove color override")
-            .onClick(async () => {
+            .onClick(() => {
               delete s.categoryColors[name];
-              await this.plugin.saveSettings();
-              renderColors();
+              void this.plugin.saveSettings();
+              this.update();
             })
         );
-      }
-    };
-    renderColors();
-
-    containerEl.createEl("h2", { text: "Sync & backup" });
-
-    new Setting(containerEl)
-      .setName("Auto-sync Markdown → XML (global)")
-      .setDesc(
-        "Vault-wide default. The per-device override below can force this on or off for the current device only."
-      )
-      .addToggle((t) =>
-        t.setValue(s.autoSync).onChange(async (v) => {
-          s.autoSync = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Auto-sync on this device")
-      .setDesc(
-        "Stored in this device's local storage — does NOT sync with the vault. Use 'Off' on phones if only the desktop should write the .timeline file."
-      )
-      .addDropdown((d) =>
-        d
-          .addOption("global", "Use global setting")
-          .addOption("on", "Force on (this device)")
-          .addOption("off", "Force off (this device)")
-          .setValue(getDeviceSyncMode())
-          .onChange((v) => setDeviceSyncMode(v as DeviceSyncMode))
-      );
-
-    new Setting(containerEl)
-      .setName("Auto-sync debounce (ms)")
-      .addText((t) =>
-        t.setValue(String(s.autoSyncDebounceMs)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n) && n >= 100) {
-            s.autoSyncDebounceMs = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Backup XML before overwriting")
-      .addToggle((t) =>
-        t.setValue(s.backupEnabled).onChange(async (v) => {
-          s.backupEnabled = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Trim description whitespace on note write")
-      .setDesc(
-        "Enabled by default for cleaner notes. Disable if you need XML -> Markdown -> XML round-trips to preserve description edge whitespace more exactly."
-      )
-      .addToggle((t) =>
-        t.setValue(s.trimDescriptionOnWrite).onChange(async (v) => {
-          s.trimDescriptionOnWrite = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    containerEl.createEl("h3", { text: "Multi-device sync (advanced)" });
-    containerEl.createEl("div", {
-      cls: "setting-item-description",
-      text:
-        "These guard against data loss when the vault is synced across devices (Nextcloud, iCloud, Remotely Save). Defaults are right for most users.",
-    });
-
-    new Setting(containerEl)
-      .setName("Backup folder")
-      .setDesc(
-        `Vault-relative folder for MD snapshot backups (wipe-and-reimport). Empty = default to ${"<event notes folder>"}/_backups, currently "${resolveBackupFolder(s)}". Existing backups at a previous path won't be moved automatically.`
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder(`${s.eventNotesDir}/_backups`)
-          .setValue(s.backupFolder)
-          .onChange(async (v) => {
-            s.backupFolder = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Log folder")
-      .setDesc(
-        `Vault-relative folder for the sync log file (timeline-sync.log). Empty = default to ${"<event notes folder>"}/_logs, currently "${resolveLogFolder(s)}".`
-      )
-      .addText((t) =>
-        t
-          .setPlaceholder(`${s.eventNotesDir}/_logs`)
-          .setValue(s.logFolder)
-          .onChange(async (v) => {
-            s.logFolder = v.trim();
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("Backup retention (count)")
-      .setDesc(
-        "Keep this many of each backup type: XML .bak-* siblings AND the backup folder's <label>-* subfolders. Older backups are deleted after each new one is created."
-      )
-      .addText((t) =>
-        t.setValue(String(s.backupRetention)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n) && n >= 1) {
-            s.backupRetention = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Prune backups now")
-      .setDesc(
-        "One-shot cleanup for piled-up backups from before retention was enforced."
-      )
-      .addButton((b) =>
-        b.setButtonText("Prune now").onClick(async () => {
-          const xml = s.sourceXmlPath
-            ? await this.plugin
-                .runVaultPrune("xml", s.sourceXmlPath, s.backupRetention)
-                .catch(() => 0)
-            : 0;
-          const wipe = await this.plugin
-            .runVaultPrune("folder", "wipe", s.backupRetention)
-            .catch(() => 0);
-          new Notice(
-            `Pruned ${xml} XML backup(s) and ${wipe} MD backup folder(s).`
-          );
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Startup grace period (ms)")
-      .setDesc(
-        "Auto-sync is suppressed for this long after the plugin loads. Lets remote sync finish its initial pull before we start writing. Default 30000."
-      )
-      .addText((t) =>
-        t.setValue(String(s.autoSyncStartupDelayMs)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n) && n >= 0) {
-            s.autoSyncStartupDelayMs = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Self-write suppression TTL (ms)")
-      .setDesc(
-        "How long after the plugin writes a file we ignore vault events for that file. Raise if remote sync lands plugin-written files later than this. Default 5000."
-      )
-      .addText((t) =>
-        t.setValue(String(s.selfWriteTtlMs)).onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (Number.isFinite(n) && n >= 500) {
-            s.selfWriteTtlMs = n;
-            await this.plugin.saveSettings();
-          }
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Sync log enabled")
-      .setDesc(
-        `Append events (import-skipped, regen-aborted, filter-persist-failed, external-xml-change, wipe-backup, meta-stale-skip) to ${resolveLogFolder(s)}/timeline-sync.log. Rotated at ~200 KB.`
-      )
-      .addToggle((t) =>
-        t.setValue(s.syncLogEnabled).onChange(async (v) => {
-          s.syncLogEnabled = v;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    new Setting(containerEl)
-      .setName("Log level")
-      .addDropdown((d) =>
-        d
-          .addOption("error", "error")
-          .addOption("warn", "warn")
-          .addOption("info", "info")
-          .addOption("debug", "debug")
-          .setValue(s.logLevel)
-          .onChange(async (v) => {
-            s.logLevel = v as typeof s.logLevel;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    containerEl.createEl("h2", { text: "Diagnostics" });
-    const diagBox = containerEl.createEl("pre");
-    diagBox.style.maxHeight = "200px";
-    diagBox.style.overflow = "auto";
-    diagBox.textContent = this.plugin.diagnostics.length
-      ? this.plugin.diagnostics.join("\n")
-      : "(no diagnostics)";
+      },
+    }));
   }
+
+  private async pruneBackups(): Promise<void> {
+    const s = this.plugin.settings;
+    const xml = s.sourceXmlPath
+      ? await this.plugin
+          .runVaultPrune("xml", s.sourceXmlPath, s.backupRetention)
+          .catch(() => 0)
+      : 0;
+    const wipe = await this.plugin
+      .runVaultPrune("folder", "wipe", s.backupRetention)
+      .catch(() => 0);
+    new Notice(`Pruned ${xml} XML backup(s) and ${wipe} MD backup folder(s).`);
+  }
+}
+
+type MirrorField = keyof typeof DEFAULT_MIRROR_NAMES;
+
+const MIRROR_FIELDS: MirrorField[] = [
+  "start",
+  "end",
+  "category",
+  "eventId",
+  "render",
+  "role",
+];
+
+/** Reserved control key — this one lives in device storage, not settings. */
+const DEVICE_SYNC_KEY = "device.syncMode";
+
+function linkTo(frag: DocumentFragment, text: string, href: string): void {
+  const a = frag.createEl("a", { text, href });
+  a.setAttr("target", "_blank");
+}
+
+function splitList(value: unknown): string[] {
+  return String(value)
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/** Reads `a.b.c` out of the settings object. */
+function readPath(root: Record<string, unknown>, path: string): unknown {
+  let cur: unknown = root;
+  for (const part of path.split(".")) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/** Writes `a.b.c` into the settings object; no-ops on a missing parent. */
+function writePath(
+  root: Record<string, unknown>,
+  path: string,
+  value: unknown
+): void {
+  const parts = path.split(".");
+  const last = parts.pop();
+  if (!last) return;
+  let cur: Record<string, unknown> = root;
+  for (const part of parts) {
+    const next = cur[part];
+    if (next == null || typeof next !== "object") return;
+    cur = next as Record<string, unknown>;
+  }
+  cur[last] = value;
 }
