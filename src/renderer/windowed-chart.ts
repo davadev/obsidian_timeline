@@ -63,6 +63,19 @@ export interface WindowedChartArgs {
 /** How many tiles either side of the visible one are kept ready. */
 const TILE_RADIUS = 2;
 
+/**
+ * Exponent applied to a pinch's scale.
+ *
+ * Fingers can only travel so far: one pinch spans maybe 2-3x, which is nothing
+ * against a zoom range that runs to millions. Raising the scale to a power
+ * means one comfortable gesture covers an order of magnitude, the way a map
+ * behaves, instead of needing a dozen pinches to get anywhere.
+ */
+const PINCH_GAIN = 2.5;
+
+/** Safety net: clear a stuck pinch state if the gesture's end never arrives. */
+const PINCH_WATCHDOG_MS = 600;
+
 export class WindowedChart {
   private readonly scroller: HTMLElement;
   private readonly spacer: HTMLElement;
@@ -78,14 +91,15 @@ export class WindowedChart {
   private laneByEventId = new Map<string, number>();
   private laneCount = 1;
   private span: TimeSpan = { from: 0, to: 1 };
-  private window: TimeWindow = { from: 0, to: 1 };
-  private page: ScrollPage = { from: 0, to: 1, px: 1 };
+  window: TimeWindow = { from: 0, to: 1 };
+  page: ScrollPage = { from: 0, to: 1, px: 1 };
   private paneW = 1;
   private syncing = false;
   private frame: number | null = null;
   private zoomFrame: number | null = null;
   /** Set once WebKit sends a real pinch, so the touch fallback stands down. */
   private webkitGestures = false;
+  private pinchWatchdog: number | null = null;
   private pendingZoom: { zoom: number; focalPx: number } | null = null;
 
   constructor(private args: WindowedChartArgs) {
@@ -210,6 +224,7 @@ export class WindowedChart {
   }
 
   destroy(): void {
+    this.releasePinch();
     this.resize?.disconnect();
     if (this.frame != null) window.cancelAnimationFrame(this.frame);
     this.scroller.remove();
@@ -326,6 +341,28 @@ export class WindowedChart {
     this.rebuild(true);
   }
 
+  /**
+   * Suspends native panning while two fingers are down, so the WebView cannot
+   * claim the gesture. Self-releasing: if the gesture's end is swallowed, the
+   * watchdog restores panning rather than leaving the chart unscrollable.
+   */
+  private holdPinch(): void {
+    this.scroller.addClass("is-pinching");
+    if (this.pinchWatchdog != null) window.clearTimeout(this.pinchWatchdog);
+    this.pinchWatchdog = window.setTimeout(
+      () => this.releasePinch(),
+      PINCH_WATCHDOG_MS
+    );
+  }
+
+  private releasePinch(): void {
+    if (this.pinchWatchdog != null) {
+      window.clearTimeout(this.pinchWatchdog);
+      this.pinchWatchdog = null;
+    }
+    this.scroller.removeClass("is-pinching");
+  }
+
   private scrollPos(): number {
     return this.vertical ? this.scroller.scrollTop : this.scroller.scrollLeft;
   }
@@ -435,25 +472,24 @@ export class WindowedChart {
         : (g.clientX ?? rect.left + rect.width / 2) - rect.left;
     };
 
+    // Note: no touch-action juggling here. WebKit's own gesture events already
+    // suppress the browser's pinch, and turning panning off would leave the
+    // scroller dead if the gesture's end never arrived — which is what broke
+    // scrolling after a zoom.
     this.scroller.addEventListener("gesturestart", (e: Event) => {
       e.preventDefault();
       this.webkitGestures = true;
       startZoom = this.zoom;
       focal = at(e);
-      this.scroller.addClass("is-pinching");
     });
 
     this.scroller.addEventListener("gesturechange", (e: Event) => {
       e.preventDefault();
       const scale = (e as unknown as { scale?: number }).scale ?? 1;
-      if (scale > 0) this.zoomTo(startZoom * scale, focal);
+      if (scale > 0) this.zoomTo(startZoom * Math.pow(scale, PINCH_GAIN), focal);
     });
 
-    const end = (e: Event) => {
-      e.preventDefault();
-      this.scroller.removeClass("is-pinching");
-    };
-    this.scroller.addEventListener("gestureend", end);
+    this.scroller.addEventListener("gestureend", (e: Event) => e.preventDefault());
   }
 
   private attachTouchGestures(): void {
@@ -470,10 +506,7 @@ export class WindowedChart {
         const action = this.pinch.start(points(e));
         if (action.kind === "begin") {
           startZoom = this.zoom;
-          // Native panning has to stop for the duration, or the WebView takes
-          // the gesture over and the pinch dies after a few pixels — which is
-          // why each pinch only nudged the zoom.
-          this.scroller.addClass("is-pinching");
+          this.holdPinch();
         }
       },
       { passive: true }
@@ -492,15 +525,18 @@ export class WindowedChart {
           : action.focal.x - rect.left;
         // Absolute, from where the gesture started: relative steps would
         // compound rounding across a long pinch.
-        this.zoomTo(startZoom * action.scale, at);
+        this.holdPinch();
+        this.zoomTo(startZoom * Math.pow(action.scale, PINCH_GAIN), at);
       },
       { passive: false }
     );
 
     const end = (e: TouchEvent) => {
+      // Release the hold whatever the tracker thinks: a scroller left with
+      // touch-action: none cannot be panned at all.
+      if (e.touches.length === 0) this.releasePinch();
       if (this.webkitGestures) return;
       this.pinch.end(points(e));
-      if (e.touches.length === 0) this.scroller.removeClass("is-pinching");
     };
     this.scroller.addEventListener("touchend", end);
     this.scroller.addEventListener("touchcancel", end);

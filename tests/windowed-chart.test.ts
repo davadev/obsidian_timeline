@@ -186,6 +186,29 @@ describe("windowed chart", () => {
     expect(w.to).toBeLessThanOrEqual(toJulian({ year: 2000 }) + 1);
   });
 
+  it("always restores panning, even if the gesture's end never arrives", async () => {
+    // Regression: the scroller was left with touch-action: none when a pinch
+    // ended without its closing event, which killed scrolling after a zoom.
+    const { chart, scroller } = chartWith(DATA, 2);
+    (chart as unknown as { holdPinch: () => void }).holdPinch();
+    expect(scroller.classList.contains("is-pinching")).toBe(true);
+
+    await new Promise((r) => setTimeout(r, 700));
+    expect(scroller.classList.contains("is-pinching")).toBe(false);
+  });
+
+  it("amplifies a pinch so one gesture covers real ground", async () => {
+    const { chart } = chartWith(DATA, 1);
+    // A comfortable two-finger spread is about 2x; that has to be worth more
+    // than 2x of zoom or crossing the range takes a dozen pinches.
+    const before = chart.zoom;
+    (chart as unknown as { zoomTo: (z: number) => void }).zoomTo(
+      before * Math.pow(2, 2.5)
+    );
+    await settle();
+    expect(chart.zoom).toBeGreaterThan(before * 4);
+  });
+
   it("tears down cleanly", () => {
     const { chart, scroller } = chartWith(DATA, 2);
     chart.destroy();
