@@ -60,6 +60,9 @@ export interface WindowedChartArgs {
   onWindowChange?: (window: TimeWindow, zoom: number, maxZoom: number) => void;
 }
 
+/** Stand-in pane size while the container has no measurable one. */
+const DEFAULT_PANE_PX = 800;
+
 /** How many tiles either side of the visible one are kept ready. */
 const TILE_RADIUS = 2;
 
@@ -136,11 +139,20 @@ export class WindowedChart {
     return this.args.orientation === "vertical";
   }
 
+  /**
+   * Pane size along the scroll axis.
+   *
+   * A container that is hidden, collapsed or not yet laid out measures zero.
+   * Sizing the chart from that produces a one-pixel timeline, so fall back to a
+   * plausible width and let the ResizeObserver correct it once the pane is
+   * real.
+   */
   private measurePane(): number {
     const px = this.vertical
       ? this.scroller.clientHeight
       : this.scroller.clientWidth;
-    return Math.max(1, px || this.paneW);
+    if (px > 1) return px;
+    return this.paneW > 1 ? this.paneW : DEFAULT_PANE_PX;
   }
 
   /** Replace the data. Keeps the window where it is, clamped to the new span. */
@@ -294,11 +306,15 @@ export class WindowedChart {
     svg.replaceChildren();
 
     const perPx = windowDays(this.window) / Math.max(1, this.paneW);
+    const slide = this.args.stickyLabels !== false;
     for (const ev of this.events) {
       if (ev.isPoint) continue; // points carry no label
       const from = toJulian(ev.start);
       const to = toJulian(ev.end);
       if (to <= this.window.from || from >= this.window.to) continue; // off-screen
+      // With sliding off, a label stays at its bar's start and scrolls away
+      // with it, which is what "Keep event labels in view: off" means.
+      if (!slide && from < this.window.from) continue;
       drawViewportLabel(svg, ev, {
         lane: this.laneByEventId.get(ev.id) ?? 0,
         startPx: (from - this.window.from) / perPx,

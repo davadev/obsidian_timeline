@@ -3,7 +3,8 @@ import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import type { VaultAdapter } from "./vault-adapter";
 import { parseBlockOptions } from "./markdown-postprocessor";
-import { renderTimeline } from "../renderer";
+import { renderBar } from "../renderer/bar-renderer";
+import { filterErasToViewport } from "../timeline/era-utils";
 import { compare, toFrontmatterString } from "../timeline/date";
 import { eventsInViewport } from "../timeline/overlap";
 import type { TimelineEvent } from "../timeline/model";
@@ -58,17 +59,20 @@ export async function exportActiveNoteWithRenderedTimeline(
     // Render off-screen
     const stage = document.body.createDiv({ cls: "txs-export-stage" });
     try {
-      renderTimeline({
+      // Straight to the bar renderer, not through renderTimeline: an export is
+      // a still image of the WHOLE span, while the interactive chart draws only
+      // the window on screen and has no single SVG to serialise.
+      renderBar({
         container: stage,
         events,
         categories: doc.categories,
         viewport: vp,
-        options: { ...opts, mode: "bar", showFilterUI: false },
-        onOpenEvent: () => {},
         categoryColors: settings.categoryColors,
-        initialHidden: [],
-        filterKey: `export:${active.path}:${i}`,
+        onOpenEvent: () => {},
+        zoom: opts.zoom,
+        orientation: opts.orientation,
         isMobile: false,
+        eras: filterErasToViewport(doc.eras, vp),
         fuzzyGradientPercent: settings.fuzzyGradientPercent,
         eventLabelColor: settings.eventLabelColor,
       });

@@ -30,21 +30,13 @@ exceptions live in `eslint.config.mjs`).
 
 ## The chart, in one paragraph
 
-The Timeline view draws only the time window on screen: an empty spacer gives
+The Timeline view and inline blocks draw only the time window on screen: an empty spacer gives
 the scroller its range and a ring of pane-wide tiles is positioned inside it
 (`src/renderer/windowed-chart.ts`, maths in `time-window.ts`). Two rules break
 it if ignored — **never touch the DOM while a pinch is live** (the browser
 cancels a gesture whose target is removed; a live gesture only sets CSS custom
 properties), and **assign lanes once across the filtered set**, never per tile.
 Full detail in [docs/architecture.md](docs/architecture.md#the-windowed-chart-011).
-
-## Known unfinished work
-
-The windowed chart is used by the Timeline view only; inline blocks still run
-the classic renderer, and `renderDefaults.windowedChart` is a temporary escape
-hatch. Closing that split is 0.12's job — see
-[docs/architecture.md](docs/architecture.md#unfinished-and-why-it-matters)
-before assuming the two-renderer arrangement is intentional.
 
 ## Conventions
 
