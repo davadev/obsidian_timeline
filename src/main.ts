@@ -419,6 +419,18 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       })
     );
 
+    // Obsidian parses frontmatter asynchronously and fires "resolved" once it
+    // has caught up. Anything indexed before that — at startup, or while
+    // remote sync was still landing notes — may have been read with no
+    // frontmatter at all, so drop the index and let it rebuild from a warm
+    // metadata cache. Without this an event could report "no note found"
+    // until the app was restarted.
+    this.registerEvent(
+      this.app.metadataCache.on("resolved", () => {
+        this.cache.resetIndex();
+      })
+    );
+
     // First-run mobile default: force sync off so phones can install without
     // accidentally rewriting the XML (which often isn't there or isn't writable).
     if (Platform.isMobile && getDeviceSyncMode() === "global") {
