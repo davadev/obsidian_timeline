@@ -46,10 +46,12 @@ describe("clampAxisSize", () => {
     expect(clampAxisSize(800 * MAX_ZOOM)).toBe(MAX_AXIS_PX);
   });
 
-  it("allows a millennia-long span to reach month-level detail", () => {
-    // 2930 years across the widest axis we will draw
-    const pxPerYear = MAX_AXIS_PX / 2930;
-    expect(pxPerYear / 12).toBeGreaterThan(20); // a month is a visible slice
+  it("lets even a six-millennia span reach month-level detail", () => {
+    // 4000 BCE to today across the widest axis we will draw
+    const pxPerYear = MAX_AXIS_PX / 6000;
+    // a quarter has to be at least as wide as the tick target, or the ladder
+    // never descends past years
+    expect(pxPerYear / 4).toBeGreaterThan(120);
   });
 });
 

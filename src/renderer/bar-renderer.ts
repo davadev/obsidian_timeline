@@ -76,7 +76,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       ? args.eventLabelColor.trim()
       : null;
 
-  // Labels that should slide along their bar while it is scrolled.
+  // Labels that slide along their bar while it is scrolled.
   const sticky: StickyLabel[] = [];
 
   const lanes = assignLanes(events);
@@ -115,7 +115,14 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     drawEras(svg, args.eras, viewport, isVertical, width, height, args.onOpenEra);
   }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
-  const paintAxis = drawAxis(svg, viewport, isVertical, width, height);
+  const paintAxis = drawAxis(
+    svg,
+    viewport,
+    isVertical,
+    width,
+    height,
+    args.isMobile
+  );
 
   const isMobile = args.isMobile;
 
@@ -207,14 +214,17 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
           ? anchored(svg, label, cross + LANE_THICKNESS / 2, a1, 90)
           : anchored(svg, label, a1, cross + LANE_THICKNESS / 2);
         if (args.stickyLabels !== false) {
-          sticky.push({
-            g: group,
-            from: a1,
-            to: a2,
-            cross: cross + LANE_THICKNESS / 2,
-            width: text.length * CHAR_W + LABEL_PAD * 2,
-            at: a1,
-          });
+          // Position is computed by CSS from one scroll variable (see
+          // `.txs-label-anchor` in styles.css). Writing per-label transforms
+          // on every scroll frame is what made a fast flick stutter.
+          group.classList.add("txs-label-anchor");
+          group.style.setProperty("--txs-cross", `${cross + LANE_THICKNESS / 2}px`);
+          group.style.setProperty("--txs-from", `${a1}px`);
+          group.style.setProperty(
+            "--txs-latest",
+            `${Math.max(a1, a2 - (text.length * CHAR_W + LABEL_PAD * 2))}px`
+          );
+          sticky.push({ g: group, text: label, from: a1, to: a2 });
         }
       }
     }
@@ -380,23 +390,20 @@ function drawEras(
 
 interface StickyLabel {
   g: SVGGElement;
+  text: SVGTextElement;
   from: number;
   to: number;
-  cross: number;
-  width: number;
-  /** Last position written, so an unchanged frame costs nothing. */
-  at: number;
 }
 
 /**
- * One scroll listener drives everything that depends on what is on screen:
- * the axis marks for the visible stretch, and each label's position inside
- * its own bar (a span running off both edges would otherwise show no text at
- * all when zoomed in).
+ * Wires up everything that depends on the visible stretch of the axis.
  *
- * Both are kept cheap enough for a fast flick: labels are sorted by start so
- * the visible run can be found by binary search instead of a full scan, and a
- * label whose position has not meaningfully changed is left alone.
+ * The labels themselves are positioned by CSS: each carries its own bounds as
+ * custom properties and clamps against `--txs-scroll`, so a scroll frame is a
+ * single property write on the wrapper rather than a transform write per
+ * label — that per-label loop is what made a fast flick stutter.
+ *
+ * The axis marks still have to be rebuilt, but only for what is on screen.
  */
 function attachViewportPainters(
   wrapper: HTMLElement,
@@ -404,41 +411,32 @@ function attachViewportPainters(
   paintAxis: (viewFrom: number, viewTo: number) => void,
   labels: StickyLabel[]
 ): void {
-  labels.sort((a, b) => a.from - b.from);
-  const ends = labels.map((l) => l.to);
+  if (labels.length) wrapper.addClass("is-sticky-labels");
   let frame: number | null = null;
-
-  /** First label whose bar could still be on screen. */
-  const firstVisible = (viewFrom: number): number => {
-    let lo = 0;
-    let hi = labels.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (ends[mid] < viewFrom) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  };
+  let measured = false;
 
   const paint = () => {
     frame = null;
     const viewFrom = isVertical ? wrapper.scrollTop : wrapper.scrollLeft;
     const size = isVertical ? wrapper.clientHeight : wrapper.clientWidth;
-    const viewTo = viewFrom + size;
 
-    paintAxis(viewFrom, viewTo);
+    wrapper.style.setProperty("--txs-scroll", `${viewFrom}px`);
+    paintAxis(viewFrom, viewFrom + size);
 
-    for (let i = firstVisible(viewFrom); i < labels.length; i++) {
-      const l = labels[i];
-      if (l.from > viewTo) break; // sorted: everything after is off screen too
-      const latest = Math.max(l.from, l.to - l.width);
-      const target = Math.min(Math.max(l.from, viewFrom + LABEL_PAD), latest);
-      if (Math.abs(target - l.at) < 1) continue;
-      l.at = target;
-      const rotate = isVertical ? " rotate(90)" : "";
-      const x = isVertical ? l.cross : target;
-      const y = isVertical ? target : l.cross;
-      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
+    if (!measured) {
+      measured = true;
+      // One batched pass over the real glyph widths. The estimate used at
+      // build time is close but conservative, which stopped labels short of
+      // the end of their bar.
+      for (const l of labels) {
+        const w = textWidth(l.text);
+        if (w > 0) {
+          l.g.style.setProperty(
+            "--txs-latest",
+            `${Math.max(l.from, l.to - w - LABEL_PAD * 2)}px`
+          );
+        }
+      }
     }
   };
 
@@ -450,8 +448,16 @@ function attachViewportPainters(
     },
     { passive: true }
   );
-  // First paint once the wrapper has a size.
   window.requestAnimationFrame(paint);
+}
+
+/** Real rendered width, where the platform can give it. */
+function textWidth(text: SVGTextElement): number {
+  try {
+    return text.getComputedTextLength();
+  } catch {
+    return 0;
+  }
 }
 
 function saturateForLabel(era: TimelineEra): string {
@@ -516,7 +522,8 @@ function drawAxis(
   vp: ViewportRange,
   isVertical: boolean,
   width: number,
-  height: number
+  height: number,
+  isMobile: boolean
 ): (viewFrom: number, viewTo: number) => void {
   const timeSize = isVertical ? height : width;
 
@@ -539,7 +546,8 @@ function drawAxis(
   group.setAttribute("class", "txs-axis-marks");
   svg.appendChild(group);
 
-  const target = isVertical ? 80 : 120;
+  // A phone has less room between marks, so it earns a finer step sooner.
+  const target = isVertical ? 80 : isMobile ? 90 : 120;
 
   return (viewFrom: number, viewTo: number) => {
     const ticks = visibleAxisTicks(

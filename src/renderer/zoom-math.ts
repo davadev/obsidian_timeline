@@ -10,18 +10,18 @@ export const MIN_ZOOM = 0.25;
  * Upper bound on the zoom factor. Deliberately far beyond what a pane needs,
  * so the pixel cap below — not this number — decides how deep the zoom goes.
  */
-export const MAX_ZOOM = 2000;
+export const MAX_ZOOM = 20000;
 /**
  * Hard cap on the rendered time axis, in CSS pixels — the real limit on how
  * far you can zoom in. Browsers tile the rasterisation, so element count
  * matters more than extent, but very large SVGs still get dropped or
  * mis-painted on mobile WebKit. 150k gives roughly 75px per year across two
- * millennia — enough for the axis to start naming months across a span of
- * that size — or day-level detail over a few centuries. A 1M-wide SVG with
- * 800 events builds in under 2ms and paints correctly in Chromium; lower this
- * if a device starts showing blank stretches.
+ * millennia. At 4M a six-thousand-year timeline still reaches month labels,
+ * and a span of a century or so reaches days. Chromium builds and paints an
+ * 8M-wide SVG with 800 events in about 2ms — the element count, not the
+ * extent, is what costs; lower this if a device shows blank stretches.
  */
-export const MAX_AXIS_PX = 1000000;
+export const MAX_AXIS_PX = 4000000;
 /** Multiplier applied by one press of +/-. */
 export const ZOOM_STEP = 1.35;
 

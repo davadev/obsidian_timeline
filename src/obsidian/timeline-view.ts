@@ -392,12 +392,11 @@ export class TimelineView extends ItemView {
       eventLabelColor: settings.eventLabelColor,
     });
 
-    // Swap: the stretched preview leaves with the old nodes, so there is no
-    // frame showing the old zoom un-transformed.
-    for (const el of previous) el.remove();
-    staging.removeClass("txs-view-staging");
-    this.clearGestureState();
-
+    // Swap in two steps so there is never a blank frame: the new chart is
+    // revealed as an overlay on top of the old one, and only once it has been
+    // painted does the old one go away. A large SVG takes a moment to
+    // rasterise, and removing the old nodes first is what let that show
+    // through as a flash.
     const focus = this.pendingFocus;
     this.pendingFocus = null;
 
@@ -417,10 +416,21 @@ export class TimelineView extends ItemView {
       });
     };
 
-    // Immediately, so the new chart is never painted at the wrong offset...
+    // Swap in two steps so there is never a blank frame: the new chart is
+    // revealed as an overlay on top of the old one, and only once it has been
+    // painted does the old one go away. A large SVG takes a moment to
+    // rasterise, and removing the old nodes first let that show through as a
+    // flash.
+    staging.removeClass("txs-view-staging");
+    staging.addClass("txs-view-swapping");
     restore();
-    // ...and again once layout has definitely settled.
+
     window.requestAnimationFrame(() => {
+      for (const el of previous) el.remove();
+      staging.removeClass("txs-view-swapping");
+      this.clearGestureState();
+      restore();
+      // Once more after layout has definitely settled.
       window.requestAnimationFrame(restore);
     });
   }
