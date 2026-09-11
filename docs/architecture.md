@@ -101,7 +101,16 @@ Consequences that are easy to undo by accident:
   into `renderBar`), never per tile, or a bar would change row as you pan.
 - **Labels are drawn only by the pinned layer**, in viewport coordinates — one
   per event, sliding along its bar. Tiles drawing their own produced a copy per
-  seam.
+  seam. The same pass places the **callouts**: an event whose bar cannot hold
+  its own name (every point, and any span a few pixels wide at this zoom) gets
+  it beside the bar instead, joined by a short leader and packed into the free
+  part of its own lane (`callouts.ts`, pure; widths come from `text-metrics.ts`
+  because a character-count estimate is up to 15% out and prints names over the
+  next bar). Where a lane has no room, the event stays unnamed — zooming makes
+  room. Two other shapes were prototyped and rejected on the evidence: a rail
+  of names under the chart (long leaders crossing bars, and it costs vertical
+  room) and boxed callouts in the nearest free space (heavier, and a box can
+  drift into a neighbouring lane).
 - **The window is held in absolute time** across filter changes and clamped
   into the new span, because the span is derived from the filtered events.
 - Pane width is half of the scroll↔time mapping, so a `ResizeObserver` is

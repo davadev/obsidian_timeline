@@ -270,6 +270,11 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
             control: { type: "toggle", key: "renderDefaults.stickyLabels" },
           },
           {
+            name: "Name events too short to label",
+            desc: "Draws the name of a point event, or of a span too narrow to hold its own label, beside the bar with a short leader pointing at it. Turn off to leave those events unnamed until you zoom in. Per-block override: shortEventLabels: false.",
+            control: { type: "toggle", key: "renderDefaults.shortEventLabels" },
+          },
+          {
             name: "Show in-render filter bar by default",
             desc: "Toggle the category chip bar that appears above each rendered timeline. Per-block override: showFilterUI: false.",
             control: { type: "toggle", key: "renderDefaults.showFilterUI" },

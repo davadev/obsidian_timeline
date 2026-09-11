@@ -5,6 +5,8 @@ import { fractionalPosition } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
 import { clampAxisSize } from "./zoom-math";
 import { visibleAxisTicks } from "./axis-ticks";
+import { layoutCallouts, type Callout, type CalloutItem, type LaneSpan } from "./callouts";
+import { labelFontSpec, measurerFor } from "./text-metrics";
 import type { Orientation } from "./render-options";
 
 /**
@@ -53,12 +55,12 @@ export function drawViewportLabel(
     categoryColors: Record<string, string>;
     labelColorOverride?: string | null;
   }
-): void {
+): boolean {
   const visibleFrom = Math.max(opts.startPx, 0);
   const visibleTo = Math.min(opts.endPx, opts.paneSize);
   const room = visibleTo - visibleFrom - LABEL_PAD * 2;
   const maxChars = Math.floor(room / CHAR_W);
-  if (maxChars < 4) return;
+  if (maxChars < MIN_LABEL_CHARS) return false;
 
   const cross = AXIS_PAD + opts.lane * (LANE_THICKNESS + LANE_GAP);
   const fill = colorFor(ev, opts.categoryColors);
@@ -74,6 +76,103 @@ export function drawViewportLabel(
   } else {
     anchored(svg, label, visibleFrom, cross + LANE_THICKNESS / 2);
   }
+  return true;
+}
+
+/**
+ * Draws one callout: a short leader from the event to its name, placed in the
+ * free part of its own lane (see `layoutCallouts` for why there).
+ *
+ * The name is the event's only hit target when its bar is a few pixels wide, so
+ * it is clickable — on a phone a 12px dot is not something you can reliably tap.
+ */
+export function drawCallout(
+  svg: SVGSVGElement,
+  ev: TimelineEvent,
+  placement: Callout,
+  opts: {
+    isVertical: boolean;
+    categoryColors: Record<string, string>;
+    labelColorOverride?: string | null;
+    container: HTMLElement;
+    onOpenEvent: (id: string) => void;
+    isMobile: boolean;
+  }
+): void {
+  const cross =
+    AXIS_PAD + placement.lane * (LANE_THICKNESS + LANE_GAP) + LANE_THICKNESS / 2;
+  const color = colorFor(ev, opts.categoryColors);
+
+  const leaderFrom =
+    placement.anchorPx + (placement.side === "after" ? 1 : -1);
+  const leaderTo =
+    placement.side === "after"
+      ? placement.textPx - LEADER_GAP
+      : placement.textPx + placement.widthPx + LEADER_GAP;
+  const leader = document.createElementNS(SVG_NS, "line");
+  if (opts.isVertical) {
+    leader.setAttribute("x1", String(cross));
+    leader.setAttribute("y1", String(leaderFrom));
+    leader.setAttribute("x2", String(cross));
+    leader.setAttribute("y2", String(leaderTo));
+  } else {
+    leader.setAttribute("x1", String(leaderFrom));
+    leader.setAttribute("y1", String(cross));
+    leader.setAttribute("x2", String(leaderTo));
+    leader.setAttribute("y2", String(cross));
+  }
+  leader.setAttribute("stroke", color);
+  leader.setAttribute("class", "txs-callout-leader");
+  svg.appendChild(leader);
+
+  const text = document.createElementNS(SVG_NS, "text");
+  text.setAttribute("x", "0");
+  text.setAttribute("y", "0");
+  text.setAttribute("class", "txs-event-label txs-callout-label");
+  text.setAttribute("fill", opts.labelColorOverride || "var(--text-normal)");
+  if (opts.isVertical) text.setAttribute("text-anchor", "start");
+  text.textContent = placement.label;
+  attachEvents(text, ev, opts.container, opts.onOpenEvent, opts.isMobile);
+  if (opts.isVertical) anchored(svg, text, cross, placement.textPx, 90);
+  else anchored(svg, text, placement.textPx, cross);
+}
+
+/**
+ * Splits events into the ones whose name fits inside their own bar and the ones
+ * that need a callout, and returns the lane occupancy the layout needs.
+ *
+ * `startPx` / `endPx` are positions along the time axis; in the windowed chart
+ * they are viewport coordinates and may fall outside the pane, which is exactly
+ * what decides whether a bar has any visible room left for its name.
+ */
+export function splitLabelling(
+  entries: Array<{ ev: TimelineEvent; lane: number; startPx: number; endPx: number }>,
+  paneSize: number
+): { needCallout: CalloutItem[]; occupied: LaneSpan[] } {
+  const needCallout: CalloutItem[] = [];
+  const occupied: LaneSpan[] = [];
+  for (const { ev, lane, startPx, endPx } of entries) {
+    if (ev.isPoint) {
+      occupied.push({ lane, from: startPx - POINT_RADIUS, to: startPx + POINT_RADIUS });
+      needCallout.push({ id: ev.id, text: ev.text, lane, startPx, endPx: startPx, isPoint: true });
+      continue;
+    }
+    const width = Math.max(MIN_BAR_THICKNESS, endPx - startPx);
+    occupied.push({ lane, from: startPx, to: startPx + width });
+    const room =
+      Math.min(startPx + width, paneSize) - Math.max(startPx, 0) - LABEL_PAD * 2;
+    if (Math.floor(room / CHAR_W) < MIN_LABEL_CHARS) {
+      needCallout.push({
+        id: ev.id,
+        text: ev.text,
+        lane,
+        startPx,
+        endPx: startPx + width,
+        isPoint: false,
+      });
+    }
+  }
+  return { needCallout, occupied };
 }
 
 export function crossAxisSizeFor(laneCount: number): number {
@@ -85,6 +184,10 @@ const POINT_RADIUS = 6;
 const LABEL_PAD = 8;
 const CHAR_W = 6.5;
 const MIN_BAR_THICKNESS = 4;
+/** Fewer characters than this is not a label, it is noise. */
+const MIN_LABEL_CHARS = 4;
+/** Breathing room between a leader and the name it points at. */
+const LEADER_GAP = 3;
 
 export interface BarRenderArgs {
   container: HTMLElement;
@@ -109,6 +212,8 @@ export interface BarRenderArgs {
   eventLabelColor?: string;
   /** Slide labels along their bar so they stay visible. Default on. */
   stickyLabels?: boolean;
+  /** Name events whose bar is too short to hold their own label. Default on. */
+  shortEventLabels?: boolean;
   /**
    * Tile mode (the windowed chart).
    *
@@ -224,6 +329,13 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   );
 
   const isMobile = args.isMobile;
+  // Where every event sits along the axis, for the callout pass below.
+  const placed: Array<{
+    ev: TimelineEvent;
+    lane: number;
+    startPx: number;
+    endPx: number;
+  }> = [];
 
   events.forEach((ev, i) => {
     const lane = lanes[i];
@@ -251,6 +363,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       circle.classList.add("txs-event-point");
       attachEvents(circle, ev, container, onOpenEvent, isMobile);
       anchored(svg, circle, cx, cy);
+      placed.push({ ev, lane, startPx: at, endPx: at });
     } else {
       const a1 = along(ev.start);
       const a2 = along(ev.end);
@@ -290,6 +403,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       rect.classList.add("txs-event-bar");
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
+      placed.push({ ev, lane, startPx: a1, endPx: a1 + span });
 
       // Tiles never label: the windowed chart draws every label once, in a
       // layer pinned to the viewport, so a name cannot repeat at a seam or
@@ -327,6 +441,31 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       }
     }
   });
+
+  // Names for the events whose own bar is too small to hold one. Tiles never
+  // do this: the windowed chart owns every label, in viewport coordinates, so
+  // a name cannot repeat at a seam (see `paintEdgeLabels`). This path is the
+  // whole-span render behind PNG export, where the same events would otherwise
+  // export as unlabelled specks.
+  if (!tile && args.shortEventLabels !== false) {
+    const { needCallout, occupied } = splitLabelling(placed, timeAxisSize);
+    const byId = new Map(placed.map((p) => [p.ev.id, p.ev]));
+    const measure = measurerFor(labelFontSpec(svg));
+    for (const callout of layoutCallouts(needCallout, occupied, timeAxisSize, {
+      measure,
+    })) {
+      const ev = byId.get(callout.id);
+      if (!ev) continue;
+      drawCallout(svg, ev, callout, {
+        isVertical,
+        categoryColors,
+        labelColorOverride,
+        container,
+        onOpenEvent,
+        isMobile,
+      });
+    }
+  }
 
   wrapper.appendChild(svg);
   if (tile) {

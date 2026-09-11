@@ -266,6 +266,78 @@ describe("windowed chart", () => {
     expect(scroller.classList.contains("is-zooming")).toBe(true);
   });
 
+  it("names events whose bar is too short to hold a label", () => {
+    // A point has no width at any zoom, and at this one the two-year bar is a
+    // few pixels: without callouts the chart shows coloured specks and no text.
+    const withPoint = [
+      ev("long", -800, 1900),
+      { ...ev("spark", 1000, 1000), isPoint: true } as TimelineEvent,
+    ];
+    const { scroller } = chartWith(withPoint, 1);
+    const callouts = Array.from(
+      scroller.querySelectorAll(".txs-callout-label")
+    ).map((el) => el.textContent);
+    expect(callouts).toContain("Event spark");
+    // The leader is what ties the name to the speck it belongs to.
+    expect(scroller.querySelectorAll(".txs-callout-leader").length).toBe(1);
+  });
+
+  it("makes the name the hit target, since the event itself is a few pixels", () => {
+    const opened: string[] = [];
+    const container = host();
+    const chart = new WindowedChart({
+      container,
+      categories: [],
+      categoryColors: {},
+      orientation: "horizontal",
+      isMobile: false,
+      onOpenEvent: (id) => opened.push(id),
+    });
+    const scroller = container.querySelector(".txs-chart") as HTMLElement;
+    Object.defineProperty(scroller, "clientWidth", {
+      value: PANE,
+      configurable: true,
+    });
+    chart.setData(
+      [
+        ev("long", -800, 1900),
+        { ...ev("spark", 1500, 1500), isPoint: true } as TimelineEvent,
+      ],
+      [],
+      { start: { year: -900 }, end: { year: 2030 } },
+      1
+    );
+
+    const label = scroller.querySelector(".txs-callout-label") as SVGElement;
+    label.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(opened).toEqual(["spark"]);
+  });
+
+  it("draws no callouts when the setting is off", () => {
+    const container = host();
+    const chart = new WindowedChart({
+      container,
+      categories: [],
+      categoryColors: {},
+      orientation: "horizontal",
+      isMobile: false,
+      onOpenEvent: () => {},
+      shortEventLabels: false,
+    });
+    const scroller = container.querySelector(".txs-chart") as HTMLElement;
+    Object.defineProperty(scroller, "clientWidth", {
+      value: PANE,
+      configurable: true,
+    });
+    chart.setData(
+      [{ ...ev("spark", 1500, 1500), isPoint: true } as TimelineEvent],
+      [],
+      { start: { year: -900 }, end: { year: 2030 } },
+      1
+    );
+    expect(scroller.querySelectorAll(".txs-callout-label").length).toBe(0);
+  });
+
   it("tears down cleanly", () => {
     const { chart, scroller } = chartWith(DATA, 2);
     chart.destroy();

@@ -26,6 +26,7 @@ Defaults for every ` ```timeline ` block. Per-block YAML overrides these. See [R
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | Keep event labels in view | on | Slides each event label along its bar while scrolling, so a span running off both edges of the screen still shows its name. Off pins the label to the bar's start. Per-block: `stickyLabels: false`. |
+| Name events too short to label | on | Draws the name beside the bar, with a short leader pointing at it, for every point event and for any span too narrow to hold its own label at the current zoom. Names are packed into the free part of the same lane and never overlap anything; where there is no room, the event stays unnamed until you zoom in. Per-block: `shortEventLabels: false`. |
 
 The timeline view's own zoom (pinch, trackpad pinch / <kbd>Ctrl</kbd>+scroll, or the `−` / `+` buttons) is not a setting — see [Commands](commands.md#zooming-the-timeline-view).
 
