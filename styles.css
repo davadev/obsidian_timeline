@@ -483,13 +483,18 @@
   color: var(--text-muted);
 }
 
-.txs-inspector-row input,
+/* Text-bearing controls fill the row. Checkboxes and radios are left entirely
+ * to Obsidian: width: 100% stretched its styled checkbox into a long oval, and
+ * overriding the width back to `auto` collapsed it to nothing — the app sizes
+ * these itself, so this rule simply must not reach them. */
+.txs-inspector-row input:not([type="checkbox"]):not([type="radio"]),
 .txs-inspector-row textarea,
 .txs-inspector-row select {
   width: 100%;
   padding: 4px 6px;
   box-sizing: border-box;
 }
+
 
 .txs-inspector-section-title {
   margin-top: 6px;
@@ -947,4 +952,108 @@
 /* Applied while the tooltip is measured off-view, before placement. */
 .txs-tooltip.is-measuring {
   visibility: hidden;
+}
+
+/* ------------------------------------------------------------------ *
+ * Windowed chart (0.11): an empty spacer gives the scroller its range
+ * and a ring of pane-wide tiles is positioned inside it, so the drawn
+ * element never grows with the zoom.
+ * ------------------------------------------------------------------ */
+
+.txs-chart {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Native panning; two-finger pinch still reaches the touch handlers. */
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* While two fingers are down the scroller must not also pan, or the WebView
+ * takes the gesture over and the pinch stops after a few pixels. */
+.txs-chart.is-pinching {
+  touch-action: none;
+}
+
+.txs-chart.txs-vertical {
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  max-height: 80vh;
+}
+
+/* Zero-sized and sticky, so it rides the viewport's leading edge without
+ * joining the scroll content. Holds the names of bars that start off-screen. */
+.txs-chart-edge {
+  position: sticky;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Unpainted: it exists only to give the scroller a range. */
+.txs-chart-spacer {
+  pointer-events: none;
+}
+
+/* All tiles in one layer: a pinch scales this, so nothing is added to or
+ * removed from the DOM while the gesture is live. Removing the element a touch
+ * began on makes the browser cancel the gesture — which is what made a pinch
+ * stop responding halfway through. */
+.txs-chart-tiles {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: var(--txs-tile-origin, 0) 0;
+  transform: scaleX(var(--txs-tile-scale, 1));
+}
+
+.txs-chart.txs-vertical .txs-chart-tiles {
+  transform-origin: 0 var(--txs-tile-origin, 0);
+  transform: scaleY(var(--txs-tile-scale, 1));
+}
+
+/* Undo the stretch for anything that is not a duration: axis labels and point
+ * markers sit at the origin of an anchored <g>, so scaling them by the inverse
+ * about that origin keeps their shape and their position while the bars around
+ * them stretch. */
+.txs-chart.is-zooming .txs-chart-tiles text,
+.txs-chart.is-zooming .txs-chart-tiles .txs-event-point {
+  transform-origin: 0 0;
+  transform: scaleX(var(--txs-tile-inv, 1));
+}
+
+.txs-chart.txs-vertical.is-zooming .txs-chart-tiles text,
+.txs-chart.txs-vertical.is-zooming .txs-chart-tiles .txs-event-point {
+  transform: scaleY(var(--txs-tile-inv, 1));
+}
+
+/* Labels are redrawn on commit; they would only smear during the gesture. */
+.txs-chart.is-zooming .txs-chart-edge {
+  opacity: 0;
+}
+
+.txs-tile-host {
+  position: absolute;
+  top: 0;
+}
+
+.txs-tile-host .txs-tile > svg {
+  display: block;
+}
+
+/* Windowed view layout: a persistent chart host (so a filter change cannot
+ * throw away the scroll position) with the list beneath it. */
+.txs-view-chart {
+  flex: 0 0 auto;
+}
+
+.txs-view-list {
+  margin-top: 8px;
 }

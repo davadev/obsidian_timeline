@@ -265,6 +265,11 @@ export class TimelineXmlSyncSettingTab extends PluginSettingTab {
             },
           },
           {
+            name: "Windowed chart (experimental)",
+            desc: "Draws only the stretch of time on screen instead of the whole timeline, so zooming can reach months, days and hours without the app running out of memory. Turn off to fall back to the previous renderer.",
+            control: { type: "toggle", key: "renderDefaults.windowedChart" },
+          },
+          {
             name: "Keep event labels in view",
             desc: "Slides an event's label along its bar while you scroll, so a span that runs off both edges of the screen still shows its name. Turn off to pin labels to the start of the bar. Per-block override: stickyLabels: false.",
             control: { type: "toggle", key: "renderDefaults.stickyLabels" },

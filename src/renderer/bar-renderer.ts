@@ -23,6 +23,64 @@ const LANE_THICKNESS = 26; // height (horizontal) or width (vertical) of one lan
 const LANE_GAP = 6;
 const AXIS_PAD = 34; // padding before first lane that holds axis labels
 const TAIL_PAD = 10;
+
+/**
+ * Size of the non-time axis for a given number of lanes.
+ *
+ * The windowed chart needs this before it draws anything: its tiles are
+ * absolutely positioned, so they contribute no height of their own and the
+ * scroller would collapse to the height of its (1px) spacer — a scroller with
+ * no chart in it.
+ */
+/**
+ * Draws one event label into a layer pinned to the viewport.
+ *
+ * Every label in the windowed chart comes through here, in viewport
+ * coordinates, so there is exactly one per event however many tiles its bar
+ * crosses. `startPx` may be negative (the bar began before the viewport) and
+ * `endPx` may be past the far edge; the label slides along the visible part of
+ * its own bar instead of scrolling away with the start.
+ */
+export function drawViewportLabel(
+  svg: SVGSVGElement,
+  ev: TimelineEvent,
+  opts: {
+    lane: number;
+    startPx: number;
+    endPx: number;
+    paneSize: number;
+    isVertical: boolean;
+    categoryColors: Record<string, string>;
+    labelColorOverride?: string | null;
+  }
+): void {
+  const visibleFrom = Math.max(opts.startPx, 0);
+  const visibleTo = Math.min(opts.endPx, opts.paneSize);
+  const room = visibleTo - visibleFrom - LABEL_PAD * 2;
+  const maxChars = Math.floor(room / CHAR_W);
+  if (maxChars < 4) return;
+
+  const cross = AXIS_PAD + opts.lane * (LANE_THICKNESS + LANE_GAP);
+  const fill = colorFor(ev, opts.categoryColors);
+  const label = document.createElementNS(SVG_NS, "text");
+  label.setAttribute("x", String(LABEL_PAD));
+  label.setAttribute("y", "0");
+  label.setAttribute("class", "txs-event-label");
+  label.setAttribute("fill", opts.labelColorOverride || contrastTextColor(fill));
+  label.textContent = truncate(ev.text, maxChars);
+  if (opts.isVertical) {
+    label.setAttribute("text-anchor", "start");
+    anchored(svg, label, cross + LANE_THICKNESS / 2, visibleFrom, 90);
+  } else {
+    anchored(svg, label, visibleFrom, cross + LANE_THICKNESS / 2);
+  }
+}
+
+export function crossAxisSizeFor(laneCount: number): number {
+  return (
+    AXIS_PAD + Math.max(1, laneCount) * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD
+  );
+}
 const POINT_RADIUS = 6;
 const LABEL_PAD = 8;
 const CHAR_W = 6.5;
@@ -51,6 +109,21 @@ export interface BarRenderArgs {
   eventLabelColor?: string;
   /** Slide labels along their bar so they stay visible. Default on. */
   stickyLabels?: boolean;
+  /**
+   * Tile mode (the windowed chart).
+   *
+   * The caller owns the scroll container and hands over one tile's worth of
+   * time and pixels; the renderer draws exactly that, with no scroller of its
+   * own and no zoom multiplier. Lanes come in precomputed because they must be
+   * stable across tiles — assigning them per tile would make a bar change row
+   * as the user pans.
+   */
+  tile?: {
+    /** Time-axis length of this tile, in px. */
+    axisPx: number;
+    laneByEventId: Map<string, number>;
+    laneCount: number;
+  };
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -63,8 +136,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     zoom,
     orientation,
   } = args;
-  const wrapper = container.createDiv({ cls: "txs-timeline-bar" });
-  if (!viewport || events.length === 0) {
+  const tile = args.tile;
+  // In tile mode the caller owns the scroller; the renderer just fills a box.
+  const wrapper = tile
+    ? container.createDiv({ cls: "txs-tile" })
+    : container.createDiv({ cls: "txs-timeline-bar" });
+  if (!viewport || (events.length === 0 && !tile)) {
     wrapper.createDiv({ text: "No events to display." });
     return wrapper;
   }
@@ -79,8 +156,18 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   // Labels that slide along their bar while it is scrolled.
   const sticky: StickyLabel[] = [];
 
-  const lanes = assignLanes(events);
-  const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
+  // In tile mode a bar that continues past the tile must keep its true
+  // geometry and simply be clipped: clamping it to the tile's edge is what put
+  // rounded ends and fuzzy fades in the middle of an event, at every seam.
+  const along = (d: Parameters<typeof fractionalPosition>[0]): number =>
+    fractionalPosition(d, viewport.start, viewport.end, !tile) * timeAxisSize;
+
+  const lanes = tile
+    ? events.map((e) => tile.laneByEventId.get(e.id) ?? 0)
+    : assignLanes(events);
+  const laneCount = tile
+    ? Math.max(1, tile.laneCount)
+    : Math.max(1, ...lanes.map((l) => l + 1));
 
   const containerSize = isVertical
     ? Math.max(280, container.clientWidth || 640)
@@ -89,9 +176,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const timeAxisBase = isVertical
     ? Math.max(360, container.clientHeight || 600)
     : containerSize;
-  const timeAxisSize = clampAxisSize(timeAxisBase * zoom, args.isMobile);
-  const crossAxisSize =
-    AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
+  // A tile is drawn at exactly the size it was asked for: the window, not the
+  // zoom factor, decides how much time it covers.
+  const timeAxisSize = tile
+    ? Math.max(1, Math.round(tile.axisPx))
+    : clampAxisSize(timeAxisBase * zoom, args.isMobile);
+  const crossAxisSize = crossAxisSizeFor(laneCount);
 
   const width = isVertical ? crossAxisSize : timeAxisSize;
   const height = isVertical ? timeAxisSize : crossAxisSize;
@@ -112,7 +202,16 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
 
   // Eras paint FIRST so they sit behind stripes + axis grid + events.
   if (args.eras && args.eras.length) {
-    drawEras(svg, args.eras, viewport, isVertical, width, height, args.onOpenEra);
+    drawEras(
+      svg,
+      args.eras,
+      viewport,
+      isVertical,
+      width,
+      height,
+      args.onOpenEra,
+      Boolean(tile)
+    );
   }
   drawLaneStripes(svg, laneCount, isVertical, width, height);
   const paintAxis = drawAxis(
@@ -132,11 +231,9 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     const color = colorFor(ev, categoryColors);
     const textColor = labelColorOverride ?? contrastTextColor(color);
     if (ev.isPoint) {
-      const along =
-        fractionalPosition(ev.start, viewport.start, viewport.end) *
-        timeAxisSize;
-      const cx = isVertical ? cross + LANE_THICKNESS / 2 : along;
-      const cy = isVertical ? along : cross + LANE_THICKNESS / 2;
+      const at = along(ev.start);
+      const cx = isVertical ? cross + LANE_THICKNESS / 2 : at;
+      const cy = isVertical ? at : cross + LANE_THICKNESS / 2;
       const circle = document.createElementNS(SVG_NS, "circle");
       circle.setAttribute("cx", "0");
       circle.setAttribute("cy", "0");
@@ -155,11 +252,8 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(circle, ev, container, onOpenEvent, isMobile);
       anchored(svg, circle, cx, cy);
     } else {
-      const a1 =
-        fractionalPosition(ev.start, viewport.start, viewport.end) *
-        timeAxisSize;
-      const a2 =
-        fractionalPosition(ev.end, viewport.start, viewport.end) * timeAxisSize;
+      const a1 = along(ev.start);
+      const a2 = along(ev.end);
       const span = Math.max(MIN_BAR_THICKNESS, a2 - a1);
       const rect = document.createElementNS(SVG_NS, "rect");
       if (isVertical) {
@@ -197,8 +291,11 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
 
+      // Tiles never label: the windowed chart draws every label once, in a
+      // layer pinned to the viewport, so a name cannot repeat at a seam or
+      // collide with a copy sliding in from off-screen.
       const maxChars = Math.floor((span - LABEL_PAD * 2) / CHAR_W);
-      if (maxChars >= 4) {
+      if (maxChars >= 4 && !tile) {
         const label = document.createElementNS(SVG_NS, "text");
         const text = truncate(ev.text, maxChars);
         // The gap lives on the text, not on the anchor: inside the
@@ -232,7 +329,22 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   });
 
   wrapper.appendChild(svg);
-  attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
+  if (tile) {
+    // A tile never scrolls: it is a fixed slice of the window that the shell
+    // moves around. Paint its axis once, and pin each label to the start of
+    // the tile so a bar entering from off-screen still shows its name.
+    paintAxis(0, timeAxisSize);
+    for (const l of sticky) {
+      const target = Math.min(Math.max(l.from, 0), l.latest);
+      if (Math.abs(target - l.at) < 1) continue;
+      const rotate = isVertical ? " rotate(90)" : "";
+      const x = isVertical ? l.cross : target;
+      const y = isVertical ? target : l.cross;
+      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
+    }
+  } else {
+    attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
+  }
   return wrapper;
 }
 
@@ -305,7 +417,8 @@ function drawEras(
   isVertical: boolean,
   width: number,
   height: number,
-  onOpenEra?: (id: string) => void
+  onOpenEra?: (id: string) => void,
+  isTile = false
 ): void {
   const timeSize = isVertical ? height : width;
   for (const era of eras) {
@@ -316,10 +429,10 @@ function drawEras(
       !(era.start.year > viewport.end.year || era.end.year < viewport.start.year)
     ) {
       const a1Frac = clamp01(
-        fractionalPosition(era.start, viewport.start, viewport.end)
+        fractionalPosition(era.start, viewport.start, viewport.end, !isTile)
       );
       const a2Frac = clamp01(
-        fractionalPosition(era.end, viewport.start, viewport.end)
+        fractionalPosition(era.end, viewport.start, viewport.end, !isTile)
       );
       const a1 = a1Frac * timeSize;
       const a2 = a2Frac * timeSize;

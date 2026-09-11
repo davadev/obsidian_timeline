@@ -166,11 +166,22 @@ export function fractionalPosition(
  */
 /**
  * Inverse of {@link toJulian}: a Julian Day Number back to a proleptic
- * Gregorian date. Used to turn a position along the axis into the date it
- * represents, so the axis can label only the stretch currently on screen.
+ * Gregorian date, including time of day. Used to turn a position along the
+ * axis into the date it represents, so the axis can label the stretch on
+ * screen — down to the hour, which is the zoom floor.
  */
 export function fromJulian(j: number): TimelineDate {
-  const jdn = Math.floor(j + 0.5);
+  // JD counts from noon, so shifting by half a day puts the integer part on
+  // the calendar date and the remainder on the time since midnight.
+  const shifted = j + 0.5;
+  let jdn = Math.floor(shifted);
+  let minutesIntoDay = Math.round((shifted - jdn) * 1440);
+  if (minutesIntoDay >= 1440) {
+    // Rounding landed on the next midnight.
+    minutesIntoDay = 0;
+    jdn += 1;
+  }
+
   const a = jdn + 32044;
   const b = Math.floor((4 * a + 3) / 146097);
   const c = a - Math.floor((146097 * b) / 4);
@@ -181,7 +192,13 @@ export function fromJulian(j: number): TimelineDate {
   const day = e - Math.floor((153 * m + 2) / 5) + 1;
   const month = m + 3 - 12 * Math.floor(m / 10);
   const year = 100 * b + d2 - 4800 + Math.floor(m / 10);
-  return { year, month, day };
+  return {
+    year,
+    month,
+    day,
+    hour: Math.floor(minutesIntoDay / 60),
+    minute: minutesIntoDay % 60,
+  };
 }
 
 export function toJulian(d: TimelineDate): number {

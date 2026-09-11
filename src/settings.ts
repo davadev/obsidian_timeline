@@ -69,6 +69,12 @@ export interface TimelineXmlSyncSettings {
    */
   /** mtime of the XML file as it was last written by this plugin. Used to detect remote edits. */
   lastWrittenXmlMtime: number | null;
+  /**
+   * Fingerprint of the XML as the plugin last saw it. Remote sync clients
+   * rewrite a file when they re-download it, so a moved mtime alone cannot
+   * tell an edit from a touch.
+   */
+  lastSeenXmlFingerprint: string | null;
   /** Skip auto-sync for this many ms after plugin load (lets remote sync finish initial pull). */
   autoSyncStartupDelayMs: number;
   /** TTL of per-path self-write suppression. Remote sync can land just-written files seconds later. */
@@ -134,6 +140,7 @@ export const DEFAULT_SETTINGS: TimelineXmlSyncSettings = {
   clickBehavior: "inspector",
   globalFilterPrecision: "year",
   lastWrittenXmlMtime: null,
+  lastSeenXmlFingerprint: null,
   autoSyncStartupDelayMs: 30_000,
   selfWriteTtlMs: 5_000,
   syncLogEnabled: true,

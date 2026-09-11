@@ -27,8 +27,13 @@ export function maxAxisPx(isMobile: boolean): number {
   return isMobile ? MAX_AXIS_PX_MOBILE : MAX_AXIS_PX;
 }
 
-/** Multiplier applied by one press of +/-. */
-export const ZOOM_STEP = 1.35;
+/**
+ * Multiplier applied by one press of +/-.
+ *
+ * Deliberately coarse: the zoom range now runs from the whole timeline down to
+ * an hour, and 1.35 per press meant dozens of taps to cross it.
+ */
+export const ZOOM_STEP = 2;
 
 /**
  * Highest zoom this container can actually render.

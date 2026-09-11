@@ -34,6 +34,10 @@ import { makeTimelineProcessor } from "./obsidian/markdown-postprocessor";
 import { debounce } from "./timeline/sync-engine";
 import { setLogLevel } from "./logger";
 import { initDeviceStore } from "./obsidian/app-storage";
+import {
+  classifyExternalXml,
+  contentFingerprint,
+} from "./obsidian/sync-policy";
 
 /**
  * Persisted alongside settings (under the same data.json key) so a crash on
@@ -661,11 +665,49 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     if (!s.sourceXmlPath) return;
     const mtime = this.vault.getMtime(s.sourceXmlPath);
     if (mtime == null) return;
-    // Allow a 2s grace for filesystem mtime quantization.
-    if (
-      s.lastWrittenXmlMtime != null &&
-      mtime > s.lastWrittenXmlMtime + 2000
-    ) {
+
+    // A moved mtime is not an edit. Sync clients rewrite the file whenever they
+    // re-download it, which used to raise "changed externally" on a file nobody
+    // had touched — so read it and compare fingerprints before saying anything.
+    let verdict = classifyExternalXml({
+      mtime,
+      lastWrittenMtime: s.lastWrittenXmlMtime,
+    });
+    if (verdict.kind === "changed") {
+      let fingerprint: string | null = null;
+      try {
+        fingerprint = contentFingerprint(
+          await this.vault.readText(s.sourceXmlPath)
+        );
+      } catch {
+        // Unreadable right now (mid-sync, most likely). Try again next tick.
+        return;
+      }
+      verdict = classifyExternalXml({
+        mtime,
+        lastWrittenMtime: s.lastWrittenXmlMtime,
+        fingerprint,
+        lastFingerprint: s.lastSeenXmlFingerprint,
+      });
+      if (!s.lastSeenXmlFingerprint) {
+        // First run after upgrading, or after an import that predates
+        // fingerprints: record what the file looks like now so the NEXT sync
+        // touch can be recognised as one. The warning below still fires for
+        // this one, because without a baseline we genuinely cannot tell.
+        s.lastSeenXmlFingerprint = fingerprint;
+        await this.saveSettings();
+      }
+    }
+
+    if (verdict.kind === "touched") {
+      // Same bytes, new timestamp: adopt it silently so we do not re-read the
+      // file on every tick from here on.
+      s.lastWrittenXmlMtime = mtime;
+      await this.saveSettings();
+      return;
+    }
+
+    if (verdict.kind === "changed") {
       if (!this.externalChangeAnnounced) {
         new Notice(
           "Timeline XML changed externally (remote sync?). Run \"import XML\" to pick up changes before editing.",
@@ -678,9 +720,10 @@ export default class TimelineXmlSyncPlugin extends Plugin {
           `mtime=${mtime} vs lastWritten=${s.lastWrittenXmlMtime}`
         );
       }
-    } else {
-      this.externalChangeAnnounced = false;
+      return;
     }
+
+    this.externalChangeAnnounced = false;
   }
 
   private rebuildDebouncedSync(): void {

@@ -37,6 +37,12 @@ export interface RenderOptions {
    */
   stickyLabels?: boolean;
   /**
+   * Draw only the visible time window instead of the whole timeline (0.11).
+   * Temporary escape hatch while the windowed chart is in beta: off falls back
+   * to the wide-SVG renderer.
+   */
+  windowedChart?: boolean;
+  /**
    * Render only the events whose text matches one of these strings (case-insensitive
    * substring). Useful when embedding a timeline in a note that isn't itself an
    * event — e.g. a topic note that should display a curated subset.
@@ -76,4 +82,5 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   orientation: "horizontal",
   showFilterUI: true,
   stickyLabels: true,
+  windowedChart: true,
 };

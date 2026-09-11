@@ -40,20 +40,24 @@ The time axis is scaled to fit by default. To look closer:
   back to automatic.
 
 The axis re-scales with the zoom: fitted out it marks centuries, zoomed in it
-moves to decades, years, months and finally individual days, so a label near
-the pointer always says where you are.
+moves to decades, years, months, days and finally hours, so a label near the
+pointer always says where you are. Only the marks for the visible stretch are
+drawn, so the axis stays the same size at any depth.
 
 The factor shown between the buttons is what is actually being drawn: once the
 pane hits its ceiling the `+` button greys out rather than letting the number
 climb against a chart that has stopped growing.
 
-How deep the zoom goes is bounded by a pixel cap on the rendered axis, not by
-the zoom factor — the chart is one SVG, and its width is its compositing layer.
-`src/renderer/zoom-math.ts` caps it at 1 000 000 px on desktop and **120 000 px
-on mobile**: iOS refuses to allocate a multi-million-pixel layer and kills the
-app mid-gesture rather than degrading. The practical consequence is that a very
-long timeline reaches month labels on desktop but not on a phone; a shorter
-span (a century or two) reaches days on both.
+Since 0.11 the chart draws only the stretch of time on screen, so **zoom depth
+costs nothing**: a window of three months renders exactly as cheaply as three
+millennia. The floor is a **one-hour window**, on desktop and phone alike.
+Earlier versions widened one big SVG instead, which capped the zoom long before
+that — and, on iOS, took the app down with it.
+
+A pinch is amplified (its scale raised to the power of 2.5 — `PINCH_GAIN` in
+`src/renderer/windowed-chart.ts`), because fingers only span two or three times
+their starting distance and the zoom range now runs to millions. One comfortable
+gesture covers roughly an order of magnitude; the `−` / `+` buttons step 2x.
 
 Zoom is a view setting, not a filter: it is not counted in the Filters badge,
 though **Clear filters** does reset it to automatic. Inline ` ```timeline `

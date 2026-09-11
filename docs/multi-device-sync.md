@@ -13,7 +13,7 @@ For a vault synced across devices (Obsidian Sync, [Nextcloud + Remotely Save](ht
 | `regenerateXml` and the XML changed externally since the cache read | **Abort** + Notice + sync-log entry. User runs `Import XML` to pull, then retries. |
 | `importXml` and a note has been edited locally since the last XML-driven write (`file.mtime > last_synced_xml_mtime + 2s`) | **Skip** that note. Notice counts skipped notes. Run **Regenerate XML** to push them, or **Wipe and reimport** to overwrite. |
 | `wipeAndReimport` | Backs up XML to `<path>.bak-<ts>`. Backs up every event + era MD into `_backups/wipe-<ts>/`. Prunes old backups per the retention setting. Only then deletes + reimports. |
-| Remote XML edit detected (mtime moved beyond `lastWrittenXmlMtime`) | One-shot Notice prompts the user to run `Import XML`. Logged under `external-xml-change`. |
+| Remote XML edit detected (mtime moved **and** the contents differ from the fingerprint of what was last imported/written) | One-shot Notice prompts the user to run `Import XML`. Logged under `external-xml-change`. A file whose mtime moved but whose bytes are unchanged — what iCloud, Remotely Save and friends do on re-download — is adopted silently. |
 | Filter block YAML write fails because another device rewrote the block | Re-reads the file, retries once with the freshest body. If still failing, logged as `filter-persist-failed`. |
 
 ## Per-device sync toggle
