@@ -110,6 +110,7 @@ export function renderTimeline(args: RenderArgs): void {
         fuzzyGradientPercent: args.fuzzyGradientPercent,
         eventLabelColor: args.eventLabelColor,
         stickyLabels: args.options.stickyLabels,
+        shortEventLabels: args.options.shortEventLabels,
       });
       if (effViewport) chart.setData(events, effEras ?? [], effViewport, effectiveZoom);
     } else if (chart) {

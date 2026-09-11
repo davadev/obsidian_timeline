@@ -111,3 +111,20 @@ if (elProto && !elProto.empty) {
     this.setAttribute(k, String(v));
   };
 }
+
+// Obsidian also exposes createEl / createDiv / createSpan as globals that
+// return a detached element. `text-metrics` uses the global form to build the
+// canvas it measures label widths with.
+const globalScope = globalThis as unknown as Record<string, unknown>;
+if (typeof document !== "undefined" && !globalScope.createEl) {
+  globalScope.createEl = (tag: string, opts?: CreateOpts): HTMLElement => {
+    // jsdom has no canvas, and asking one for a 2D context logs a "not
+    // implemented" warning on every render. Hand back something without a
+    // getContext instead: `text-metrics` treats that as "cannot measure" and
+    // falls back to its character estimate, which is what jsdom can support.
+    const el = document.createElement(tag === "canvas" ? "div" : tag);
+    if (opts?.text != null) el.textContent = opts.text;
+    if (opts?.cls) el.className = opts.cls;
+    return el;
+  };
+}

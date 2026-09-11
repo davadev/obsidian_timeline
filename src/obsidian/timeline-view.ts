@@ -383,6 +383,7 @@ export class TimelineView extends ItemView {
           fuzzyGradientPercent: settings.fuzzyGradientPercent,
           eventLabelColor: settings.eventLabelColor,
           stickyLabels: settings.renderDefaults.stickyLabels,
+          shortEventLabels: settings.renderDefaults.shortEventLabels,
           onWindowChange: (_w, zoom) => {
             this.effectiveZoom = zoom;
             this.filters.zoom = zoom;

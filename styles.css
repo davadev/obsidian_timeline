@@ -52,6 +52,21 @@
   font-weight: 500;
 }
 
+/* An event too short to hold its own name gets it beside the bar instead,
+ * joined by a leader in the event's colour. At that size the name is also the
+ * only thing worth aiming at, so — unlike every other label — it takes clicks
+ * (the layer it sits in is pointer-events: none, hence the explicit auto). */
+.txs-callout-leader {
+  stroke-width: 1.5;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.txs-callout-label {
+  pointer-events: auto;
+  font-weight: 400;
+}
+
 .txs-axis-line {
   stroke: var(--text-faint);
   stroke-width: 1;

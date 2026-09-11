@@ -37,6 +37,13 @@ export interface RenderOptions {
    */
   stickyLabels?: boolean;
   /**
+   * Name events whose bar is too short to hold their own label — every point
+   * event, and any span that collapses to a few pixels at the current zoom.
+   * The name goes beside the bar, in the free part of the same lane, joined to
+   * it by a short leader. Off leaves those events unnamed until you zoom in.
+   */
+  shortEventLabels?: boolean;
+  /**
    * Render only the events whose text matches one of these strings (case-insensitive
    * substring). Useful when embedding a timeline in a note that isn't itself an
    * event — e.g. a topic note that should display a curated subset.
@@ -76,4 +83,5 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   orientation: "horizontal",
   showFilterUI: true,
   stickyLabels: true,
+  shortEventLabels: true,
 };

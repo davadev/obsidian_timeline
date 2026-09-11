@@ -1,7 +1,15 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import { assignLanes } from "../timeline/overlap";
 import { fromJulian, toJulian } from "../timeline/date";
-import { crossAxisSizeFor, drawViewportLabel, renderBar } from "./bar-renderer";
+import {
+  crossAxisSizeFor,
+  drawCallout,
+  drawViewportLabel,
+  renderBar,
+  splitLabelling,
+} from "./bar-renderer";
+import { layoutCallouts } from "./callouts";
+import { labelFontSpec, measurerFor, type Measure } from "./text-metrics";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
@@ -56,6 +64,8 @@ export interface WindowedChartArgs {
   fuzzyGradientPercent?: number;
   eventLabelColor?: string;
   stickyLabels?: boolean;
+  /** Name events whose bar is too short to hold their own label. Default on. */
+  shortEventLabels?: boolean;
   /** Fired whenever the visible window changes, for the zoom readout. */
   onWindowChange?: (window: TimeWindow, zoom: number, maxZoom: number) => void;
 }
@@ -85,6 +95,8 @@ export class WindowedChart {
   /** Pinned to the viewport; holds every label the chart shows. */
   private readonly edgeLayer: HTMLElement;
   private edgeSvg: SVGSVGElement | null = null;
+  /** Measures label text in the theme's font; rebuilt when the pane changes. */
+  private measure: Measure | null = null;
   private readonly tileLayer: HTMLElement;
   private readonly tiles = new Map<number, HTMLElement>();
   private readonly resize: ResizeObserver | null = null;
@@ -294,6 +306,7 @@ export class WindowedChart {
     if (!this.edgeSvg) {
       this.edgeSvg = this.edgeLayer.createSvg("svg");
     }
+    if (!this.measure) this.measure = measurerFor(labelFontSpec(this.edgeSvg));
     const svg = this.edgeSvg;
     const along = this.vertical ? cross : this.paneW;
     const across = this.vertical ? this.paneW : cross;
@@ -307,22 +320,68 @@ export class WindowedChart {
 
     const perPx = windowDays(this.window) / Math.max(1, this.paneW);
     const slide = this.args.stickyLabels !== false;
+
+    const entries: Array<{
+      ev: TimelineEvent;
+      lane: number;
+      startPx: number;
+      endPx: number;
+    }> = [];
+    // A pane of slack either side: an event just off-screen still occupies its
+    // lane, so a callout beside it keeps the same text as the chart scrolls. If
+    // occupancy stopped at the pane edge, a neighbour leaving the window would
+    // hand its room over and the name would silently re-cut itself.
+    const slack = windowDays(this.window);
     for (const ev of this.events) {
-      if (ev.isPoint) continue; // points carry no label
       const from = toJulian(ev.start);
-      const to = toJulian(ev.end);
-      if (to <= this.window.from || from >= this.window.to) continue; // off-screen
-      // With sliding off, a label stays at its bar's start and scrolls away
-      // with it, which is what "Keep event labels in view: off" means.
-      if (!slide && from < this.window.from) continue;
-      drawViewportLabel(svg, ev, {
+      const to = ev.isPoint ? from : toJulian(ev.end);
+      if (to <= this.window.from - slack || from >= this.window.to + slack) {
+        continue;
+      }
+      entries.push({
+        ev,
         lane: this.laneByEventId.get(ev.id) ?? 0,
         startPx: (from - this.window.from) / perPx,
         endPx: (to - this.window.from) / perPx,
+      });
+    }
+
+    // Which names fit inside their own bar, and where every bar sits — the
+    // callouts are packed into whatever that leaves free.
+    const { needCallout, occupied } = splitLabelling(entries, this.paneW);
+    const callouts = new Set(needCallout.map((c) => c.id));
+
+    for (const entry of entries) {
+      if (entry.ev.isPoint || callouts.has(entry.ev.id)) continue;
+      // With sliding off, a label stays at its bar's start and scrolls away
+      // with it, which is what "Keep event labels in view: off" means.
+      if (!slide && entry.startPx < 0) continue;
+      drawViewportLabel(svg, entry.ev, {
+        lane: entry.lane,
+        startPx: entry.startPx,
+        endPx: entry.endPx,
         paneSize: this.paneW,
         isVertical: this.vertical,
         categoryColors: this.args.categoryColors,
         labelColorOverride: this.args.eventLabelColor,
+      });
+    }
+
+    if (this.args.shortEventLabels === false) return;
+    const byId = new Map(entries.map((e) => [e.ev.id, e.ev]));
+    const placements = layoutCallouts(needCallout, occupied, this.paneW, {
+      measure: this.measure,
+    });
+    for (const placement of placements) {
+      const ev = byId.get(placement.id);
+      if (!ev) continue;
+      drawCallout(svg, ev, placement, {
+        isVertical: this.vertical,
+        categoryColors: this.args.categoryColors,
+        labelColorOverride: this.args.eventLabelColor,
+        container: this.args.container,
+        onOpenEvent: this.args.onOpenEvent,
+        isMobile: this.args.isMobile,
       });
     }
   }
@@ -358,6 +417,8 @@ export class WindowedChart {
 
   private onResize(): void {
     const next = this.measurePane();
+    // A resize can also mean a new theme or font size.
+    this.measure = null;
     if (next === this.paneW) return;
     // Keep the same slice of time on screen at the new size.
     const zoom = this.zoom;

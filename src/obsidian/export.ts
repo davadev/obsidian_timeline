@@ -75,6 +75,7 @@ export async function exportActiveNoteWithRenderedTimeline(
         eras: filterErasToViewport(doc.eras, vp),
         fuzzyGradientPercent: settings.fuzzyGradientPercent,
         eventLabelColor: settings.eventLabelColor,
+        shortEventLabels: opts.shortEventLabels,
       });
       const svg = stage.querySelector("svg");
       if (!svg) continue;

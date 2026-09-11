@@ -101,7 +101,38 @@ Consequences that are easy to undo by accident:
   into `renderBar`), never per tile, or a bar would change row as you pan.
 - **Labels are drawn only by the pinned layer**, in viewport coordinates — one
   per event, sliding along its bar. Tiles drawing their own produced a copy per
-  seam.
+  seam. The same pass places the **callouts**: an event whose bar cannot hold
+  its own name (every point, and any span a few pixels wide at this zoom) gets
+  it beside the bar instead, joined by a short leader and packed into the free
+  part of its own lane (`callouts.ts`, pure; widths come from `text-metrics.ts`
+  because a character-count estimate is up to 15% out and prints names over the
+  next bar). Where a lane has no room, the event stays unnamed — zooming makes
+  room.
+
+  Two rules keep that from flickering during a scroll, and both are easy to
+  undo by accident. **Shortness is a property of the event, not of the
+  viewport** — measured on the bar's own width, never on the visible sliver, or
+  every long bar gains a name as it is scrolled halfway out and loses it coming
+  back. And **a name may only be shortened by its neighbours, never by the edge
+  of the pane**: the gap between two events is fixed at a given zoom, so a name
+  cut to fit it reads the same at every scroll position, whereas the pane edge
+  moves and would re-cut the text on every frame. A name the pane would cut is
+  not drawn at all until the event is clear of the edge, which is also why
+  occupancy is collected a pane either side of the window — a neighbour leaving
+  the window must not silently hand over its room.
+
+  Two more rules come from measuring a dense window of long titles rather than
+  from taste. A name is **capped at `maxShare` of the pane** (0.3): an uncapped
+  long title eats the gap its neighbours needed, and capping it put 3.5 names on
+  a 390px screen against 3.1 uncapped. And the pane edge is treated
+  **asymmetrically** — a name *after* its event may run under the far edge and
+  be clipped there (the SVG clips it, so nothing escapes the chart), because the
+  text itself never changes; a name *before* its event may not, since clipping
+  would eat its opening characters and read as a different word. Either way a
+  readable stub has to fit inside the pane, or the name waits. Two other shapes were prototyped and rejected on the evidence: a rail
+  of names under the chart (long leaders crossing bars, and it costs vertical
+  room) and boxed callouts in the nearest free space (heavier, and a box can
+  drift into a neighbouring lane).
 - **The window is held in absolute time** across filter changes and clamped
   into the new span, because the span is derived from the filtered events.
 - Pane width is half of the scroll↔time mapping, so a `ResizeObserver` is

@@ -2,6 +2,7 @@
 import "./setup-obsidian-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WindowedChart } from "../src/renderer/windowed-chart";
+import { splitLabelling } from "../src/renderer/bar-renderer";
 import { toJulian } from "../src/timeline/date";
 import type { TimelineEvent } from "../src/timeline/model";
 
@@ -264,6 +265,114 @@ describe("windowed chart", () => {
       6
     );
     expect(scroller.classList.contains("is-zooming")).toBe(true);
+  });
+
+  it("names events whose bar is too short to hold a label", () => {
+    // A point has no width at any zoom, and at this one the two-year bar is a
+    // few pixels: without callouts the chart shows coloured specks and no text.
+    const withPoint = [
+      ev("long", -800, 1900),
+      { ...ev("spark", 1000, 1000), isPoint: true } as TimelineEvent,
+    ];
+    const { scroller } = chartWith(withPoint, 1);
+    const callouts = Array.from(
+      scroller.querySelectorAll(".txs-callout-label")
+    ).map((el) => el.textContent);
+    expect(callouts).toContain("Event spark");
+    // The leader is what ties the name to the speck it belongs to.
+    expect(scroller.querySelectorAll(".txs-callout-leader").length).toBe(1);
+  });
+
+  it("makes the name the hit target, since the event itself is a few pixels", () => {
+    const opened: string[] = [];
+    const container = host();
+    const chart = new WindowedChart({
+      container,
+      categories: [],
+      categoryColors: {},
+      orientation: "horizontal",
+      isMobile: false,
+      onOpenEvent: (id) => opened.push(id),
+    });
+    const scroller = container.querySelector(".txs-chart") as HTMLElement;
+    Object.defineProperty(scroller, "clientWidth", {
+      value: PANE,
+      configurable: true,
+    });
+    chart.setData(
+      [
+        ev("long", -800, 1900),
+        { ...ev("spark", 1500, 1500), isPoint: true } as TimelineEvent,
+      ],
+      [],
+      { start: { year: -900 }, end: { year: 2030 } },
+      1
+    );
+
+    const label = scroller.querySelector(".txs-callout-label") as SVGElement;
+    label.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(opened).toEqual(["spark"]);
+  });
+
+  it("draws no callouts when the setting is off", () => {
+    const container = host();
+    const chart = new WindowedChart({
+      container,
+      categories: [],
+      categoryColors: {},
+      orientation: "horizontal",
+      isMobile: false,
+      onOpenEvent: () => {},
+      shortEventLabels: false,
+    });
+    const scroller = container.querySelector(".txs-chart") as HTMLElement;
+    Object.defineProperty(scroller, "clientWidth", {
+      value: PANE,
+      configurable: true,
+    });
+    chart.setData(
+      [{ ...ev("spark", 1500, 1500), isPoint: true } as TimelineEvent],
+      [],
+      { start: { year: -900 }, end: { year: 2030 } },
+      1
+    );
+    expect(scroller.querySelectorAll(".txs-callout-label").length).toBe(0);
+  });
+
+  it("decides shortness from the bar, not from how far it is scrolled", () => {
+    // Regression: a long bar scrolled halfway out has little *visible* room, so
+    // judging by the sliver gave it a callout that vanished again when it came
+    // back — a name flickering beside a bar that was never short.
+    const long = ev("long", 1000, 1900);
+    const { needCallout } = splitLabelling(
+      [{ ev: long, lane: 0, startPx: -5000, endPx: 40 }],
+      PANE
+    );
+    expect(needCallout).toEqual([]);
+  });
+
+  it("waits until an event is fully on screen before naming it", () => {
+    const short = ev("short", 1000, 1001);
+    const straddling = splitLabelling(
+      [{ ev: short, lane: 0, startPx: -3, endPx: 4 }],
+      PANE
+    );
+    expect(straddling.needCallout).toEqual([]);
+
+    const inside = splitLabelling(
+      [{ ev: short, lane: 0, startPx: 100, endPx: 107 }],
+      PANE
+    );
+    expect(inside.needCallout.map((c) => c.id)).toEqual(["short"]);
+  });
+
+  it("still counts a scrolled-out bar as occupied, so nothing lands on it", () => {
+    const long = ev("long", 1000, 1900);
+    const { occupied } = splitLabelling(
+      [{ ev: long, lane: 0, startPx: -5000, endPx: 40 }],
+      PANE
+    );
+    expect(occupied).toEqual([{ lane: 0, from: -5000, to: 40 }]);
   });
 
   it("tears down cleanly", () => {
