@@ -1,7 +1,7 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import { assignLanes } from "../timeline/overlap";
 import { fromJulian, toJulian } from "../timeline/date";
-import { renderBar } from "./bar-renderer";
+import { crossAxisSizeFor, renderBar } from "./bar-renderer";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
@@ -186,9 +186,13 @@ export class WindowedChart {
     this.paneW = this.measurePane();
     this.page = pageFor(this.window, this.span, this.paneW);
 
-    const size = `${Math.round(this.page.px)}px`;
-    if (this.vertical) this.spacer.setCssProps({ height: size, width: "1px" });
-    else this.spacer.setCssProps({ width: size, height: "1px" });
+    // The spacer carries BOTH axes: its scroll-axis length gives the scroller
+    // its range, and its cross-axis size gives the scroller its height —
+    // absolutely positioned tiles contribute neither.
+    const along = `${Math.round(this.page.px)}px`;
+    const across = `${crossAxisSizeFor(this.laneCount)}px`;
+    if (this.vertical) this.spacer.setCssProps({ height: along, width: across });
+    else this.spacer.setCssProps({ width: along, height: across });
 
     if (syncScroll) {
       const at = windowToScroll(this.window, this.page, this.paneW);

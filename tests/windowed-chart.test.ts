@@ -78,6 +78,18 @@ describe("windowed chart", () => {
     }
   });
 
+  it("gives the scroller a height, so the chart is actually visible", () => {
+    // Regression: tiles are absolutely positioned and contribute no height, so
+    // a 1px spacer collapsed the scroller and the view showed only its list.
+    const { scroller } = chartWith(DATA, 1);
+    const spacer = scroller.querySelector(".txs-chart-spacer") as HTMLElement;
+    const height = Number.parseFloat(spacer.style.height);
+    expect(height).toBeGreaterThan(40);
+
+    const svg = scroller.querySelector("svg");
+    expect(Number(svg?.getAttribute("height"))).toBeCloseTo(height, 0);
+  });
+
   it("keeps the drawn node count flat as the zoom deepens", () => {
     const { chart, scroller } = chartWith(DATA, 1);
 

@@ -23,6 +23,20 @@ const LANE_THICKNESS = 26; // height (horizontal) or width (vertical) of one lan
 const LANE_GAP = 6;
 const AXIS_PAD = 34; // padding before first lane that holds axis labels
 const TAIL_PAD = 10;
+
+/**
+ * Size of the non-time axis for a given number of lanes.
+ *
+ * The windowed chart needs this before it draws anything: its tiles are
+ * absolutely positioned, so they contribute no height of their own and the
+ * scroller would collapse to the height of its (1px) spacer — a scroller with
+ * no chart in it.
+ */
+export function crossAxisSizeFor(laneCount: number): number {
+  return (
+    AXIS_PAD + Math.max(1, laneCount) * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD
+  );
+}
 const POINT_RADIUS = 6;
 const LABEL_PAD = 8;
 const CHAR_W = 6.5;
@@ -117,8 +131,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const timeAxisSize = tile
     ? Math.max(1, Math.round(tile.axisPx))
     : clampAxisSize(timeAxisBase * zoom, args.isMobile);
-  const crossAxisSize =
-    AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
+  const crossAxisSize = crossAxisSizeFor(laneCount);
 
   const width = isVertical ? crossAxisSize : timeAxisSize;
   const height = isVertical ? timeAxisSize : crossAxisSize;
