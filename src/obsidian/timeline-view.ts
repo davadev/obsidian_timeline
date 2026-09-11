@@ -66,6 +66,9 @@ export class TimelineView extends ItemView {
     return "calendar-range";
   }
 
+  /** Survives a full re-render; mobile starts collapsed to save screen. */
+  private filtersOpen = !Platform.isMobile;
+
   async onOpen(): Promise<void> {
     await this.fullRender();
   }
@@ -127,12 +130,21 @@ export class TimelineView extends ItemView {
     const panel = this.contentEl.createEl("details", {
       cls: "txs-view-filters",
     });
-    if (!Platform.isMobile) panel.open = true;
+    panel.open = this.filtersOpen;
+    panel.addEventListener("toggle", () => {
+      this.filtersOpen = panel.open;
+    });
 
     const summary = panel.createEl("summary", {
       cls: "txs-view-filters-summary",
     });
-    const badge = summary.createSpan({
+    // The flex layout lives on an inner span, never on the <summary> itself:
+    // a summary with `display: flex` stops being the disclosure box in WebKit,
+    // and clicks on the panel's own controls then toggle the <details> shut.
+    const summaryInner = summary.createSpan({
+      cls: "txs-view-filters-summary-inner",
+    });
+    const badge = summaryInner.createSpan({
       cls: "txs-view-filters-badge",
       text: "Filters",
     });
@@ -142,6 +154,10 @@ export class TimelineView extends ItemView {
     // rows past the fold sit under Obsidian's bottom bar with no way to reach
     // them. The summary stays pinned above it.
     const controls = panel.createDiv({ cls: "txs-view-filters-body" });
+    // Belt and braces for the same quirk: a click on a filter control has no
+    // business reaching the <details>, so it never gets the chance to collapse
+    // the panel out from under the user mid-edit.
+    controls.addEventListener("click", (e) => e.stopPropagation());
 
     const updateBadge = () => {
       const n =

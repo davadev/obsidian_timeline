@@ -626,18 +626,25 @@
 }
 
 .txs-view-filters > .txs-view-filters-summary {
-  /* Stays put while the panel scrolls under it. */
+  /* Stays put while the panel scrolls under it. Kept as list-item: a summary
+   * with `display: flex` stops acting as the disclosure box in WebKit, which
+   * makes clicks on the panel's own controls collapse the panel. The flex row
+   * lives on the inner span instead. */
+  display: list-item;
+  list-style: none;
   position: sticky;
   top: -4px;
   z-index: 1;
   background: var(--background-secondary);
-  list-style: none;
   cursor: pointer;
   user-select: none;
   padding: 6px 10px;
   font-size: var(--font-ui-small);
   color: var(--text-muted);
-  display: flex;
+}
+
+.txs-view-filters-summary-inner {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
 }
@@ -649,6 +656,7 @@
 .txs-view-filters > .txs-view-filters-summary::before {
   content: "▸";
   display: inline-block;
+  margin-right: 6px;
   transition: transform 0.1s ease;
   color: var(--text-faint);
 }
