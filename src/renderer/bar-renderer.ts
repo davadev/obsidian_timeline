@@ -33,27 +33,30 @@ const TAIL_PAD = 10;
  * no chart in it.
  */
 /**
- * Draws the label for a bar that runs off the left (or top) edge of the
- * viewport, into a layer the caller pins to that edge.
+ * Draws one event label into a layer pinned to the viewport.
  *
- * Tiles label a bar in the tile its start falls in — exactly once, so a name no
- * longer repeats at every seam. That leaves long bars nameless once you scroll
- * past their start, which this covers: a bar can only cross the viewport's
- * leading edge in one lane, so there is never a second copy to collide with.
+ * Every label in the windowed chart comes through here, in viewport
+ * coordinates, so there is exactly one per event however many tiles its bar
+ * crosses. `startPx` may be negative (the bar began before the viewport) and
+ * `endPx` may be past the far edge; the label slides along the visible part of
+ * its own bar instead of scrolling away with the start.
  */
-export function drawEdgeLabel(
+export function drawViewportLabel(
   svg: SVGSVGElement,
   ev: TimelineEvent,
   opts: {
     lane: number;
-    /** Where the bar ends, in viewport px (may be past the far edge). */
+    startPx: number;
     endPx: number;
+    paneSize: number;
     isVertical: boolean;
     categoryColors: Record<string, string>;
     labelColorOverride?: string | null;
   }
 ): void {
-  const room = Math.min(opts.endPx, svgSize(svg, opts.isVertical)) - LABEL_PAD * 2;
+  const visibleFrom = Math.max(opts.startPx, 0);
+  const visibleTo = Math.min(opts.endPx, opts.paneSize);
+  const room = visibleTo - visibleFrom - LABEL_PAD * 2;
   const maxChars = Math.floor(room / CHAR_W);
   if (maxChars < 4) return;
 
@@ -67,14 +70,10 @@ export function drawEdgeLabel(
   label.textContent = truncate(ev.text, maxChars);
   if (opts.isVertical) {
     label.setAttribute("text-anchor", "start");
-    anchored(svg, label, cross + LANE_THICKNESS / 2, 0, 90);
+    anchored(svg, label, cross + LANE_THICKNESS / 2, visibleFrom, 90);
   } else {
-    anchored(svg, label, 0, cross + LANE_THICKNESS / 2);
+    anchored(svg, label, visibleFrom, cross + LANE_THICKNESS / 2);
   }
-}
-
-function svgSize(svg: SVGSVGElement, isVertical: boolean): number {
-  return Number(svg.getAttribute(isVertical ? "height" : "width")) || 0;
 }
 
 export function crossAxisSizeFor(laneCount: number): number {
@@ -292,12 +291,11 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       attachEvents(rect, ev, container, onOpenEvent, isMobile);
       svg.appendChild(rect);
 
-      // Exactly one label per event. Every tile overlapping a long bar used
-      // to draw its own copy, which showed up as the same name repeating at
-      // each seam.
-      const ownsLabel = !tile || (a1 >= 0 && a1 < timeAxisSize);
+      // Tiles never label: the windowed chart draws every label once, in a
+      // layer pinned to the viewport, so a name cannot repeat at a seam or
+      // collide with a copy sliding in from off-screen.
       const maxChars = Math.floor((span - LABEL_PAD * 2) / CHAR_W);
-      if (maxChars >= 4 && ownsLabel) {
+      if (maxChars >= 4 && !tile) {
         const label = document.createElementNS(SVG_NS, "text");
         const text = truncate(ev.text, maxChars);
         // The gap lives on the text, not on the anchor: inside the

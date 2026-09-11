@@ -1,7 +1,7 @@
 import type { TimelineCategory, TimelineEra, TimelineEvent } from "../timeline/model";
 import { assignLanes } from "../timeline/overlap";
 import { fromJulian, toJulian } from "../timeline/date";
-import { crossAxisSizeFor, drawEdgeLabel, renderBar } from "./bar-renderer";
+import { crossAxisSizeFor, drawViewportLabel, renderBar } from "./bar-renderer";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
@@ -66,7 +66,7 @@ const TILE_RADIUS = 2;
 export class WindowedChart {
   private readonly scroller: HTMLElement;
   private readonly spacer: HTMLElement;
-  /** Pinned to the viewport's leading edge; names bars that start off-screen. */
+  /** Pinned to the viewport; holds every label the chart shows. */
   private readonly edgeLayer: HTMLElement;
   private edgeSvg: SVGSVGElement | null = null;
   private readonly tiles = new Map<number, HTMLElement>();
@@ -84,6 +84,8 @@ export class WindowedChart {
   private syncing = false;
   private frame: number | null = null;
   private zoomFrame: number | null = null;
+  /** Set once WebKit sends a real pinch, so the touch fallback stands down. */
+  private webkitGestures = false;
   private pendingZoom: { zoom: number; focalPx: number } | null = null;
 
   constructor(private args: WindowedChartArgs) {
@@ -245,10 +247,13 @@ export class WindowedChart {
   }
 
   /**
-   * One label per bar is drawn by the tile its start falls in. A bar whose
-   * start is off-screen would therefore be nameless, so it gets a label here,
-   * pinned to the edge. Only bars crossing that edge qualify — at most one per
-   * lane — so nothing is ever labelled twice.
+   * Every label the chart shows, drawn once, in viewport coordinates.
+   *
+   * Tiles deliberately draw none: a bar crossing a seam would otherwise be
+   * labelled by each tile it touches, and a bar whose start had just scrolled
+   * off would show its own label overlapping the one sliding in behind it.
+   * Here a label slides along the visible part of its bar and there is nothing
+   * to collide with.
    */
   private paintEdgeLabels(): void {
     const cross = crossAxisSizeFor(this.laneCount);
@@ -268,13 +273,15 @@ export class WindowedChart {
 
     const perPx = windowDays(this.window) / Math.max(1, this.paneW);
     for (const ev of this.events) {
+      if (ev.isPoint) continue; // points carry no label
       const from = toJulian(ev.start);
       const to = toJulian(ev.end);
-      // Crosses the leading edge: starts before the window, ends inside it.
-      if (from >= this.window.from || to <= this.window.from) continue;
-      drawEdgeLabel(svg, ev, {
+      if (to <= this.window.from || from >= this.window.to) continue; // off-screen
+      drawViewportLabel(svg, ev, {
         lane: this.laneByEventId.get(ev.id) ?? 0,
+        startPx: (from - this.window.from) / perPx,
         endPx: (to - this.window.from) / perPx,
+        paneSize: this.paneW,
         isVertical: this.vertical,
         categoryColors: this.args.categoryColors,
         labelColorOverride: this.args.eventLabelColor,
@@ -402,6 +409,56 @@ export class WindowedChart {
       { passive: false }
     );
 
+    // WebKit (and so Obsidian on iOS) reports a pinch as its own gesture
+    // events, with `scale` relative to the start of the gesture. Those are the
+    // ones to use: `touch-action` is latched when a touch sequence begins, so
+    // switching it off once a second finger lands is too late — the WebView has
+    // already claimed the gesture for panning, which is why a pinch only ever
+    // nudged the zoom.
+    // Both are attached. Gesture events are not guaranteed — a page that
+    // disables user scaling can stop WebKit emitting them — so the touch path
+    // stays as a fallback and stands down the moment a real gesture event
+    // arrives, rather than the two fighting over the same fingers.
+    if ("ongesturestart" in window) this.attachWebKitGestures();
+    this.attachTouchGestures();
+  }
+
+  private attachWebKitGestures(): void {
+    let startZoom = 1;
+    let focal = 0;
+
+    const at = (e: Event): number => {
+      const rect = this.scroller.getBoundingClientRect();
+      const g = e as unknown as { clientX?: number; clientY?: number };
+      return this.vertical
+        ? (g.clientY ?? rect.top + rect.height / 2) - rect.top
+        : (g.clientX ?? rect.left + rect.width / 2) - rect.left;
+    };
+
+    this.scroller.addEventListener("gesturestart", (e: Event) => {
+      e.preventDefault();
+      this.webkitGestures = true;
+      startZoom = this.zoom;
+      focal = at(e);
+      this.scroller.addClass("is-pinching");
+    });
+
+    this.scroller.addEventListener("gesturechange", (e: Event) => {
+      e.preventDefault();
+      const scale = (e as unknown as { scale?: number }).scale ?? 1;
+      if (scale > 0) this.zoomTo(startZoom * scale, focal);
+    });
+
+    const end = (e: Event) => {
+      e.preventDefault();
+      this.scroller.removeClass("is-pinching");
+    };
+    this.scroller.addEventListener("gestureend", end);
+  }
+
+  private attachTouchGestures(): void {
+
+
     const points = (e: TouchEvent): PinchPoint[] =>
       Array.from(e.touches, (t) => ({ x: t.clientX, y: t.clientY }));
     let startZoom = 1;
@@ -409,6 +466,7 @@ export class WindowedChart {
     this.scroller.addEventListener(
       "touchstart",
       (e: TouchEvent) => {
+        if (this.webkitGestures) return;
         const action = this.pinch.start(points(e));
         if (action.kind === "begin") {
           startZoom = this.zoom;
@@ -424,6 +482,7 @@ export class WindowedChart {
     this.scroller.addEventListener(
       "touchmove",
       (e: TouchEvent) => {
+        if (this.webkitGestures) return;
         const action = this.pinch.move(points(e));
         if (action.kind !== "update") return;
         e.preventDefault();
@@ -439,6 +498,7 @@ export class WindowedChart {
     );
 
     const end = (e: TouchEvent) => {
+      if (this.webkitGestures) return;
       this.pinch.end(points(e));
       if (e.touches.length === 0) this.scroller.removeClass("is-pinching");
     };
