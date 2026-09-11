@@ -38,6 +38,14 @@ cancels a gesture whose target is removed; a live gesture only sets CSS custom
 properties), and **assign lanes once across the filtered set**, never per tile.
 Full detail in [docs/architecture.md](docs/architecture.md#the-windowed-chart-011).
 
+## Known unfinished work
+
+The windowed chart is used by the Timeline view only; inline blocks still run
+the classic renderer, and `renderDefaults.windowedChart` is a temporary escape
+hatch. Closing that split is 0.12's job — see
+[docs/architecture.md](docs/architecture.md#unfinished-and-why-it-matters)
+before assuming the two-renderer arrangement is intentional.
+
 ## Conventions
 
 - Minimum Obsidian version is **1.13.0**: the settings tab uses the declarative
