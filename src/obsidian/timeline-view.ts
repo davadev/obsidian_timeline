@@ -11,11 +11,14 @@ import {
   type RichFilterState,
 } from "../renderer/filter-bar";
 import {
+  PinchTracker,
   ZOOM_STEP,
   clampZoom,
   focalScroll,
   formatZoom,
   wheelZoomFactor,
+  type PinchAction,
+  type PinchPoint,
 } from "../renderer/zoom-math";
 
 export const VIEW_TYPE_TIMELINE = "txs-timeline-view";
@@ -81,6 +84,19 @@ export class TimelineView extends ItemView {
   /** Scroll position the next render should land on, to keep the pinch focal point still. */
   private pendingBarScroll: { left: number; top: number } | null = null;
   private zoomFrame: number | null = null;
+  /** Live pinch/wheel gesture: scales the rendered SVG until the user lets go. */
+  private preview: {
+    scroller: HTMLElement;
+    baseWidth: number;
+    baseHeight: number;
+    vertical: boolean;
+    base: number;
+    scale: number;
+    startLeft: number;
+    startTop: number;
+    focalX: number;
+    focalY: number;
+  } | null = null;
 
   async onOpen(): Promise<void> {
     await this.fullRender();
@@ -436,65 +452,182 @@ export class TimelineView extends ItemView {
   }
 
   /**
-   * Pinch to zoom on touch, ctrl+wheel (which is what a trackpad pinch sends)
-   * on desktop. Both keep the point under the fingers/cursor anchored.
+   * Pinch to zoom on touch, trackpad pinch / ctrl+wheel on desktop.
+   *
+   * Two deliberate choices, both learned the hard way:
+   *
+   * - Touch state comes from `event.touches` every time, never from a map of
+   *   live pointer ids. A pointerup that never arrives (the WebView eats one
+   *   when it takes over a scroll) leaves a stale id behind, and the next
+   *   one-finger pan then looks like a pinch and zooms instead of scrolling.
+   * - The gesture only transforms the existing SVG. Re-rendering it per frame
+   *   costs far more than a frame budget on a phone, which is what made the
+   *   view feel stuck. The real re-render happens once, on release.
    */
   private attachZoomGestures(body: HTMLElement): void {
+    let wheelCommit: number | null = null;
     body.addEventListener(
       "wheel",
       (e: WheelEvent) => {
-        if (!e.ctrlKey) return; // plain scrolling stays scrolling
+        // A trackpad pinch arrives as a wheel event with ctrlKey set; plain
+        // scrolling (including two-finger panning) must stay scrolling.
+        if (!e.ctrlKey) return;
         e.preventDefault();
-        this.zoomBy(wheelZoomFactor(e.deltaY), { x: e.clientX, y: e.clientY });
+        const focal = { x: e.clientX, y: e.clientY };
+        if (!this.preview) this.beginPreview(focal);
+        this.updatePreview(
+          (this.preview?.scale ?? 1) * wheelZoomFactor(e.deltaY),
+          focal
+        );
+        if (wheelCommit != null) window.clearTimeout(wheelCommit);
+        wheelCommit = window.setTimeout(() => {
+          wheelCommit = null;
+          this.commitPreview();
+        }, 140);
       },
       { passive: false }
     );
 
-    const points = new Map<number, { x: number; y: number }>();
-    let startDist = 0;
-    let startZoom = 1;
+    const pinch = new PinchTracker();
 
-    const spread = (): number => {
-      const [a, b] = Array.from(points.values());
-      return Math.hypot(a.x - b.x, a.y - b.y);
-    };
-    const centre = (): { x: number; y: number } => {
-      const [a, b] = Array.from(points.values());
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    };
-    const endPinch = () => {
-      if (points.size >= 2) return;
-      startDist = 0;
-      // Let the tap-suppression outlive the gesture by a frame or two, so
-      // lifting a finger over a bar does not open that event.
-      window.setTimeout(() => body.removeClass("is-pinching"), 250);
-    };
+    body.addEventListener(
+      "touchstart",
+      (e: TouchEvent) => this.applyPinch(pinch.start(points(e))),
+      { passive: true }
+    );
 
-    body.addEventListener("pointerdown", (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (points.size === 2) {
-        startDist = spread();
-        startZoom = this.filters.zoom ?? this.effectiveZoom;
-        body.addClass("is-pinching");
-      }
-    });
+    body.addEventListener(
+      "touchmove",
+      (e: TouchEvent) => {
+        const action = pinch.move(points(e));
+        if (action.kind === "update") e.preventDefault();
+        this.applyPinch(action);
+      },
+      { passive: false }
+    );
 
-    body.addEventListener("pointermove", (e: PointerEvent) => {
-      if (!points.has(e.pointerId)) return;
-      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (points.size !== 2 || startDist <= 0) return;
-      e.preventDefault();
-      this.setZoom((startZoom * spread()) / startDist, startZoom, centre());
-    });
+    const endPinch = (e: TouchEvent) => this.applyPinch(pinch.end(points(e)));
+    body.addEventListener("touchend", endPinch);
+    body.addEventListener("touchcancel", endPinch);
+  }
 
-    for (const ev of ["pointerup", "pointercancel", "pointerleave"]) {
-      body.addEventListener(ev, (e: Event) => {
-        points.delete((e as PointerEvent).pointerId);
-        endPinch();
-      });
+  private applyPinch(action: PinchAction): void {
+    switch (action.kind) {
+      case "begin":
+        this.beginPreview(action.focal);
+        break;
+      case "update":
+        this.updatePreview(action.scale, action.focal);
+        break;
+      case "commit":
+        this.commitPreview();
+        break;
+      default:
+        break;
     }
   }
+
+  /** Snapshot what the gesture will scale, and freeze the scroll it started from. */
+  private beginPreview(focalClient: { x: number; y: number }): void {
+    const scroller = this.barScroller();
+    const svg = scroller?.querySelector("svg") ?? null;
+    if (!scroller || !svg) return;
+
+    const rect = scroller.getBoundingClientRect();
+    const svgRect = svg.getBoundingClientRect();
+    this.preview = {
+      scroller,
+      baseWidth: svgRect.width,
+      baseHeight: svgRect.height,
+      vertical: scroller.hasClass("txs-vertical"),
+      base: this.filters.zoom ?? this.effectiveZoom,
+      scale: 1,
+      startLeft: scroller.scrollLeft,
+      startTop: scroller.scrollTop,
+      focalX: focalClient.x - rect.left,
+      focalY: focalClient.y - rect.top,
+    };
+    // Bars stop taking taps for the duration, so ending a pinch over one
+    // doesn't open that event.
+    this.contentEl
+      .querySelector(".txs-view-body")
+      ?.addClass("is-pinching");
+  }
+
+  /** Live feedback: stretch the rendered SVG, no geometry recomputed. */
+  private updatePreview(
+    scale: number,
+    focalClient: { x: number; y: number }
+  ): void {
+    const p = this.preview;
+    if (!p) return;
+
+    // Clamp against the zoom limits rather than the raw finger distance, so
+    // the preview can never show something the commit won't reproduce.
+    const target = clampZoom(p.base * scale);
+    p.scale = target / p.base;
+
+    const rect = p.scroller.getBoundingClientRect();
+    p.focalX = focalClient.x - rect.left;
+    p.focalY = focalClient.y - rect.top;
+
+    // The scale rides on custom properties; the transform itself lives in
+    // styles.css, keyed off `is-scaling`. The extra length keeps the scroll
+    // range honest while the gesture is in flight — a transform alone does
+    // not grow the scroller's content, so zooming in would hit the old edge.
+    const extra = p.vertical
+      ? p.baseHeight * (p.scale - 1)
+      : p.baseWidth * (p.scale - 1);
+    p.scroller.addClass("is-scaling");
+    p.scroller.setCssProps({
+      "--txs-zoom-scale": String(p.scale),
+      "--txs-zoom-extra": `${Math.max(0, extra)}px`,
+    });
+
+    if (p.vertical) {
+      p.scroller.scrollTop = focalScroll(p.startTop, p.focalY, p.scale);
+    } else {
+      p.scroller.scrollLeft = focalScroll(p.startLeft, p.focalX, p.scale);
+    }
+  }
+
+  /** Drop the transform and re-render once, at the zoom the gesture landed on. */
+  private commitPreview(): void {
+    const p = this.preview;
+    this.preview = null;
+    if (!p) return;
+
+    p.scroller.removeClass("is-scaling");
+    p.scroller.setCssProps({
+      "--txs-zoom-scale": "1",
+      "--txs-zoom-extra": "0px",
+    });
+    const body = this.contentEl.querySelector(".txs-view-body");
+    window.setTimeout(() => body?.removeClass("is-pinching"), 250);
+
+    const next = clampZoom(p.base * p.scale);
+    if (Math.abs(next - p.base) < 0.001) {
+      // Nothing changed; put the scroll back where the preview found it.
+      p.scroller.scrollLeft = p.startLeft;
+      p.scroller.scrollTop = p.startTop;
+      return;
+    }
+
+    // Scroll is derived from where the gesture STARTED, so the preview's own
+    // scrolling is not counted twice.
+    this.pendingBarScroll = {
+      left: focalScroll(p.startLeft, p.focalX, p.scale),
+      top: focalScroll(p.startTop, p.focalY, p.scale),
+    };
+    this.filters.zoom = next;
+    this.updateZoomLabel();
+    this.scheduleZoomRender();
+  }
+}
+
+/** The touches currently down, in viewport coordinates. */
+function points(e: TouchEvent): PinchPoint[] {
+  return Array.from(e.touches, (t) => ({ x: t.clientX, y: t.clientY }));
 }
 
 function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] {

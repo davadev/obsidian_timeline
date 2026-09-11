@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_ZOOM,
+  PinchTracker,
   MIN_ZOOM,
   ZOOM_STEP,
   clampZoom,
@@ -65,5 +66,61 @@ describe("wheelZoomFactor", () => {
 
   it("is symmetric, so a pinch in and back out returns to the start", () => {
     expect(wheelZoomFactor(-60) * wheelZoomFactor(60)).toBeCloseTo(1, 10);
+  });
+});
+
+describe("PinchTracker", () => {
+  const A = { x: 100, y: 100 };
+  const B = { x: 200, y: 100 };
+  const B_FAR = { x: 300, y: 100 };
+
+  it("ignores a single finger", () => {
+    const t = new PinchTracker();
+    expect(t.start([A]).kind).toBe("none");
+    expect(t.move([{ x: 150, y: 100 }]).kind).toBe("none");
+    expect(t.active).toBe(false);
+  });
+
+  it("tracks a two-finger pinch and commits on release", () => {
+    const t = new PinchTracker();
+    const begun = t.start([A, B]);
+    expect(begun).toEqual({ kind: "begin", focal: { x: 150, y: 100 } });
+
+    const moved = t.move([A, B_FAR]);
+    expect(moved.kind).toBe("update");
+    if (moved.kind === "update") {
+      expect(moved.scale).toBeCloseTo(2, 10); // 100px apart -> 200px apart
+      expect(moved.focal).toEqual({ x: 200, y: 100 });
+    }
+
+    expect(t.end([A]).kind).toBe("commit");
+    expect(t.active).toBe(false);
+  });
+
+  it("does not zoom on a pan after a release was missed", () => {
+    const t = new PinchTracker();
+    t.start([A, B]);
+    // the WebView swallowed one release: we only ever see "no touches left"
+    expect(t.end([]).kind).toBe("commit");
+    // a later one-finger drag must scroll, not zoom
+    expect(t.move([{ x: 160, y: 100 }]).kind).toBe("none");
+    expect(t.move([A, B_FAR]).kind).toBe("none");
+  });
+
+  it("keeps pinching while a third finger lands and lifts", () => {
+    const t = new PinchTracker();
+    t.start([A, B]);
+    expect(t.start([A, B, { x: 250, y: 250 }]).kind).toBe("none");
+    expect(t.active).toBe(true);
+    expect(t.end([A, B]).kind).toBe("none");
+    expect(t.active).toBe(true);
+    expect(t.end([A]).kind).toBe("commit");
+  });
+
+  it("commits only once", () => {
+    const t = new PinchTracker();
+    t.start([A, B]);
+    expect(t.end([]).kind).toBe("commit");
+    expect(t.end([]).kind).toBe("none");
   });
 });

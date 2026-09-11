@@ -725,9 +725,34 @@
 }
 
 .txs-view-body .txs-timeline-bar {
-  /* Scrolling stays native; two-finger pinch reaches our pointer handlers
+  /* Scrolling stays native; two-finger pinch reaches our touch handlers
    * instead of zooming the app chrome. */
   touch-action: pan-x pan-y;
+}
+
+/* Live pinch feedback: the rendered SVG is stretched along the time axis
+ * while the gesture is in flight. Recomputing the chart per frame is far too
+ * slow on a phone, so the real render happens once, on release. */
+.txs-timeline-bar > svg {
+  transform-origin: 0 0;
+}
+
+.txs-timeline-bar.is-scaling {
+  /* Once it is definitely a pinch, the WebView must stop panning as well —
+   * otherwise the gesture fights the scroller and feels stuck. */
+  touch-action: none;
+}
+
+.txs-timeline-bar.is-scaling > svg {
+  transform: scaleX(var(--txs-zoom-scale, 1));
+  /* A transform does not grow the scroll area; this does. */
+  margin-right: var(--txs-zoom-extra, 0);
+}
+
+.txs-timeline-bar.is-scaling.txs-vertical > svg {
+  transform: scaleY(var(--txs-zoom-scale, 1));
+  margin-right: 0;
+  margin-bottom: var(--txs-zoom-extra, 0);
 }
 
 .txs-view-body {
