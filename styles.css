@@ -948,3 +948,51 @@
 .txs-tooltip.is-measuring {
   visibility: hidden;
 }
+
+/* ------------------------------------------------------------------ *
+ * Windowed chart (0.11): an empty spacer gives the scroller its range
+ * and a ring of pane-wide tiles is positioned inside it, so the drawn
+ * element never grows with the zoom.
+ * ------------------------------------------------------------------ */
+
+.txs-chart {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Native panning; two-finger pinch still reaches the touch handlers. */
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.txs-chart.txs-vertical {
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  max-height: 80vh;
+}
+
+/* Unpainted: it exists only to give the scroller a range. */
+.txs-chart-spacer {
+  pointer-events: none;
+}
+
+.txs-tile-host {
+  position: absolute;
+  top: 0;
+}
+
+.txs-tile-host .txs-tile > svg {
+  display: block;
+}
+
+/* Windowed view layout: a persistent chart host (so a filter change cannot
+ * throw away the scroll position) with the list beneath it. */
+.txs-view-chart {
+  flex: 0 0 auto;
+}
+
+.txs-view-list {
+  margin-top: 8px;
+}

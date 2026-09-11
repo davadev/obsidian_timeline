@@ -2,6 +2,8 @@ import { ItemView, Platform, WorkspaceLeaf, type App } from "obsidian";
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import { renderTimeline } from "../renderer";
+import { renderList } from "../renderer/list-renderer";
+import { WindowedChart } from "../renderer/windowed-chart";
 import type { TimelineDoc, TimelineEvent } from "../timeline/model";
 import { type TimelineDate } from "../timeline/date";
 import {
@@ -83,6 +85,10 @@ export class TimelineView extends ItemView {
   private effectiveZoom = 1;
   private zoomLabelEl: HTMLElement | null = null;
   private zoomInEl: HTMLButtonElement | null = null;
+  /** Windowed chart, when that path is enabled. Outlives filter changes. */
+  private chart: WindowedChart | null = null;
+  /** Framing the view opens with; what "Auto" returns to. */
+  private autoZoom = 1;
   /**
    * Where the next render must land to keep the focal point still, expressed
    * as a fraction of the content rather than a pixel offset: the rendered axis
@@ -337,6 +343,10 @@ export class TimelineView extends ItemView {
   private bodyRender(): void {
     const body = this.contentEl.querySelector(".txs-view-body") as HTMLElement;
     if (!body) return;
+    if (this.args.getSettings().renderDefaults.windowedChart) {
+      this.windowedRender(body);
+      return;
+    }
     const bodyScrollTop = body.scrollTop;
     const barScrolls: number[] = [];
     body.querySelectorAll<HTMLElement>(".txs-timeline-bar").forEach((b) => {
@@ -438,6 +448,99 @@ export class TimelineView extends ItemView {
     });
   }
 
+  /**
+   * Windowed path (0.11): the chart draws only the time window on screen, so
+   * zooming narrows the window instead of widening an SVG. The chart object
+   * outlives a filter change — rebuilding it would throw away the scroll
+   * position, i.e. jump to the start of the timeline on every chip toggle.
+   */
+  private windowedRender(body: HTMLElement): void {
+    if (!this.cachedDoc) {
+      body.empty();
+      this.chart = null;
+      return;
+    }
+    const settings = this.args.getSettings();
+    const filtered = applyFilters(this.cachedDoc.events, this.filters);
+
+    let host = body.querySelector<HTMLElement>(".txs-view-chart");
+    let list = body.querySelector<HTMLElement>(".txs-view-list");
+    if (!host || !list) {
+      body.empty();
+      host = body.createDiv({ cls: "txs-view-chart" });
+      list = body.createDiv({ cls: "txs-view-list" });
+      this.chart = null;
+    }
+
+    if (!filtered.length) {
+      this.chart?.destroy();
+      this.chart = null;
+      host.empty();
+      list.empty();
+      list.createDiv({ text: "No events match current filters." });
+      return;
+    }
+
+    const mode = settings.renderDefaults.mode;
+    const wantsBar = mode === "bar" || mode === "hybrid";
+
+    if (wantsBar) {
+      if (!this.chart) {
+        host.empty();
+        this.chart = new WindowedChart({
+          container: host,
+          categories: this.cachedDoc.categories,
+          categoryColors: settings.categoryColors,
+          orientation: settings.renderDefaults.orientation,
+          isMobile: Platform.isMobile,
+          onOpenEvent: (id) => this.args.onEventClick(id),
+          onOpenEra: (id) => this.args.onEraClick(id),
+          fuzzyGradientPercent: settings.fuzzyGradientPercent,
+          eventLabelColor: settings.eventLabelColor,
+          stickyLabels: settings.renderDefaults.stickyLabels,
+          onWindowChange: (_w, zoom) => {
+            this.effectiveZoom = zoom;
+            this.filters.zoom = zoom;
+            this.updateZoomLabel();
+          },
+        });
+      }
+      const viewport = autoViewport(filtered) ?? {
+        start: { year: 0 },
+        end: { year: 1 },
+      };
+      this.autoZoom = pickAutoZoom(filtered.length, viewport, host);
+      this.chart.setData(
+        filtered,
+        this.cachedDoc.eras ?? [],
+        viewport,
+        this.filters.zoom ?? this.autoZoom
+      );
+    } else {
+      this.chart?.destroy();
+      this.chart = null;
+      host.empty();
+    }
+
+    list.empty();
+    if (mode === "list" || mode === "hybrid") {
+      renderList({
+        container: list,
+        events: filtered,
+        options: {
+          ...settings.renderDefaults,
+          show: ["title", "date", "category"],
+          details: "compact",
+        },
+        onOpenEvent: (id) => this.args.onEventClick(id),
+        isMobile: Platform.isMobile,
+        categoryColors: settings.categoryColors,
+        eras: this.cachedDoc.eras,
+        onOpenEra: (id) => this.args.onEraClick(id),
+      });
+    }
+  }
+
   /** The horizontally (or vertically) scrolling box the bar chart lives in. */
   private barScroller(): HTMLElement | null {
     return this.contentEl.querySelector(".txs-timeline-bar");
@@ -466,6 +569,9 @@ export class TimelineView extends ItemView {
    * this point would change the number and nothing else.
    */
   private maxZoom(): number {
+    // Windowed, the ceiling comes from the data (a one-hour window), not from
+    // how many pixels the platform will paint.
+    if (this.chart) return this.chart.maxZoom;
     const body = this.contentEl.querySelector(".txs-view-body");
     const vertical =
       this.args.getSettings().renderDefaults.orientation === "vertical";
@@ -483,6 +589,12 @@ export class TimelineView extends ItemView {
 
   /** Multiply the current zoom, keeping `focalClient` (px, viewport) steady. */
   private zoomBy(factor: number, focalClient?: { x: number; y: number }): void {
+    if (this.chart) {
+      // The windowed chart owns the window; it re-reports the zoom back to the
+      // label through onWindowChange.
+      this.chart.zoomBy(factor);
+      return;
+    }
     const from = this.filters.zoom ?? this.effectiveZoom;
     this.setZoom(from * factor, from, focalClient);
   }
@@ -513,6 +625,12 @@ export class TimelineView extends ItemView {
   }
 
   private resetZoom(): void {
+    if (this.chart) {
+      this.filters.zoom = null;
+      this.chart.resetZoom(this.autoZoom);
+      this.updateZoomLabel();
+      return;
+    }
     if (this.filters.zoom == null) return;
     this.filters.zoom = null;
     this.pendingFocus = null;

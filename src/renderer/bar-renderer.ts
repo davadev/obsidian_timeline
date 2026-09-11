@@ -51,6 +51,21 @@ export interface BarRenderArgs {
   eventLabelColor?: string;
   /** Slide labels along their bar so they stay visible. Default on. */
   stickyLabels?: boolean;
+  /**
+   * Tile mode (the windowed chart).
+   *
+   * The caller owns the scroll container and hands over one tile's worth of
+   * time and pixels; the renderer draws exactly that, with no scroller of its
+   * own and no zoom multiplier. Lanes come in precomputed because they must be
+   * stable across tiles — assigning them per tile would make a bar change row
+   * as the user pans.
+   */
+  tile?: {
+    /** Time-axis length of this tile, in px. */
+    axisPx: number;
+    laneByEventId: Map<string, number>;
+    laneCount: number;
+  };
 }
 
 export function renderBar(args: BarRenderArgs): HTMLElement {
@@ -63,8 +78,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     zoom,
     orientation,
   } = args;
-  const wrapper = container.createDiv({ cls: "txs-timeline-bar" });
-  if (!viewport || events.length === 0) {
+  const tile = args.tile;
+  // In tile mode the caller owns the scroller; the renderer just fills a box.
+  const wrapper = tile
+    ? container.createDiv({ cls: "txs-tile" })
+    : container.createDiv({ cls: "txs-timeline-bar" });
+  if (!viewport || (events.length === 0 && !tile)) {
     wrapper.createDiv({ text: "No events to display." });
     return wrapper;
   }
@@ -79,8 +98,12 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   // Labels that slide along their bar while it is scrolled.
   const sticky: StickyLabel[] = [];
 
-  const lanes = assignLanes(events);
-  const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
+  const lanes = tile
+    ? events.map((e) => tile.laneByEventId.get(e.id) ?? 0)
+    : assignLanes(events);
+  const laneCount = tile
+    ? Math.max(1, tile.laneCount)
+    : Math.max(1, ...lanes.map((l) => l + 1));
 
   const containerSize = isVertical
     ? Math.max(280, container.clientWidth || 640)
@@ -89,7 +112,11 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const timeAxisBase = isVertical
     ? Math.max(360, container.clientHeight || 600)
     : containerSize;
-  const timeAxisSize = clampAxisSize(timeAxisBase * zoom, args.isMobile);
+  // A tile is drawn at exactly the size it was asked for: the window, not the
+  // zoom factor, decides how much time it covers.
+  const timeAxisSize = tile
+    ? Math.max(1, Math.round(tile.axisPx))
+    : clampAxisSize(timeAxisBase * zoom, args.isMobile);
   const crossAxisSize =
     AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
 
@@ -232,7 +259,22 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   });
 
   wrapper.appendChild(svg);
-  attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
+  if (tile) {
+    // A tile never scrolls: it is a fixed slice of the window that the shell
+    // moves around. Paint its axis once, and pin each label to the start of
+    // the tile so a bar entering from off-screen still shows its name.
+    paintAxis(0, timeAxisSize);
+    for (const l of sticky) {
+      const target = Math.min(Math.max(l.from, 0), l.latest);
+      if (Math.abs(target - l.at) < 1) continue;
+      const rotate = isVertical ? " rotate(90)" : "";
+      const x = isVertical ? l.cross : target;
+      const y = isVertical ? target : l.cross;
+      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
+    }
+  } else {
+    attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
+  }
   return wrapper;
 }
 

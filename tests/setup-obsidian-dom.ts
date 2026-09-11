@@ -1,6 +1,7 @@
 /**
  * Minimal polyfill for the Obsidian-specific DOM helpers (createDiv,
- * createEl, createSpan, empty, addClass, toggleClass, setAttr, appendText)
+ * createEl, createSpan, empty, addClass, removeClass, hasClass, toggleClass,
+ * setAttr, setCssProps, appendText)
  * that the renderer uses but jsdom does not provide. Lets us exercise
  * renderTimeline end-to-end from vitest without launching Obsidian.
  */
@@ -62,6 +63,23 @@ if (proto) {
   if (!proto.appendText) {
     proto.appendText = function (t: string): void {
       this.appendChild(document.createTextNode(t));
+    };
+  }
+  if (!proto.removeClass) {
+    proto.removeClass = function (cls: string): void {
+      this.classList.remove(cls);
+    };
+  }
+  if (!proto.hasClass) {
+    proto.hasClass = function (cls: string): boolean {
+      return this.classList.contains(cls);
+    };
+  }
+  if (!proto.setCssProps) {
+    proto.setCssProps = function (props: Record<string, string>): void {
+      for (const [k, v] of Object.entries(props)) {
+        this.style.setProperty(k, v);
+      }
     };
   }
 }
