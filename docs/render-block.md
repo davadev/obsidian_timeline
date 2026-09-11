@@ -55,6 +55,10 @@ Auto-generated event notes ship a `viewport: true` block by default so the inlin
 
 ## Filters panel
 
+Inline blocks render through the classic whole-chart renderer; the windowed
+chart introduced in 0.11 is used by the workspace **Timeline view** only, so
+`zoom:` here still means "how many screens wide the chart is drawn".
+
 Every inline block (and the global view) carries the same Filters panel — collapsed by default. It writes its state into the block's YAML on every change, so filters travel with the note across devices.
 
 If you ever see "No events to display" inside an inline block: expand the panel and click **Clear filters**.

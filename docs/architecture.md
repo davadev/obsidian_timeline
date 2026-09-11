@@ -34,7 +34,11 @@ src/
     base64.ts                      # browser-safe base64 (btoa/atob) + image-format sniff
   renderer/
     render-options.ts              # default + per-block options shape
-    bar-renderer.ts                # SVG bar + tooltip + mobile panel
+    bar-renderer.ts                # SVG bar + tooltip + mobile panel (draws a whole chart, or one tile)
+    windowed-chart.ts              # scroller + tile ring + gestures (the Timeline view's chart)
+    time-window.ts                 # window <-> zoom <-> scroll <-> tile maths (pure)
+    axis-ticks.ts                  # calendar tick ladder, centuries down to hours (pure)
+    zoom-math.ts                   # clamps, pinch tracking, focal-point scroll (pure)
     list-renderer.ts               # chronological text list
     tooltip.ts                     # desktop hover tooltip
     filter-bar.ts                  # rich filter panel + applyRichFilter
@@ -66,6 +70,50 @@ Three rings, inner depends on nothing in outer:
 3. **`src/obsidian/`** — Obsidian integration. Vault IO, views, settings, commands. Not unit-tested; behaviour exercised through the demo vault.
 
 `src/main.ts` wires them together.
+
+## The windowed chart (0.11+)
+
+The Timeline view's chart draws **only the time window on screen**. Zooming
+narrows that window; it never widens the drawn element. Before 0.11 the chart
+was one SVG spanning the whole timeline, scaled by the zoom factor, and on a
+long timeline that became a compositing layer large enough for iOS to kill the
+app — so the axis had to be capped, which in turn capped the zoom.
+
+```
+.txs-chart                 scroll container (native scrolling, real scrollbar)
+├── .txs-chart-edge        sticky, zero-sized: holds every event label
+├── .txs-chart-spacer      empty; its width gives the scroller its range
+└── .txs-chart-tiles       one transform scales all tiles during a gesture
+    └── .txs-tile-host …   pane-wide tiles: visible one, plus two either side
+```
+
+Consequences that are easy to undo by accident:
+
+- **An ordinary scroll frame runs no JavaScript.** Tiles already exist; native
+  scrolling moves them. Work is done only when the scroll reaches the edge of
+  the ring.
+- **Nothing may enter or leave the DOM while a gesture is live.** A browser
+  cancels a pinch the moment the element it started on is removed, so a live
+  gesture only sets CSS custom properties on `.txs-chart-tiles`; the real
+  redraw happens on release. Text and point markers counter-scale by the
+  inverse so only durations stretch.
+- **Lanes are assigned once across the filtered set** (`assignLanes`, passed
+  into `renderBar`), never per tile, or a bar would change row as you pan.
+- **Labels are drawn only by the pinned layer**, in viewport coordinates — one
+  per event, sliding along its bar. Tiles drawing their own produced a copy per
+  seam.
+- **The window is held in absolute time** across filter changes and clamped
+  into the new span, because the span is derived from the filtered events.
+- Pane width is half of the scroll↔time mapping, so a `ResizeObserver` is
+  mandatory: without it, rotating a phone scrolls you to the wrong date.
+
+Beyond `MAX_SCROLL_PX` (2 000 000) the scroller represents a *page* of the
+timeline rather than all of it and re-anchors as you reach an end — an
+hour-deep window on a three-millennia span would otherwise want ~2×10¹⁰ px of
+scroll range.
+
+Inline ` ```timeline ` blocks still use the classic whole-chart path, as does
+PNG export; `renderDefaults.windowedChart` switches the view between the two.
 
 ## Caches
 

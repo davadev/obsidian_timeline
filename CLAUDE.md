@@ -28,6 +28,16 @@ Lint rules that bite: no static `el.style.x = "literal"` (use a class in
 `FileManager.trashFile`), sentence case for UI text (the rule's brand/acronym
 exceptions live in `eslint.config.mjs`).
 
+## The chart, in one paragraph
+
+The Timeline view draws only the time window on screen: an empty spacer gives
+the scroller its range and a ring of pane-wide tiles is positioned inside it
+(`src/renderer/windowed-chart.ts`, maths in `time-window.ts`). Two rules break
+it if ignored — **never touch the DOM while a pinch is live** (the browser
+cancels a gesture whose target is removed; a live gesture only sets CSS custom
+properties), and **assign lanes once across the filtered set**, never per tile.
+Full detail in [docs/architecture.md](docs/architecture.md#the-windowed-chart-011).
+
 ## Conventions
 
 - Minimum Obsidian version is **1.13.0**: the settings tab uses the declarative
@@ -41,7 +51,12 @@ exceptions live in `eslint.config.mjs`).
   Refresh it (`cp main.js manifest.json styles.css demo-vault/...`) whenever you
   change the build or the styles.
 - Pure logic under `src/timeline/` never imports Obsidian; only
-  `src/obsidian/` and `src/renderer/` touch the DOM/API.
+  `src/obsidian/` and `src/renderer/` touch the DOM/API. Chart maths
+  (`time-window.ts`, `axis-ticks.ts`, `zoom-math.ts`) is DOM-free and tested
+  directly.
+- UI changes get looked at before they ship: bundle the module with esbuild,
+  render it in a fixture page against the real `styles.css`, screenshot it
+  headless. Green tests are not evidence that something is on screen.
 
 ## Docs
 

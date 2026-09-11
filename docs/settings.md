@@ -25,6 +25,7 @@ Defaults for every ` ```timeline ` block. Per-block YAML overrides these. See [R
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
+| Windowed chart (experimental) | on | Draws only the stretch of time on screen, so zoom reaches months, days and hours without the memory cost that used to crash iOS. Off falls back to the 0.10 renderer. See [architecture](architecture.md). |
 | Keep event labels in view | on | Slides each event label along its bar while scrolling, so a span running off both edges of the screen still shows its name. Off pins the label to the bar's start. Per-block: `stickyLabels: false`. |
 
 The timeline view's own zoom (pinch, trackpad pinch / <kbd>Ctrl</kbd>+scroll, or the `−` / `+` buttons) is not a setting — see [Commands](commands.md#zooming-the-timeline-view).
