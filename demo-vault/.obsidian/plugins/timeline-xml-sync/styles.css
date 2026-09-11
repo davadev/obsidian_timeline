@@ -605,7 +605,8 @@
 .txs-view-filters {
   /* <details> element. When closed only the summary shows, so the body has
    * full screen for the timeline — important on phones. */
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
   padding: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
@@ -647,7 +648,17 @@
   font-weight: 500;
 }
 
-.txs-view-filters > *:not(summary) {
+/* Scroll box holding the expanded filter controls. Capped so the timeline
+ * body keeps room, and scrollable so no row can end up stranded under
+ * Obsidian's bottom bar on a phone. */
+.txs-view-filters-body {
+  max-height: 45vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.txs-view-filters-body > * {
   display: inline-flex;
   align-items: center;
   margin-right: 6px;

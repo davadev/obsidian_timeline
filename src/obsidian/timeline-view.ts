@@ -137,6 +137,12 @@ export class TimelineView extends ItemView {
       text: "Filters",
     });
 
+    // Every control lives in its own scrollable box: the panel is taller than
+    // the view on phones (and in short desktop panes), and without this the
+    // rows past the fold sit under Obsidian's bottom bar with no way to reach
+    // them. The summary stays pinned above it.
+    const controls = panel.createDiv({ cls: "txs-view-filters-body" });
+
     const updateBadge = () => {
       const n =
         (this.filters.search ? 1 : 0) +
@@ -159,7 +165,7 @@ export class TimelineView extends ItemView {
     };
 
     // Search
-    const searchInput = panel.createEl("input", {
+    const searchInput = controls.createEl("input", {
       cls: "txs-view-search",
       type: "search",
       placeholder: "Search title / description / category…",
@@ -172,7 +178,7 @@ export class TimelineView extends ItemView {
     });
 
     // Date range — granularity comes from settings.
-    const dateBox = panel.createDiv({ cls: "txs-view-date-row" });
+    const dateBox = controls.createDiv({ cls: "txs-view-date-row" });
     dateBox.createSpan({
       cls: "txs-view-range-label",
       text: "From → to:",
@@ -200,7 +206,7 @@ export class TimelineView extends ItemView {
     );
 
     // Labels
-    const labelsInput = panel.createEl("input", {
+    const labelsInput = controls.createEl("input", {
       cls: "txs-view-labels",
       type: "text",
       placeholder: "labels (space / comma / ;)",
@@ -219,7 +225,7 @@ export class TimelineView extends ItemView {
     const cats = distinctCategories(doc.events, doc.categories);
     if (cats.length) {
       renderFilterBar({
-        parent: panel,
+        parent: controls,
         sourceKey: `view:${settings.timelineId}`,
         allCategories: cats,
         initialHidden: Array.from(this.filters.hiddenCategories.size
@@ -239,7 +245,7 @@ export class TimelineView extends ItemView {
     }
 
     // Zoom override
-    const zoomRow = panel.createDiv({ cls: "txs-view-zoom-row" });
+    const zoomRow = controls.createDiv({ cls: "txs-view-zoom-row" });
     zoomRow.createSpan({ text: "Zoom override:" });
     const zoomInput = zoomRow.createEl("input", {
       type: "number",
@@ -261,7 +267,7 @@ export class TimelineView extends ItemView {
     });
 
     // Clear
-    const clearBtn = panel.createEl("button", { text: "Clear filters" });
+    const clearBtn = controls.createEl("button", { text: "Clear filters" });
     clearBtn.addEventListener("click", () => {
       this.filters = EMPTY_FILTERS();
       searchInput.value = "";
