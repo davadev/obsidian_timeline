@@ -82,6 +82,7 @@ export class WindowedChart {
   /** Pinned to the viewport; holds every label the chart shows. */
   private readonly edgeLayer: HTMLElement;
   private edgeSvg: SVGSVGElement | null = null;
+  private readonly tileLayer: HTMLElement;
   private readonly tiles = new Map<number, HTMLElement>();
   private readonly resize: ResizeObserver | null = null;
   private readonly pinch = new PinchTracker();
@@ -100,6 +101,9 @@ export class WindowedChart {
   /** Set once WebKit sends a real pinch, so the touch fallback stands down. */
   private webkitGestures = false;
   private pinchWatchdog: number | null = null;
+  /** Live gesture: scales what is already drawn instead of redrawing it. */
+  private preview: { startZoom: number; focalPx: number; scale: number } | null =
+    null;
   private pendingZoom: { zoom: number; focalPx: number } | null = null;
 
   constructor(private args: WindowedChartArgs) {
@@ -111,6 +115,9 @@ export class WindowedChart {
     // it takes no part in the scroll content.
     this.edgeLayer = this.scroller.createDiv({ cls: "txs-chart-edge" });
     this.spacer = this.scroller.createDiv({ cls: "txs-chart-spacer" });
+    // Tiles live in their own layer so a gesture can scale all of them with a
+    // single transform, without touching the DOM they were started on.
+    this.tileLayer = this.scroller.createDiv({ cls: "txs-chart-tiles" });
 
     this.scroller.addEventListener("scroll", () => this.onScroll(), {
       passive: true,
@@ -306,6 +313,8 @@ export class WindowedChart {
 
   private onScroll(): void {
     if (this.syncing) return;
+    // A gesture is in flight: touching the DOM now would cancel it.
+    if (this.preview) return;
     if (this.frame != null) return;
     this.frame = window.requestAnimationFrame(() => {
       this.frame = null;
@@ -342,6 +351,47 @@ export class WindowedChart {
   }
 
   /**
+   * Starts a gesture preview.
+   *
+   * Nothing may be added to or removed from the DOM until the gesture ends:
+   * the browser cancels a pinch the moment the element it started on leaves the
+   * document, and rebuilding tiles per frame did exactly that — the zoom moved
+   * a little and then the gesture went dead under the user's fingers.
+   */
+  private beginPreview(focalPx: number): void {
+    this.preview = { startZoom: this.zoom, focalPx, scale: 1 };
+    this.scroller.addClass("is-zooming");
+  }
+
+  /** Scales the drawn tiles about the focal point. No DOM changes. */
+  private updatePreview(scale: number, focalPx: number): void {
+    if (!this.preview) this.beginPreview(focalPx);
+    const p = this.preview;
+    if (!p) return;
+    p.scale = scale;
+    p.focalPx = focalPx;
+
+    const origin = this.scrollPos() + focalPx;
+    this.tileLayer.setCssProps({
+      "--txs-tile-scale": String(scale),
+      "--txs-tile-origin": `${origin}px`,
+    });
+  }
+
+  /** Ends the gesture and redraws once, at the zoom it landed on. */
+  private commitPreview(): void {
+    const p = this.preview;
+    this.preview = null;
+    this.scroller.removeClass("is-zooming");
+    this.tileLayer.setCssProps({
+      "--txs-tile-scale": "1",
+      "--txs-tile-origin": "0px",
+    });
+    if (!p) return;
+    this.zoomTo(p.startZoom * p.scale, p.focalPx);
+  }
+
+  /**
    * Suspends native panning while two fingers are down, so the WebView cannot
    * claim the gesture. Self-releasing: if the gesture's end is swallowed, the
    * watchdog restores panning rather than leaving the chart unscrollable.
@@ -374,6 +424,7 @@ export class WindowedChart {
 
   /** Build whatever the ring is missing and drop whatever left it. */
   private paintTiles(): void {
+    if (this.preview) return;
     const wanted = tileRange(this.scrollPos(), this.page, this.paneW, TILE_RADIUS);
     const keep = new Set(wanted);
 
@@ -401,7 +452,7 @@ export class WindowedChart {
       (e) => toJulian(e.end) >= tile.from && toJulian(e.start) <= tile.to
     );
 
-    const host = this.scroller.createDiv({ cls: "txs-tile-host" });
+    const host = this.tileLayer.createDiv({ cls: "txs-tile-host" });
     host.setCssProps(
       this.vertical
         ? { top: `${Math.round(tile.px)}px`, left: "0px" }
@@ -461,7 +512,6 @@ export class WindowedChart {
   }
 
   private attachWebKitGestures(): void {
-    let startZoom = 1;
     let focal = 0;
 
     const at = (e: Event): number => {
@@ -479,17 +529,20 @@ export class WindowedChart {
     this.scroller.addEventListener("gesturestart", (e: Event) => {
       e.preventDefault();
       this.webkitGestures = true;
-      startZoom = this.zoom;
       focal = at(e);
+      this.beginPreview(focal);
     });
 
     this.scroller.addEventListener("gesturechange", (e: Event) => {
       e.preventDefault();
       const scale = (e as unknown as { scale?: number }).scale ?? 1;
-      if (scale > 0) this.zoomTo(startZoom * Math.pow(scale, PINCH_GAIN), focal);
+      if (scale > 0) this.updatePreview(Math.pow(scale, PINCH_GAIN), focal);
     });
 
-    this.scroller.addEventListener("gestureend", (e: Event) => e.preventDefault());
+    this.scroller.addEventListener("gestureend", (e: Event) => {
+      e.preventDefault();
+      this.commitPreview();
+    });
   }
 
   private attachTouchGestures(): void {
@@ -497,7 +550,6 @@ export class WindowedChart {
 
     const points = (e: TouchEvent): PinchPoint[] =>
       Array.from(e.touches, (t) => ({ x: t.clientX, y: t.clientY }));
-    let startZoom = 1;
 
     this.scroller.addEventListener(
       "touchstart",
@@ -505,8 +557,13 @@ export class WindowedChart {
         if (this.webkitGestures) return;
         const action = this.pinch.start(points(e));
         if (action.kind === "begin") {
-          startZoom = this.zoom;
           this.holdPinch();
+          const rect = this.scroller.getBoundingClientRect();
+          this.beginPreview(
+            this.vertical
+              ? action.focal.y - rect.top
+              : action.focal.x - rect.left
+          );
         }
       },
       { passive: true }
@@ -526,7 +583,7 @@ export class WindowedChart {
         // Absolute, from where the gesture started: relative steps would
         // compound rounding across a long pinch.
         this.holdPinch();
-        this.zoomTo(startZoom * Math.pow(action.scale, PINCH_GAIN), at);
+        this.updatePreview(Math.pow(action.scale, PINCH_GAIN), at);
       },
       { passive: false }
     );
@@ -536,7 +593,8 @@ export class WindowedChart {
       // touch-action: none cannot be panned at all.
       if (e.touches.length === 0) this.releasePinch();
       if (this.webkitGestures) return;
-      this.pinch.end(points(e));
+      const action = this.pinch.end(points(e));
+      if (action.kind === "commit") this.commitPreview();
     };
     this.scroller.addEventListener("touchend", end);
     this.scroller.addEventListener("touchcancel", end);

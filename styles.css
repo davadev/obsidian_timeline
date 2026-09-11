@@ -997,6 +997,28 @@
   pointer-events: none;
 }
 
+/* All tiles in one layer: a pinch scales this, so nothing is added to or
+ * removed from the DOM while the gesture is live. Removing the element a touch
+ * began on makes the browser cancel the gesture — which is what made a pinch
+ * stop responding halfway through. */
+.txs-chart-tiles {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: var(--txs-tile-origin, 0) 0;
+  transform: scaleX(var(--txs-tile-scale, 1));
+}
+
+.txs-chart.txs-vertical .txs-chart-tiles {
+  transform-origin: 0 var(--txs-tile-origin, 0);
+  transform: scaleY(var(--txs-tile-scale, 1));
+}
+
+/* Labels are redrawn on commit; they would only smear during the gesture. */
+.txs-chart.is-zooming .txs-chart-edge {
+  opacity: 0;
+}
+
 .txs-tile-host {
   position: absolute;
   top: 0;

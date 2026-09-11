@@ -209,6 +209,42 @@ describe("windowed chart", () => {
     expect(chart.zoom).toBeGreaterThan(before * 4);
   });
 
+  it("does not touch the DOM while a gesture is live", async () => {
+    // Regression: tiles were rebuilt on every zoom frame, so the element the
+    // pinch started on left the document and the browser cancelled the
+    // gesture — the zoom moved a little, then stopped responding.
+    const { chart, scroller } = chartWith(DATA, 1);
+    const gesture = chart as unknown as {
+      beginPreview: (px: number) => void;
+      updatePreview: (scale: number, px: number) => void;
+      commitPreview: () => void;
+    };
+
+    const before = tiles(scroller);
+    expect(before.length).toBeGreaterThan(0);
+
+    gesture.beginPreview(200);
+    for (const scale of [1.2, 2, 4, 9]) {
+      gesture.updatePreview(scale, 200);
+      await settle();
+    }
+
+    const during = tiles(scroller);
+    expect(during).toEqual(before); // same nodes, not replacements
+    for (const t of before) expect(t.isConnected).toBe(true);
+
+    // Scrolling mid-gesture must not redraw either.
+    scroller.scrollLeft = 900;
+    scroller.dispatchEvent(new Event("scroll"));
+    await settle();
+    expect(tiles(scroller)).toEqual(before);
+
+    const zoomBefore = chart.zoom;
+    gesture.commitPreview();
+    await settle();
+    expect(chart.zoom).toBeGreaterThan(zoomBefore * 4);
+  });
+
   it("tears down cleanly", () => {
     const { chart, scroller } = chartWith(DATA, 2);
     chart.destroy();
