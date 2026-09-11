@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_AXIS_PX,
   MAX_ZOOM,
   PinchTracker,
+  clampAxisSize,
   MIN_ZOOM,
   ZOOM_STEP,
   clampZoom,
@@ -24,10 +26,24 @@ describe("clampZoom", () => {
 
   it("survives repeated stepping without drifting out of range", () => {
     let z = 1;
-    for (let i = 0; i < 50; i++) z = clampZoom(z * ZOOM_STEP);
+    for (let i = 0; i < 100; i++) z = clampZoom(z * ZOOM_STEP);
     expect(z).toBe(MAX_ZOOM);
     for (let i = 0; i < 100; i++) z = clampZoom(z / ZOOM_STEP);
     expect(z).toBe(MIN_ZOOM);
+  });
+});
+
+describe("clampAxisSize", () => {
+  it("keeps a sane floor and caps what the WebView must paint", () => {
+    expect(clampAxisSize(800)).toBe(800);
+    expect(clampAxisSize(10)).toBe(120);
+    expect(clampAxisSize(1e9)).toBe(MAX_AXIS_PX);
+  });
+
+  it("caps the axis before the zoom limit is reached", () => {
+    // a typical pane is ~800px wide; max zoom must not be able to outrun the
+    // pixel cap unnoticed
+    expect(clampAxisSize(800 * MAX_ZOOM)).toBe(MAX_AXIS_PX);
   });
 });
 

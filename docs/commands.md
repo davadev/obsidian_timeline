@@ -39,6 +39,11 @@ The time axis is scaled to fit by default. To look closer:
   current factor (`Auto` while it is being fitted automatically); click it to go
   back to automatic.
 
+Zoom runs from 0.25× (fitted out) to 500×. Very deep zoom is bounded by a
+pixel cap on the rendered axis (`MAX_AXIS_PX` in `src/renderer/zoom-math.ts`,
+150 000 px — roughly 75 px per year across two millennia), so the chart stops
+growing before a device has to paint something it cannot.
+
 Zoom is a view setting, not a filter: it is not counted in the Filters badge,
 though **Clear filters** does reset it to automatic. Inline ` ```timeline `
 blocks keep their own `zoom:` option — see

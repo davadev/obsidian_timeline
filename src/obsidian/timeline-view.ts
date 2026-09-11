@@ -581,6 +581,9 @@ export class TimelineView extends ItemView {
     p.scroller.addClass("is-scaling");
     p.scroller.setCssProps({
       "--txs-zoom-scale": String(p.scale),
+      // Labels and point markers counter-scale by the inverse, so only the
+      // bars stretch — text keeps its shape until the real render lands.
+      "--txs-zoom-inv": String(1 / p.scale),
       "--txs-zoom-extra": `${Math.max(0, extra)}px`,
     });
 
@@ -600,6 +603,7 @@ export class TimelineView extends ItemView {
     p.scroller.removeClass("is-scaling");
     p.scroller.setCssProps({
       "--txs-zoom-scale": "1",
+      "--txs-zoom-inv": "1",
       "--txs-zoom-extra": "0px",
     });
     const body = this.contentEl.querySelector(".txs-view-body");

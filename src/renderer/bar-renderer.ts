@@ -3,6 +3,7 @@ import type { ViewportRange } from "../timeline/overlap";
 import { assignLanes } from "../timeline/overlap";
 import { fractionalPosition } from "../timeline/date";
 import { hideTooltip, showTooltip } from "./tooltip";
+import { clampAxisSize } from "./zoom-math";
 import type { Orientation } from "./render-options";
 
 /**
@@ -82,7 +83,7 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   const timeAxisBase = isVertical
     ? Math.max(360, container.clientHeight || 600)
     : containerSize;
-  const timeAxisSize = Math.max(120, Math.round(timeAxisBase * zoom));
+  const timeAxisSize = clampAxisSize(timeAxisBase * zoom);
   const crossAxisSize =
     AXIS_PAD + laneCount * (LANE_THICKNESS + LANE_GAP) + TAIL_PAD;
 

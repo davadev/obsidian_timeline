@@ -4,15 +4,33 @@
  * tested directly.
  */
 
-/** Below this the bars are unreadable; above it the SVG gets absurd. */
+/** Below this the bars are unreadable. */
 export const MIN_ZOOM = 0.25;
-export const MAX_ZOOM = 50;
+/**
+ * Upper bound on the zoom factor. Generous, so a dense century can be opened
+ * out to individual days; the real safety limit is the pixel cap below.
+ */
+export const MAX_ZOOM = 500;
+/**
+ * Hard cap on the rendered time axis, in CSS pixels — the real limit on how
+ * far you can zoom in. Browsers tile the rasterisation, so element count
+ * matters more than extent, but very large SVGs still get dropped or
+ * mis-painted on mobile WebKit. 150k gives roughly 75px per year across two
+ * millennia, or day-level detail over a few centuries. Lower it if a device
+ * starts showing blank stretches.
+ */
+export const MAX_AXIS_PX = 150000;
 /** Multiplier applied by one press of +/-. */
 export const ZOOM_STEP = 1.35;
 
 export function clampZoom(z: number): number {
   if (Number.isNaN(z)) return 1;
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+}
+
+/** Keep the rendered axis inside what the WebView can actually paint. */
+export function clampAxisSize(px: number): number {
+  return Math.min(MAX_AXIS_PX, Math.max(120, Math.round(px)));
 }
 
 /** "1.5" / "12" rather than "1.4999999" / "12.0". */

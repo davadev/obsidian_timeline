@@ -652,6 +652,9 @@
   z-index: 1;
   display: flex;
   align-items: center;
+  /* Obsidian's own button styling centres label text — the panel header reads
+   * as a heading, so pin it to the left. */
+  justify-content: flex-start;
   gap: 6px;
   width: 100%;
   box-shadow: none;
@@ -753,6 +756,33 @@
   transform: scaleY(var(--txs-zoom-scale, 1));
   margin-right: 0;
   margin-bottom: var(--txs-zoom-extra, 0);
+}
+
+/* Undo the stretch for anything that should keep its shape: labels and point
+ * markers counter-scale about their own anchor, so they slide with the bars
+ * instead of smearing. `:not([transform])` leaves the rotated labels of the
+ * vertical layout alone — a CSS transform would replace their rotation. */
+.txs-timeline-bar.is-scaling > svg text:not([transform]),
+.txs-timeline-bar.is-scaling > svg .txs-event-point {
+  transform-box: fill-box;
+  transform: scaleX(var(--txs-zoom-inv, 1));
+}
+
+.txs-timeline-bar.is-scaling > svg text:not([transform]) {
+  transform-origin: left center;
+}
+
+.txs-timeline-bar.is-scaling > svg .txs-event-point {
+  transform-origin: center;
+}
+
+.txs-timeline-bar.is-scaling.txs-vertical > svg text:not([transform]),
+.txs-timeline-bar.is-scaling.txs-vertical > svg .txs-event-point {
+  transform: scaleY(var(--txs-zoom-inv, 1));
+}
+
+.txs-timeline-bar.is-scaling.txs-vertical > svg text:not([transform]) {
+  transform-origin: center top;
 }
 
 .txs-view-body {
