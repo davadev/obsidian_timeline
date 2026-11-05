@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import "./setup-obsidian-dom";
+import "../testUtils/setup-obsidian-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WindowedChart } from "../src/renderer/windowed-chart";
 import type { TimelineEvent } from "../src/timeline/model";

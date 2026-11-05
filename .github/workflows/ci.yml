@@ -34,8 +34,15 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
-      - run: npm test
+      - run: npm run test:cov
       # No tag: asserts the committed manifest names a plain stable version,
       # manifest/package/lock/versions.json agree, and the supply-chain policy
       # (.npmrc age, Dependabot cooldown, install scripts) is intact.
       - run: npm run check-release
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore

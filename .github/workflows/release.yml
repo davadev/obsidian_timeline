@@ -115,8 +115,8 @@ jobs:
       - name: Build plugin
         run: npm run build
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:cov
 
       - name: Run release guard
         run: npm run check-release -- --tag "${GITHUB_REF_NAME}"

@@ -15,6 +15,7 @@ export default tseslint.config(
       // Tests are not shipped and are not part of the community review; they
       // use Node APIs and DOM shims the plugin rules rightly flag.
       "tests/**",
+      "testUtils/**",
       "docs/**",
       // Build/test tooling, not plugin code: outside tsconfig's program, so
       // the typed rules in obsidianmd's recommended set cannot run on it.

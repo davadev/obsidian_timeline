@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "test:cov": "vitest run --coverage"
   },
   "allowScripts": {
     "esbuild": false,
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "1.6.1",
     "esbuild": "^0.20.0",
     "eslint": "^9.39.5",
     "eslint-plugin-obsidianmd": "^0.4.2",

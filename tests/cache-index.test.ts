@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import "./setup-obsidian-dom";
+import "../testUtils/setup-obsidian-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TimelineCache } from "../src/obsidian/cache";
 import { DEFAULT_SETTINGS } from "../src/settings";

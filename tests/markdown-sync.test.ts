@@ -9,7 +9,7 @@ import { validateAll } from "../src/timeline/validator";
 import { mergeNotesIntoDoc } from "../src/timeline/sync-engine";
 import type { EventNote, TimelineEvent } from "../src/timeline/model";
 
-const fixturePath = join(__dirname, "fixtures", "sample.timeline");
+const fixturePath = join(__dirname, "..", "testUtils", "fixtures", "sample.timeline");
 
 function noteFor(ev: TimelineEvent): EventNote {
   return {
