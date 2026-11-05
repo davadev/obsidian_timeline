@@ -58,12 +58,7 @@ export class TemplateService {
       throw new Error("Event notes directory not configured.");
     }
     await this.vault.ensureFolder(eventNotesDir);
-    const stamp = new Date()
-      .toISOString()
-      .replace("T", "-")
-      .replace(/[:.Z]/g, "")
-      .slice(0, 15);
-    const id = `${slugify(title)}-${stamp}`;
+    const id = `${slugify(title)}-${timestampStamp()}`;
     const skeleton: TimelineEvent = {
       id,
       text: title || "New event",
@@ -77,8 +72,13 @@ export class TemplateService {
       timelineId,
       trimDescription: trimDescriptionOnWrite,
     });
-    const filename = `${slugify(title) || "new-event"}.md`;
-    const path = normalizePath(`${eventNotesDir}/${filename}`);
+    // Never overwrite a note that is already there: a second event with the
+    // same title gets "-2", "-3", ... rather than replacing the first.
+    const base = slugify(title);
+    let path = normalizePath(`${eventNotesDir}/${base}.md`);
+    for (let n = 2; this.vault.exists(path); n++) {
+      path = normalizePath(`${eventNotesDir}/${base}-${n}.md`);
+    }
     await this.vault.writeText(path, md);
     return { path, eventId: id };
   }
@@ -116,13 +116,8 @@ export class TemplateService {
     const { eventNotesDir, sourceXmlPath, timelineId } = this.getSettings();
     const erasDir = `${eventNotesDir}/_eras`;
     await vault.ensureFolder(erasDir);
-    const baseId = slugify(name || "era");
-    const stamp = new Date()
-      .toISOString()
-      .replace("T", "-")
-      .replace(/[:.Z]/g, "")
-      .slice(0, 15);
-    const id = `${baseId}-${stamp}`;
+    const baseId = slugify(name); // the dialog guarantees a name
+    const id = `${baseId}-${timestampStamp()}`;
     const { renderEraMarkdown } = await import("../timeline/era-md");
     const md = renderEraMarkdown(
       { id, name, start, end, color: color || undefined },
@@ -134,6 +129,11 @@ export class TemplateService {
     new Notice(`Created era ${name}`);
     await openEraInInspector(id);
   }
+}
+
+/** `2024-05-06-070809`: to the second, so ids made in the same minute differ. */
+function timestampStamp(): string {
+  return new Date().toISOString().replace("T", "-").replace(/[:.Z]/g, "").slice(0, 17);
 }
 
 interface EraPromptResult {

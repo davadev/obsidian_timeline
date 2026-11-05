@@ -198,16 +198,17 @@ export class TimelineCache {
             if (cat && !categories.has(cat)) {
               categories.set(cat, { name: cat, color: s.categoryColors[cat] });
             }
-            continue;
+          } else {
+            // Era? Notes under _eras/ are the convention; we also try anything
+            // with `timeline.role: era` regardless of folder.
+            const era = parseEraNote(raw, f.basename);
+            if (era) eras.push(era);
           }
-          // Era? Notes under _eras/ are the convention; we also try anything
-          // with `timeline.role: era` regardless of folder.
-          const fallbackId = f.basename;
-          const era = parseEraNote(raw, fallbackId);
-          if (era) eras.push(era);
         } catch {
           // skip unreadable files
         }
+        // After every file, events included: a `continue` above used to skip
+        // this for event notes, so a vault of events never yielded.
         if ((i + 1) % BATCH === 0) await yieldToUi();
       }
     }

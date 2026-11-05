@@ -379,6 +379,9 @@ function makeBlockPersister(
   originalSource: string
 ): (state: import("../renderer/filter-bar").RichFilterState) => void {
   let currentBody = originalSource;
+  // What the author wrote, so clearing the filter's zoom override puts it back
+  // instead of erasing it.
+  const authoredZoom = parseBodyMapping(originalSource).zoom;
   let timer: number | null = null;
   let pendingState: import("../renderer/filter-bar").RichFilterState | null = null;
 
@@ -403,13 +406,13 @@ function makeBlockPersister(
 
   const flush = async () => {
     timer = null;
-    const state = pendingState;
+    // Only the timer calls this, and only after a change set `pendingState`.
+    const state = pendingState as import("../renderer/filter-bar").RichFilterState;
     pendingState = null;
-    if (!state) return;
     if (!sourcePath) return;
     const file = ctx.app.vault.getAbstractFileByPath(sourcePath);
     if (!(file instanceof TFile)) return;
-    const nextBody = serializeBlockBody(currentBody, state);
+    const nextBody = serializeBlockBody(currentBody, state, authoredZoom);
     if (nextBody === currentBody) return;
     const oldFence = "```timeline\n" + currentBody + "\n```";
     const newFence = "```timeline\n" + nextBody + "\n```";
@@ -425,7 +428,7 @@ function makeBlockPersister(
       const match = /```timeline\n([\s\S]*?)\n```/.exec(raw);
       if (match) {
         const freshBody = match[1];
-        const freshNext = serializeBlockBody(freshBody, state);
+        const freshNext = serializeBlockBody(freshBody, state, authoredZoom);
         if (freshNext !== freshBody) {
           const oldF2 = "```timeline\n" + freshBody + "\n```";
           const newF2 = "```timeline\n" + freshNext + "\n```";
@@ -456,6 +459,17 @@ function makeBlockPersister(
   };
 }
 
+/** The block body as a mapping; anything else (or invalid YAML) reads as empty. */
+function parseBodyMapping(body: string): Record<string, unknown> {
+  try {
+    const p: unknown = YAML.parse(body);
+    if (p && typeof p === "object" && !Array.isArray(p)) return p as Record<string, unknown>;
+  } catch {
+    // ignore — start clean
+  }
+  return {};
+}
+
 /**
  * Build the new block YAML by parsing the existing body, overlaying the
  * filter state, and re-serialising. Preserves any other options the user
@@ -463,15 +477,10 @@ function makeBlockPersister(
  */
 function serializeBlockBody(
   body: string,
-  state: import("../renderer/filter-bar").RichFilterState
+  state: import("../renderer/filter-bar").RichFilterState,
+  authoredZoom?: unknown
 ): string {
-  let doc: Record<string, unknown> = {};
-  try {
-    const p: unknown = YAML.parse(body);
-    if (p && typeof p === "object" && !Array.isArray(p)) doc = p as Record<string, unknown>;
-  } catch {
-    // ignore — start clean
-  }
+  const doc = parseBodyMapping(body);
 
   // search
   if (state.search && state.search.trim()) doc.search = state.search.trim();
@@ -502,11 +511,11 @@ function serializeBlockBody(
   if (state.start && state.end) doc.range = [state.start.year, state.end.year];
   else delete doc.range;
 
-  // zoom override
+  // zoom override: the filter's value wins; without one the block goes back to
+  // the zoom its author wrote, or none.
   if (state.zoom != null) doc.zoom = state.zoom;
-  // (do not delete zoom if it was originally set without an override — only
-  // when the user explicitly clears the filter's zoom field we drop it.)
-  else if (Object.prototype.hasOwnProperty.call(doc, "zoom")) delete doc.zoom;
+  else if (authoredZoom !== undefined) doc.zoom = authoredZoom;
+  else delete doc.zoom;
 
   return YAML.stringify(doc, { lineWidth: 0 }).trimEnd();
 }

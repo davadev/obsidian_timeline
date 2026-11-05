@@ -77,8 +77,8 @@ export async function exportActiveNoteWithRenderedTimeline(
         eventLabelColor: settings.eventLabelColor,
         shortEventLabels: opts.shortEventLabels,
       });
-      const svg = stage.querySelector("svg");
-      if (!svg) continue;
+      // renderBar always builds an <svg> for a non-empty event list.
+      const svg = stage.querySelector("svg") as SVGSVGElement;
       const png = await svgToPng(svg);
       const attDir = `${settings.eventNotesDir}/_attachments`;
       await ctx.vault.ensureFolder(attDir);
