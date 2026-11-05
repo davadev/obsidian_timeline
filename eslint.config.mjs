@@ -20,6 +20,7 @@ export default tseslint.config(
       // Build/test tooling, not plugin code: outside tsconfig's program, so
       // the typed rules in obsidianmd's recommended set cannot run on it.
       "*.config.ts",
+      "*.config.mts",
       "*.mjs",
       "scripts/**",
     ],
