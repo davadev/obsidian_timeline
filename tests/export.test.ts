@@ -13,6 +13,18 @@ const ev = (id: string, a: number, b: number, over: Partial<TimelineEvent> = {})
   id, text: `Event ${id}`, start: d(a), end: d(b), isPoint: a === b, ...over,
 });
 
+const barArgs: Array<{ onOpenEvent: (id: string) => void }> = [];
+vi.mock("../src/renderer/bar-renderer", async (orig) => {
+  const real = await orig<typeof import("../src/renderer/bar-renderer")>();
+  return {
+    ...real,
+    renderBar: (a: Parameters<typeof real.renderBar>[0]) => {
+      barArgs.push(a);
+      return real.renderBar(a);
+    },
+  };
+});
+
 let app: FakeApp;
 let settings: TimelineXmlSyncSettings;
 let doc: TimelineDoc | Error;
@@ -85,6 +97,12 @@ describe("exportActiveNoteWithRenderedTimeline", () => {
     expect(Notice.messages()).toEqual(["Exported to Notes/Trip-exported.md (2 block(s) → image + list)."]);
     expect(URL.revokeObjectURL).toHaveBeenCalled();
     expect(ctx.withSelfWrite).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders a still image: clicking an event in it does nothing", async () => {
+    barArgs.length = 0;
+    await exportActiveNoteWithRenderedTimeline(ctx);
+    expect(() => barArgs[0].onOpenEvent("a")).not.toThrow();
   });
 
   it("skips blocks whose filters leave nothing, and says when nothing was exported", async () => {

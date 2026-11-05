@@ -213,6 +213,14 @@ export class FakeApp {
     },
   };
 
+  executedCommands: string[] = [];
+  commands = {
+    executeCommandById: (id: string) => {
+      this.executedCommands.push(id);
+      return true;
+    },
+  };
+
   loadLocalStorage = (k: string) => this.localStorage.get(k) ?? null;
   saveLocalStorage = (k: string, v: unknown) => {
     if (v === null) this.localStorage.delete(k);

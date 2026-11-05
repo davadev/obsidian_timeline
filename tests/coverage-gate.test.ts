@@ -2,16 +2,16 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Pins the coverage ratchet in vitest.config.mts so a small diff cannot loosen
-// it: thresholds only go up, nothing is excluded, nothing is hidden behind an
+// Pins the 100% coverage bar in vitest.config.mts so a small diff cannot loosen
+// it: every threshold is 100, nothing is excluded, nothing is hidden behind an
 // ignore comment. Unreachable code is deleted, not ignored.
 const root = path.resolve(__dirname, "..");
 const config = readFileSync(path.join(root, "vitest.config.mts"), "utf8");
 const coverage = config.slice(config.indexOf("coverage: {"));
 
-// The ratchet. Raise these as coverage grows; the test fails if the config is
-// below them, so a lowered threshold cannot be merged unnoticed.
-const FLOOR = { lines: 81, functions: 98, branches: 99, statements: 81 };
+// The bar. The test fails if the config sits below it, so a lowered threshold
+// cannot be merged unnoticed.
+const BAR = { lines: 100, functions: 100, branches: 100, statements: 100 };
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -38,9 +38,9 @@ describe("coverage gate", () => {
     expect(coverage).toMatch(/all:\s*true/);
   });
 
-  it("never sits below the ratchet", () => {
+  it("requires 100% on every metric", () => {
     const block = /thresholds:\s*\{([^}]*)\}/.exec(coverage)![1];
-    for (const [metric, floor] of Object.entries(FLOOR)) {
+    for (const [metric, floor] of Object.entries(BAR)) {
       const value = Number(new RegExp(`${metric}:\\s*(\\d+(?:\\.\\d+)?)`).exec(block)?.[1]);
       expect(value, metric).toBeGreaterThanOrEqual(floor);
     }

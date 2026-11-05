@@ -190,6 +190,27 @@ export class ButtonComponent {
   }
 }
 
+export class ExtraButtonComponent {
+  icon = "";
+  tooltip = "";
+  private handler: (() => unknown) | null = null;
+  setIcon(i: string): this {
+    this.icon = i;
+    return this;
+  }
+  setTooltip(t: string): this {
+    this.tooltip = t;
+    return this;
+  }
+  onClick(fn: () => unknown): this {
+    this.handler = fn;
+    return this;
+  }
+  async click(): Promise<void> {
+    await this.handler?.();
+  }
+}
+
 export class SliderComponent {
   value = 0;
   private handler: ((v: number) => unknown) | null = null;
@@ -224,8 +245,12 @@ export class Setting {
   dropdowns: DropdownComponent[] = [];
   buttons: ButtonComponent[] = [];
   sliders: SliderComponent[] = [];
+  extraButtons: ExtraButtonComponent[] = [];
   settingEl = document.createElement("div");
+  nameEl = document.createElement("div");
+  controlEl = document.createElement("div");
   constructor(public containerEl: HTMLElement) {
+    this.settingEl.append(this.nameEl, this.controlEl);
     containerEl.appendChild(this.settingEl);
     Setting.instances.push(this);
   }
@@ -274,6 +299,12 @@ export class Setting {
     cb(c);
     return this;
   }
+  addExtraButton(cb: (b: ExtraButtonComponent) => unknown): this {
+    const c = new ExtraButtonComponent();
+    this.extraButtons.push(c);
+    cb(c);
+    return this;
+  }
   addSlider(cb: (s: SliderComponent) => unknown): this {
     const c = new SliderComponent();
     this.sliders.push(c);
@@ -288,8 +319,12 @@ export class PluginSettingTab {
     public app: unknown,
     public plugin: unknown,
   ) {}
+  updates = 0;
   display(): void {}
   hide(): void {}
+  update(): void {
+    this.updates++;
+  }
 }
 
 export class Component {

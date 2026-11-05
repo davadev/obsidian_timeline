@@ -163,3 +163,24 @@ if (typeof window !== "undefined" && !window.localStorage) {
     },
   });
 }
+
+// DocumentFragment helpers Obsidian adds (settings descriptions are built in one).
+if (typeof DocumentFragment !== "undefined") {
+  const fp = DocumentFragment.prototype as unknown as Record<string, unknown>;
+  if (!fp.createEl) {
+    fp.createEl = function (this: DocumentFragment, tag: string, opts?: CreateOpts): HTMLElement {
+      const el = document.createElement(tag);
+      applyOpts(el, opts);
+      this.appendChild(el);
+      return el;
+    };
+  }
+  if (!fp.appendText) {
+    fp.appendText = function (this: DocumentFragment, t: string): void {
+      this.appendChild(document.createTextNode(t));
+    };
+  }
+  if (!globalScope.createFragment) {
+    globalScope.createFragment = () => document.createDocumentFragment();
+  }
+}

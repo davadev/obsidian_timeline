@@ -95,6 +95,14 @@ describe("rendering", () => {
     expect(onEraClick).toHaveBeenCalledWith("e");
   });
 
+  it("routes clicks on bars and eras in the chart", async () => {
+    const v = await open();
+    (v.contentEl.querySelector(".txs-chart .txs-event-bar") as unknown as SVGElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEventClick).toHaveBeenCalled();
+    (v.contentEl.querySelector(".txs-chart rect[opacity='0.18']") as unknown as SVGElement).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onEraClick).toHaveBeenCalledWith("e");
+  });
+
   it("list mode draws no chart, and bar mode no list", async () => {
     settings.renderDefaults.mode = "list";
     const l = await open();
