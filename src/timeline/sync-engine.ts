@@ -22,7 +22,7 @@ export function mergeNotesIntoDoc(
   const oldById = new Map<string, TimelineEvent>();
   for (const e of doc.events) oldById.set(e.id, e);
 
-  const mergedEvents: TimelineEvent[] = notes.map((n) => {
+  const merged: TimelineEvent[] = notes.map((n) => {
     const prev = oldById.get(n.event.id);
     if (prev) {
       // Preserve raw subtree so unknown XML survives.
@@ -30,6 +30,19 @@ export function mergeNotesIntoDoc(
     }
     return n.event;
   });
+  // Keep the XML's own event order, new events last. Notes arrive in whatever
+  // order the vault lists files, and a reshuffled file is a changed file: it
+  // makes a sync client upload it and every other device see an edit.
+  const position = new Map<string, number>();
+  doc.events.forEach((e, i) => position.set(e.id, i));
+  const mergedEvents = merged
+    .map((e, i) => ({ e, i }))
+    .sort(
+      (a, b) =>
+        (position.get(a.e.id) ?? Infinity) - (position.get(b.e.id) ?? Infinity) ||
+        a.i - b.i
+    )
+    .map((x) => x.e);
 
   // Categories: keep existing, append any new names referenced by events.
   const existingCatNames = new Set(doc.categories.map((c) => c.name));

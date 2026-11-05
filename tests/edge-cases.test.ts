@@ -9,6 +9,7 @@ import { VaultAdapter } from "../src/obsidian/vault-adapter";
 import { DEFAULT_SETTINGS, isBackupPath, isInsideFolder, type TimelineXmlSyncSettings } from "../src/settings";
 import { setLogLevel } from "../src/logger";
 import { safeFileName, slugify } from "../src/timeline/id-utils";
+import { isUntouched, shouldSkipImportOverwrite, withContentHash } from "../src/obsidian/sync-policy";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
 import { parseEventNote } from "../src/timeline/markdown-parser";
 import { parseEraNote, renderEraMarkdown } from "../src/timeline/era-md";
@@ -403,5 +404,129 @@ describe("regenerate and ordinary notes", () => {
     app.vault.seed("Events/a.md", note("a"));
     await regenerateXml(ctx);
     expect(parseTimelineXml(app.vault.text("t.timeline")).events.map((e) => e.id)).toEqual(["a"]);
+  });
+});
+
+describe("content seal", () => {
+  const md = "---\ntitle: x\n---\n\n# x\n";
+
+  it("tells an untouched note from an edited or unsealed one", () => {
+    const sealed = withContentHash(md);
+    expect(sealed.startsWith("---\ntimeline_hash: ")).toBe(true);
+    expect(isUntouched(sealed)).toBe(true);
+    expect(isUntouched(sealed + "more")).toBe(false);
+    expect(isUntouched(sealed.replace(/\n/g, "\r\n"))).toBe(false); // re-encoded: do not trust it
+    expect(isUntouched(md)).toBeNull();
+  });
+
+  it("decides an import by the seal first and the timestamps second", () => {
+    const sealed = withContentHash(md);
+    expect(shouldSkipImportOverwrite(sealed, 999_999, 1)).toBe(false); // untouched, however old the stamp
+    expect(shouldSkipImportOverwrite(sealed + "x", 1, 999_999)).toBe(true);
+    expect(shouldSkipImportOverwrite(md, 10_000, 1)).toBe(true); // no seal, edited after the stamp
+    expect(shouldSkipImportOverwrite(md, 1, 10_000)).toBe(false);
+  });
+
+  it("is not carried into a note the inspector re-renders", () => {
+    const sealed = withContentHash(note("a"));
+    const parsed = parseEventNote(sealed, { path: "a.md" });
+    expect(parsed.note?.event.id).toBe("a");
+    expect(parsed.note?.extraFrontmatter).not.toHaveProperty("timeline_hash");
+  });
+});
+
+describe("regenerate leaves a settled XML alone", () => {
+  const events = ["z", "a", "m"].map((id) => `<event id="${id}"><start>0100-01-01</start><end>0200-01-01</end><text>${id}</text></event>`).join("");
+  const setup = () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const ctx = {
+      app: app as never,
+      plugin: new Plugin(app) as never,
+      vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings,
+      saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {},
+      getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}),
+      appendSyncLog: async () => {},
+    } as unknown as CommandsContext;
+    return { app, ctx };
+  };
+
+  it("keeps the XML's event order and does not rewrite identical bytes", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(events), 50);
+    await importXml(ctx);
+    await regenerateXml(ctx); // first pass may normalise formatting
+    const settled = app.vault.text("t.timeline");
+    expect(parseTimelineXml(settled).events.map((e) => e.id)).toEqual(["z", "a", "m"]);
+    const mtime = (app.vault.files.get("t.timeline") as TFile).stat.mtime;
+    Notice.reset();
+    await regenerateXml(ctx);
+    expect(app.vault.text("t.timeline")).toBe(settled);
+    expect((app.vault.files.get("t.timeline") as TFile).stat.mtime).toBe(mtime);
+    expect(Notice.messages()).toEqual(["Timeline XML already up to date — 3 events."]);
+  });
+
+  it("appends a new note's event after the existing ones", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(events), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/0-new.md", note("new"));
+    await regenerateXml(ctx);
+    expect(parseTimelineXml(app.vault.text("t.timeline")).events.map((e) => e.id)).toEqual(["z", "a", "m", "new"]);
+  });
+
+  it("applies metadata edits after its own earlier regenerate", async () => {
+    const { app, ctx } = setup();
+    app.vault.clock = 100_000; // well after the XML's own mtime, as in a real vault
+    app.vault.seed("t.timeline", xml(events), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/extra.md", note("extra")); // forces a real write, moving the XML's mtime past the metadata stamp
+    await regenerateXml(ctx);
+    Notice.reset();
+    app.vault.seed("Events/extra2.md", note("extra2"));
+    await regenerateXml(ctx);
+    expect(Notice.messages().some((m) => m.includes("older than the XML"))).toBe(false);
+  });
+});
+
+describe("import finds a note that was renamed", () => {
+  it("updates the note where it is instead of writing a second one", async () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main" };
+    const vault = new VaultAdapter(app as never);
+    const cache = new TimelineCache(app as never, () => settings);
+    const ctx = {
+      app: app as never,
+      plugin: new Plugin(app) as never,
+      vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache,
+      getSettings: () => settings,
+      saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {},
+      getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}),
+      appendSyncLog: async () => {},
+    } as unknown as CommandsContext;
+    app.vault.seed("t.timeline", xml(`<event id="a"><start>0100-01-01</start><end>0200-01-01</end><text>Alpha</text></event>`), 50);
+    await importXml(ctx);
+    // The user renames the note and Obsidian re-indexes it.
+    const old = app.vault.text("Events/a.md");
+    app.vault.remove("Events/a.md");
+    app.vault.seed("Events/Alpha, renamed.md", old);
+    app.index("Events/Alpha, renamed.md", { timeline: { event_id: "a" } });
+    cache.resetIndex();
+    app.vault.seed("t.timeline", xml(`<event id="a"><start>0100-01-01</start><end>0200-01-01</end><text>Alpha two</text></event>`), 60);
+    await importXml(ctx);
+    expect(app.vault.files.has("Events/a.md")).toBe(false);
+    expect(app.vault.text("Events/Alpha, renamed.md")).toContain("Alpha two");
   });
 });
