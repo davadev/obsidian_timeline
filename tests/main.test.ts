@@ -458,6 +458,12 @@ describe("vault events and auto-sync", () => {
     expect(regen).toHaveBeenCalledTimes(2);
   });
 
+  it("does not sync because of a snapshot the plugin itself wrote", () => {
+    app.vault.seed("Events/_backups/wipe-1/a.md", note("a"));
+    emit("create", "Events/_backups/wipe-1/a.md");
+    expect(regen).not.toHaveBeenCalled();
+  });
+
   it("keeps the index current and still syncs for a rename into the folder", () => {
     const spy = vi.spyOn(priv.cache, "updateFile");
     app.vault.seed("Elsewhere/b.md", note("b"));

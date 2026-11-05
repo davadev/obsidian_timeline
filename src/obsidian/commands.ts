@@ -12,6 +12,7 @@ import { renderEventMarkdown } from "../timeline/markdown-writer";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { logDebug, logDump, logError, logWarn } from "../logger";
 import { contentFingerprint } from "./sync-policy";
+import { safeFileName } from "../timeline/id-utils";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
@@ -290,7 +291,9 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
       logDebug(`pruned ${prunedFolders} old MD backup folder(s)`);
     }
   }
-  const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
+  // Not the backups: the snapshot just taken lives under the notes folder by
+  // default, and deleting it would defeat the point of taking it.
+  const files = ctx.vault.listMarkdownFiles(s.eventNotesDir, backupRoot);
   const filePaths = files.map((f) => f.path);
   let removed = 0;
   await ctx.withSelfWrite(async () => {
@@ -338,7 +341,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   const writtenPaths: string[] = [];
   await ctx.withSelfWrite(async () => {
     for (const ev of doc.events) {
-      const path = `${s.eventNotesDir}/${ev.id}.md`;
+      const path = `${s.eventNotesDir}/${safeFileName(ev.id)}.md`;
       // Skip notes that have local edits made after the last XML-driven write.
       // Stamp check first — if the note never carried a stamp we treat it as
       // unknown and skip too (legacy notes; reset by `Wipe and reimport`).
@@ -368,7 +371,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       if (ev.icon && ev.icon.trim()) {
         try {
           const ext = guessImageExtension(ev.icon.trim());
-          const attPath = `${attachmentsDir}/${ev.id}.${ext}`;
+          const attPath = `${attachmentsDir}/${safeFileName(ev.id)}.${ext}`;
           await ctx.vault.ensureFolder(attachmentsDir);
           const bytes = base64ToArrayBuffer(ev.icon.trim());
           await ctx.vault.writeBinary(attPath, bytes);
@@ -511,7 +514,10 @@ export async function loadAllNotes(ctx: CommandsContext): Promise<{
   errors: { path: string; message: string }[];
 }> {
   const s = ctx.getSettings();
-  const files = ctx.vault.listMarkdownFiles(s.eventNotesDir);
+  const files = ctx.vault.listMarkdownFiles(
+    s.eventNotesDir,
+    resolveBackupFolder(s)
+  );
   const notes: EventNote[] = [];
   const eras: import("../timeline/model").TimelineEra[] = [];
   let metaPatch: Partial<import("../timeline/model").TimelineDoc> | undefined;

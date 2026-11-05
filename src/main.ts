@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_SETTINGS,
   EVENT_NOTE_SCHEMA_VERSION,
+  isBackupPath,
   resolveBackupFolder,
   resolveLogFolder,
   type TimelineXmlSyncSettings,
@@ -759,6 +760,8 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       if (this.isSelfWrite(file.path)) return;
       if (file.extension !== "md") return;
       if (!inDir(file.path) && !(oldPath && inDir(oldPath))) return;
+      // Snapshots written by the plugin itself must not trigger a sync.
+      if (isBackupPath(this.settings, file.path)) return;
       // Startup grace: let remote sync (Nextcloud / iCloud) finish its initial
       // pull before we start writing XML. Otherwise auto-sync may fire on a
       // half-pulled state and clobber edits from another device.

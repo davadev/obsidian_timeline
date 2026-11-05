@@ -1,5 +1,5 @@
 import YAML from "yaml";
-import { parseFrontmatterDate, type TimelineDate } from "./date";
+import { compare, parseFrontmatterDate, type TimelineDate } from "./date";
 import {
   DEFAULT_MIRROR_NAMES,
   type EventNote,
@@ -79,7 +79,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
     text,
     start,
     end,
-    isPoint: sameInstant(start, end),
+    isPoint: compare(start, end) === 0,
     category:
       strOrUndef(timeline.category) ?? strOrUndef(front[mirrors.category]),
     container: strOrUndef(timeline.container),
@@ -218,17 +218,6 @@ function mapOfStrings(v: unknown): Record<string, string> | undefined {
     if (typeof val === "string") out[k] = val;
   }
   return Object.keys(out).length ? out : undefined;
-}
-
-function sameInstant(a: TimelineDate, b: TimelineDate): boolean {
-  return (
-    a.year === b.year &&
-    a.month === b.month &&
-    a.day === b.day &&
-    a.hour === b.hour &&
-    a.minute === b.minute &&
-    a.second === b.second
-  );
 }
 
 function extractH1(body: string): string | undefined {

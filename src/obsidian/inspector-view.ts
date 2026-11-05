@@ -10,6 +10,7 @@ import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
 import type { VaultAdapter } from "./vault-adapter";
 import { parseEventNote } from "../timeline/markdown-parser";
+import { safeFileName } from "../timeline/id-utils";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import type { TimelineEra, TimelineEvent } from "../timeline/model";
 import {
@@ -645,7 +646,7 @@ export class InspectorView extends ItemView {
           const b64 = arrayBufferToBase64(buf);
           const ext = guessImageExtension(b64);
           const settings = this.args.getSettings();
-          const att = `${settings.eventNotesDir}/_attachments/${ev.id}.${ext}`;
+          const att = `${settings.eventNotesDir}/_attachments/${safeFileName(ev.id)}.${ext}`;
           await this.args.vault.ensureFolder(
             `${settings.eventNotesDir}/_attachments`
           );

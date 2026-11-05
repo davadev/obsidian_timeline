@@ -84,6 +84,8 @@ viewport: true
 | `timeline.source_xml` | string | Vault path of the source `.timeline` XML. |
 | `timeline.category` | string | Category name. Auto-coloured on import. |
 | `timeline.container` | string | Optional container/group field from Timeline XML. |
+| `timeline.render` | boolean | `false` keeps the event out of every rendered view (blocks, global view, exports) without deleting it. A note with `render: false` also hides the XML event with the same id. |
+| `timeline.ends_today` | boolean | `true` draws the event up to today. The stored `end` is unchanged and is what the XML keeps. |
 | `timeline.period` | boolean | Optional explicit period flag from Timeline XML. |
 | `timeline.show_time` | boolean | Optional explicit show-time flag from Timeline XML. |
 | `timeline.fuzzy_start` / `timeline.fuzzy_end` | boolean | Optional per-edge fuzzy flags from Timeline XML. |

@@ -68,10 +68,10 @@ tags:
 
 timeline:
   enabled: true
-  id: ${timelineId}
+  id: ${escapeYaml(timelineId)}
   era_id: ${escapeYaml(era.id)}
   role: era
-  source_xml: ${sourceXmlPath}
+  source_xml: ${escapeYaml(sourceXmlPath)}
   color: ${escapeYaml(era.color ?? "")}
   start:
     year: ${era.start.year}
@@ -132,11 +132,18 @@ function formatDate(d: TimelineDate): string {
   return `${d.year < 0 ? "-" : ""}${yr}-${pad(d.month)}-${pad(d.day)}`;
 }
 
+const YAML_KEYWORD_RE = /^(true|false|null|yes|no|on|off|y|n|~)$/i;
+const PLAIN_SCALAR_RE = /^[A-Za-z][A-Za-z0-9 _./()-]*$/;
+
+/**
+ * A YAML scalar that reads back as the same string. Plain only when that is
+ * certain; anything else (a name that is "1066", "null" or "Yes", contains a
+ * colon, " #", a newline, non-Latin text ...) goes in as a JSON string, which
+ * is valid YAML double-quoted syntax.
+ */
 function escapeYaml(s: string): string {
-  if (!s) return '""';
-  // Quote when the string contains anything YAML might treat specially.
-  if (/[:#&*!?{}[\],"'|>%@`]/.test(s) || /^[-?\s]/.test(s)) {
-    return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  if (PLAIN_SCALAR_RE.test(s) && !YAML_KEYWORD_RE.test(s) && !/\s#|:\s|\s$/.test(s)) {
+    return s;
   }
-  return s;
+  return JSON.stringify(s);
 }
