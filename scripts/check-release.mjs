@@ -6,6 +6,7 @@
 //   node scripts/check-release.mjs                  # committed state
 //   node scripts/check-release.mjs --tag 0.10.0     # stable release
 //   node scripts/check-release.mjs --tag 0.10.0-beta.1 --artifacts
+//   node scripts/check-release.mjs --with-lint | --with-build | --strict
 import { spawnSync } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -221,6 +222,16 @@ const attest = attestStepProblem(releaseYml);
 check(attest.ok, `release.yml: ${attest.problem}`, "release.yml signs main.js, manifest.json and styles.css");
 
 for (const line of ok) console.log(`  ok  ${line}`);
+// --with-lint runs the lint gates; --with-build also runs the build and the
+// tests (what the release workflow does on a clean runner). The pre-tag hook
+// uses --with-lint so a tag cannot be made past a red lint.
+const withBuild = args.includes("--with-build");
+if (args.includes("--with-lint") || withBuild) {
+  for (const script of withBuild ? ["lint", "lint:css", "lint:deps", "build", "test:cov"] : ["lint", "lint:css", "lint:deps"]) {
+    const r = spawnSync("npm", ["run", script, "--silent"], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    check(r.status === 0, `npm run ${script} failed (exit ${r.status})\n${(r.stdout + r.stderr).split("\n").slice(-15).join("\n")}`, `npm run ${script} passes`);
+  }
+}
 const strict = args.includes("--strict");
 for (const line of warnings) {
   if (strict) errors.push(`${line} (warning, blocking under --strict)`);

@@ -23,6 +23,7 @@ export default tseslint.config(
       "*.config.mts",
       "*.mjs",
       "scripts/**",
+      ".claude/**",
     ],
   },
   js.configs.recommended,
