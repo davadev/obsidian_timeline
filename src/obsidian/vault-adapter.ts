@@ -93,11 +93,15 @@ export class VaultAdapter {
     return a instanceof TFile ? a : null;
   }
 
-  listMarkdownFiles(folder: string): TFile[] {
+  /** Markdown files under `folder`, minus anything under `exclude` (backups). */
+  listMarkdownFiles(folder: string, exclude?: string): TFile[] {
     const np = normalizePath(folder);
+    const ex = exclude ? normalizePath(exclude) : "";
     const out: TFile[] = [];
     for (const f of this.app.vault.getMarkdownFiles()) {
-      if (f.path === np || f.path.startsWith(np + "/")) out.push(f);
+      if (f.path !== np && !f.path.startsWith(np + "/")) continue;
+      if (ex && (f.path === ex || f.path.startsWith(ex + "/"))) continue;
+      out.push(f);
     }
     return out;
   }
@@ -133,7 +137,9 @@ export class VaultAdapter {
     label: string,
     backupRoot: string
   ): Promise<string | null> {
-    const files = this.listMarkdownFiles(srcFolder);
+    // The backup root may live inside the folder being backed up (the default):
+    // never copy earlier snapshots into the new one.
+    const files = this.listMarkdownFiles(srcFolder, backupRoot);
     if (!files.length) return null;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const dest = `${normalizePath(backupRoot)}/${label}-${stamp}`;

@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { parseXmlDate, type TimelineDate } from "./date";
+import { compare, parseXmlDate, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
   TimelineDoc,
@@ -211,6 +211,8 @@ function readBool(parent: RawNode[], tag: string): boolean | undefined {
 function readNumber(parent: RawNode[], tag: string): number | undefined {
   const v = readText(parent, tag);
   if (v == null) return undefined;
+  // Number("") is 0: an empty <progress/> must not read as "0 % done".
+  if (!v.trim()) return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
@@ -276,13 +278,7 @@ export function parseTimelineXml(xml: string): TimelineDoc {
         text,
         start,
         end,
-        isPoint:
-          start.year === end.year &&
-          start.month === end.month &&
-          start.day === end.day &&
-          start.hour === end.hour &&
-          start.minute === end.minute &&
-          start.second === end.second,
+        isPoint: compare(start, end) === 0,
         category: readText(ch, "category"),
         container: readText(ch, "container"),
         description: readDeepText(ch, "description"),

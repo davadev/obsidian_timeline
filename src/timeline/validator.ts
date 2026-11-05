@@ -37,12 +37,13 @@ function validateDate(
   if (d.month != null && (d.month < 1 || d.month > 12)) {
     errors.push({ path, message: `${field}.month must be 1..12` });
   }
-  if (d.day != null && d.month != null) {
-    const max = daysInMonth(d.year, d.month);
+  if (d.day != null && (d.month == null || (d.month >= 1 && d.month <= 12))) {
+    // A day with no month is January (see `complete`).
+    const max = daysInMonth(d.year, d.month ?? 1);
     if (d.day < 1 || d.day > max) {
       errors.push({
         path,
-        message: `${field}.day ${d.day} invalid for ${d.year}-${d.month} (max ${max})`,
+        message: `${field}.day ${d.day} invalid for ${d.year}-${d.month ?? 1} (max ${max})`,
       });
     }
   }

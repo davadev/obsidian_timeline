@@ -5,6 +5,7 @@ import {
   type MetadataCache,
   type Vault,
 } from "obsidian";
+import { compare, type TimelineDate } from "../timeline/date";
 import { parseTimelineXml } from "../timeline/xml-parser";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { parseEraNote } from "../timeline/era-md";
@@ -14,7 +15,7 @@ import type {
   TimelineEra,
   TimelineEvent,
 } from "../timeline/model";
-import type { TimelineXmlSyncSettings } from "../settings";
+import { isBackupPath, type TimelineXmlSyncSettings } from "../settings";
 
 /**
  * Process-wide caches. The post-processor and commands hit these instead of
@@ -98,6 +99,7 @@ export class TimelineCache {
     }
     for (const f of this.vault.getMarkdownFiles()) {
       if (f.path !== dir && !f.path.startsWith(dir + "/")) continue;
+      if (isBackupPath(this.getSettings(), f.path)) continue;
       const id = this.readEventId(this.meta.getFileCache(f));
       if (id) {
         this.idToPath.set(id, f.path);
@@ -137,6 +139,7 @@ export class TimelineCache {
     const dir = this.getSettings().eventNotesDir;
     if (!dir) return;
     if (path !== dir && !path.startsWith(dir + "/")) return;
+    if (isBackupPath(this.getSettings(), path)) return;
     const f = this.vault.getAbstractFileByPath(path);
     if (!(f instanceof TFile)) return;
     const prevId = this.pathToId.get(path);
@@ -184,7 +187,9 @@ export class TimelineCache {
     const categories = new Map<string, TimelineCategory>();
     if (dir) {
       const files = this.vault.getMarkdownFiles().filter(
-        (f) => f.path === dir || f.path.startsWith(dir + "/")
+        (f) =>
+          (f.path === dir || f.path.startsWith(dir + "/")) &&
+          !isBackupPath(s, f.path)
       );
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
@@ -245,15 +250,43 @@ export class TimelineCache {
     const xmlAvailable = !!xmlPath && this.vault.getAbstractFileByPath(xmlPath) !== null;
     if (s.eventSource === "xml") {
       if (!xmlAvailable) throw new Error(`XML not found: ${xmlPath}`);
-      return this.getXml(xmlPath);
+      return forDisplay(await this.getXml(xmlPath));
     }
-    if (s.eventSource === "md") return this.getMdDoc();
+    if (s.eventSource === "md") return forDisplay(await this.getMdDoc());
     // auto
-    if (!xmlAvailable) return this.getMdDoc();
+    if (!xmlAvailable) return forDisplay(await this.getMdDoc());
     const xml = await this.getXml(xmlPath);
     const md = await this.getMdDoc();
-    return overlayMdOnXml(xml, md);
+    return forDisplay(overlayMdOnXml(xml, md));
   }
+}
+
+/**
+ * What the chart should draw, as opposed to what the files hold: events whose
+ * `render` flag is off are left out, and an event that "ends today" runs to
+ * today. The cached docs are shared with the sync path, so this works on a
+ * copy and never mutates them.
+ */
+function forDisplay(doc: TimelineDoc, now = new Date()): TimelineDoc {
+  if (!doc.events.some((e) => e.render === false || e.endsToday === true)) {
+    return doc;
+  }
+  const today: TimelineDate = {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+  const events: TimelineEvent[] = [];
+  for (const e of doc.events) {
+    if (e.render === false) continue;
+    // A start in the future leaves nothing to stretch.
+    if (e.endsToday === true && compare(e.start, today) <= 0) {
+      events.push({ ...e, end: today, isPoint: compare(e.start, today) === 0 });
+    } else {
+      events.push(e);
+    }
+  }
+  return { ...doc, events };
 }
 
 /**

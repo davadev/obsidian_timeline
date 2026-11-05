@@ -158,6 +158,22 @@ export function resolveBackupFolder(s: TimelineXmlSyncSettings): string {
   return `${s.eventNotesDir}/_backups`;
 }
 
+/** True when `path` is `folder` itself or lies inside it (slashes tolerated). */
+export function isInsideFolder(path: string, folder: string): boolean {
+  const f = folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!f) return false;
+  return path === f || path.startsWith(f + "/");
+}
+
+/**
+ * Backups default to `<eventNotesDir>/_backups`, i.e. inside the folder the
+ * plugin treats as "the notes". Anything in there is a snapshot, never a live
+ * event: it must not be synced, indexed, rendered or wiped.
+ */
+export function isBackupPath(s: TimelineXmlSyncSettings, path: string): boolean {
+  return isInsideFolder(path, resolveBackupFolder(s));
+}
+
 /** Resolves the effective log folder, honouring explicit override else default. */
 export function resolveLogFolder(s: TimelineXmlSyncSettings): string {
   const explicit = s.logFolder?.trim();
