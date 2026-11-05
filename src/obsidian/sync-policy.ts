@@ -45,6 +45,17 @@ export function isUntouched(raw: string): boolean | null {
 }
 
 /**
+ * A change the user did not make as an edit (the chart persisting its filter
+ * into the note's own ```timeline block) must not turn an untouched note into an
+ * "edited" one, or import would skip it for good. When `before` carried a valid
+ * seal, put a fresh one on `after`.
+ */
+export function resealIfSealed(before: string, after: string): string {
+  if (isUntouched(before) !== true) return after;
+  return withContentHash(after.replace(HASH_LINE_RE, "---\n"));
+}
+
+/**
  * importXml's question for an existing note. A seal answers it exactly; without
  * one we fall back to the timestamp rule.
  */

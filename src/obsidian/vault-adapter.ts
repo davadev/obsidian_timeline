@@ -41,6 +41,24 @@ export class VaultAdapter {
     return this.app.vault.create(np, content);
   }
 
+  /**
+   * Replace a note's text only if it is still exactly `expected`, checked inside
+   * the atomic `process`, so an edit made in the meantime (the editor, a sync
+   * client) is never overwritten by a stale copy. Returns false and leaves the
+   * file alone when it has moved on.
+   */
+  async replaceIfUnchanged(path: string, expected: string, next: string): Promise<boolean> {
+    const file = this.getFile(path);
+    if (!file) throw new Error(`File not found: ${path}`);
+    let replaced = false;
+    await this.app.vault.process(file, (current) => {
+      if (current !== expected) return current;
+      replaced = true;
+      return next;
+    });
+    return replaced;
+  }
+
   async writeBinary(path: string, data: ArrayBuffer): Promise<TFile> {
     const np = normalizePath(path);
     const existing = this.app.vault.getAbstractFileByPath(np);

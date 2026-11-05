@@ -116,6 +116,7 @@ export class InspectorView extends ItemView {
       }
       this.current = await this.hydrateMissingEventFieldsFromXml(parsed.note.event);
       this.currentPath = path;
+      this.loadedRaw = raw;
       this.dirty = false;
       this.renderForm();
     } catch (e) {
@@ -682,6 +683,9 @@ export class InspectorView extends ItemView {
     this.dirty = true;
   }
 
+  /** The note's text as the form was loaded from it; save only replaces exactly this. */
+  private loadedRaw: string | undefined;
+
   private async save(): Promise<void> {
     // The Save button only exists while an event form is showing.
     const current = this.current as TimelineEvent;
@@ -704,9 +708,21 @@ export class InspectorView extends ItemView {
         body,
         trimDescription: settings.trimDescriptionOnWrite,
       });
+      // Replace only the text this form was loaded from. If the note changed
+      // since (typed in the editor, landed from another device), saving the
+      // form's older copy of every field would silently undo that change.
+      const expected = this.loadedRaw as string; // set by loadEvent, the only way a form gets here
+      let saved = false;
       await this.args.withSelfWrite(async () => {
-        await this.args.vault.writeText(path, md);
+        saved = await this.args.vault.replaceIfUnchanged(path, expected, md);
       });
+      if (!saved) {
+        new Notice(
+          "Not saved: the note changed since the inspector loaded it. Reload the form from the note, then redo your edit."
+        );
+        return;
+      }
+      this.loadedRaw = md;
       this.args.cache.invalidateMdDoc();
       // Make sure the id index sees the latest event_id (in case the user
       // edited a note that was just created — metadataCache may not have
