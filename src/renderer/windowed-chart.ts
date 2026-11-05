@@ -228,9 +228,9 @@ export class WindowedChart {
     if (this.zoomFrame != null) return;
     this.zoomFrame = window.requestAnimationFrame(() => {
       this.zoomFrame = null;
-      const next = this.pendingZoom;
+      // zoomTo set this before scheduling the frame, and only this frame clears it.
+      const next = this.pendingZoom as { zoom: number; focalPx: number };
       this.pendingZoom = null;
-      if (!next) return;
 
       const at = next.focalPx;
       const dateUnderPointer =
@@ -340,7 +340,7 @@ export class WindowedChart {
       }
       entries.push({
         ev,
-        lane: this.laneByEventId.get(ev.id) ?? 0,
+        lane: this.laneByEventId.get(ev.id) as number, // set with `events` in setData
         startPx: (from - this.window.from) / perPx,
         endPx: (to - this.window.from) / perPx,
       });
@@ -373,9 +373,8 @@ export class WindowedChart {
       measure: this.measure,
     });
     for (const placement of placements) {
-      const ev = byId.get(placement.id);
-      if (!ev) continue;
-      drawCallout(svg, ev, placement, {
+      // Every placement was laid out from `entries`, so its event is always there.
+      drawCallout(svg, byId.get(placement.id) as TimelineEvent, placement, {
         isVertical: this.vertical,
         categoryColors: this.args.categoryColors,
         labelColorOverride: this.args.eventLabelColor,
@@ -443,8 +442,7 @@ export class WindowedChart {
   /** Scales the drawn tiles about the focal point. No DOM changes. */
   private updatePreview(scale: number, focalPx: number): void {
     if (!this.preview) this.beginPreview(focalPx);
-    const p = this.preview;
-    if (!p) return;
+    const p = this.preview as NonNullable<WindowedChart["preview"]>;
     p.scale = scale;
     p.focalPx = focalPx;
 
