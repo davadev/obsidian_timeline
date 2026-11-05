@@ -2,38 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_AXIS_PX,
   MAX_AXIS_PX_MOBILE,
-  MAX_ZOOM,
   PinchTracker,
   clampAxisSize,
-  MIN_ZOOM,
   ZOOM_STEP,
-  clampZoom,
-  focalScroll,
   formatZoom,
-  maxZoomForAxis,
   wheelZoomFactor,
 } from "../src/renderer/zoom-math";
-
-describe("clampZoom", () => {
-  it("keeps values inside the supported range", () => {
-    expect(clampZoom(1)).toBe(1);
-    expect(clampZoom(0.01)).toBe(MIN_ZOOM);
-    expect(clampZoom(MAX_ZOOM * 10)).toBe(MAX_ZOOM);
-  });
-
-  it("falls back to 1 for junk", () => {
-    expect(clampZoom(NaN)).toBe(1);
-    expect(clampZoom(Infinity)).toBe(MAX_ZOOM);
-  });
-
-  it("survives repeated stepping without drifting out of range", () => {
-    let z = 1;
-    for (let i = 0; i < 100; i++) z = clampZoom(z * ZOOM_STEP);
-    expect(z).toBe(MAX_ZOOM);
-    for (let i = 0; i < 100; i++) z = clampZoom(z / ZOOM_STEP);
-    expect(z).toBe(MIN_ZOOM);
-  });
-});
 
 describe("clampAxisSize", () => {
   it("keeps a sane floor and caps what the WebView must paint", () => {
@@ -45,7 +19,7 @@ describe("clampAxisSize", () => {
   it("caps the axis before the zoom limit is reached", () => {
     // a typical pane is ~800px wide; max zoom must not be able to outrun the
     // pixel cap unnoticed
-    expect(clampAxisSize(800 * MAX_ZOOM)).toBe(MAX_AXIS_PX);
+    expect(clampAxisSize(800 * 20000)).toBe(MAX_AXIS_PX);
   });
 
   it("gives mobile a far smaller budget than the desktop", () => {
@@ -63,23 +37,6 @@ describe("formatZoom", () => {
     expect(formatZoom(1.35)).toBe("1.4");
     expect(formatZoom(1.4999999)).toBe("1.5");
     expect(formatZoom(12.4)).toBe("12");
-  });
-});
-
-describe("focalScroll", () => {
-  it("keeps the point under the cursor anchored", () => {
-    // content at x=300 in the scroller's content box, cursor 100px in
-    const scroll = 200;
-    const focal = 100;
-    const ratio = 2;
-    const next = focalScroll(scroll, focal, ratio);
-    // that content sits at (scroll + focal) * ratio after scaling; the cursor
-    // must still land on it
-    expect(next + focal).toBe((scroll + focal) * ratio);
-  });
-
-  it("never scrolls past the start", () => {
-    expect(focalScroll(0, 50, 0.25)).toBe(0);
   });
 });
 
@@ -151,30 +108,3 @@ describe("PinchTracker", () => {
   });
 });
 
-describe("maxZoomForAxis", () => {
-  it("reports the honest ceiling for the pane, not the absolute maximum", () => {
-    // A phone pane: 390px of axis against the mobile pixel cap.
-    const phone = maxZoomForAxis(390, true);
-    expect(phone).toBeCloseTo(MAX_AXIS_PX_MOBILE / 390, 5);
-    expect(phone).toBeLessThan(MAX_ZOOM);
-
-    // The same pane on desktop can go much deeper.
-    expect(maxZoomForAxis(390, false)).toBeGreaterThan(phone * 5);
-  });
-
-  it("never exceeds the absolute zoom limit for a tiny pane", () => {
-    expect(maxZoomForAxis(1, false)).toBe(MAX_ZOOM);
-  });
-
-  it("stays usable for an implausibly wide pane", () => {
-    expect(maxZoomForAxis(1e9, true)).toBe(MIN_ZOOM);
-  });
-
-  it("matches what the renderer will actually draw", () => {
-    const base = 390;
-    const ceiling = maxZoomForAxis(base, true);
-    // at the ceiling the axis is exactly the cap; beyond it, nothing grows
-    expect(clampAxisSize(base * ceiling, true)).toBe(MAX_AXIS_PX_MOBILE);
-    expect(clampAxisSize(base * ceiling * 4, true)).toBe(MAX_AXIS_PX_MOBILE);
-  });
-});

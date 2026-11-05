@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_SETTINGS,
   EVENT_NOTE_SCHEMA_VERSION,
+  resolveBackupFolder,
   resolveLogFolder,
   type TimelineXmlSyncSettings,
 } from "./settings";
@@ -26,13 +27,15 @@ import {
   setDeviceSyncMode,
 } from "./obsidian/device-prefs";
 import {
+  autoDetectEventNotes,
+  autoDetectXml,
   registerCommands,
   regenerateXml,
   type CommandsContext,
 } from "./obsidian/commands";
 import { makeTimelineProcessor } from "./obsidian/markdown-postprocessor";
 import { debounce } from "./timeline/sync-engine";
-import { setLogLevel } from "./logger";
+import { logError, logWarn, setLogLevel } from "./logger";
 import { initDeviceStore } from "./obsidian/app-storage";
 import {
   classifyExternalXml,
@@ -86,7 +89,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     try {
       await this.fullOnload();
     } catch (e) {
-      console.error("[Timeline XML Sync] onload crash:", e);
+      logError("onload crash:", e);
       await this.tripSafetyNet(e as Error, "onload");
       this.installSafeMode();
     }
@@ -142,10 +145,6 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     });
   }
 
-  /**
-   * Click router for era bands / chips / list entries. Mirrors onEventClick:
-   * inspector by default (now with a dedicated era form), open-note fallback.
-   */
   /** Launch the add-era modal, write its MD note, open inspector. */
   async createEraInteractive(): Promise<void> {
     try {
@@ -189,7 +188,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     try {
       new TimelineActionPicker(this.app, actions).open();
     } catch (e) {
-      console.error("[Timeline XML Sync] action picker failed:", e);
+      logError("action picker failed:", e);
       new Notice(`Timeline picker failed: ${(e as Error).message}`);
     }
   }
@@ -211,6 +210,10 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     editor.replaceSelection(snippet);
   }
 
+  /**
+   * Click router for era bands / chips / list entries. Mirrors onEventClick:
+   * inspector by default (now with a dedicated era form), open-note fallback.
+   */
   onEraClick(eraId: string): void {
     const eraNotePath = `${this.settings.eventNotesDir}/_eras/${eraId}.md`;
     const openFile = () => {
@@ -236,11 +239,10 @@ export default class TimelineXmlSyncPlugin extends Plugin {
    */
   private async runFirstInstall(): Promise<void> {
     try {
-      const { autoDetectXml, autoDetectEventNotes } = await import("./obsidian/commands");
       await autoDetectXml(this.commandsCtx);
       await autoDetectEventNotes(this.commandsCtx);
     } catch (e) {
-      console.warn("[Timeline XML Sync] first-install auto-detect failed:", e);
+      logWarn("first-install auto-detect failed:", e);
     } finally {
       this.settings.firstRunCompleted = true;
       await this.persistAll();
@@ -259,6 +261,8 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   }
 
   private async fullOnload(): Promise<void> {
+    const appendSyncLog: CommandsContext["appendSyncLog"] = (event, path, detail) =>
+      this.appendSyncLog(event, path, detail);
     this.loadedAt = Date.now();
     this.vault = new VaultAdapter(this.app);
     this.cache = new TimelineCache(this.app, () => this.settings);
@@ -279,11 +283,11 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       getSettings: () => this.settings,
       saveSettings: () => this.saveSettings(),
       withSelfWrite: async (fn, paths) => this.withSelfWrite(fn, paths),
-      appendSyncLog: (event, path, detail) =>
-        this.appendSyncLog(event, path, detail),
+      appendSyncLog,
       setDiagnostics: (lines) => {
         this.diagnostics = lines;
       },
+      getDiagnostics: () => this.diagnostics,
       createEventInteractive: () =>
         this.templates.createNewEventInteractive(
           async (path) => {
@@ -314,8 +318,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
           getSettings: () => this.settings,
           onEventClick: (id) => this.onEventClick(id),
           onEraClick: (id) => this.onEraClick(id),
-          appendSyncLog: (event, path, detail) =>
-            this.appendSyncLog(event, path, detail),
+          appendSyncLog,
         }),
         "render"
       )
@@ -510,7 +513,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       try {
         return await fn(...args);
       } catch (e) {
-        console.error(`[Timeline XML Sync] ${phase} error:`, e);
+        logError(`${phase} error:`, e);
         this.runtimeCrashes++;
         if (this.runtimeCrashes >= MAX_RUNTIME_CRASHES) {
           await this.tripSafetyNet(e as Error, phase);
@@ -556,13 +559,12 @@ export default class TimelineXmlSyncPlugin extends Plugin {
    */
   async applySchemaAffectingChange(mutate: () => void): Promise<void> {
     try {
-      const { regenerateXml } = await import("./obsidian/commands");
       // Best-effort pre-save sync (silently skipped if there's no XML yet).
       if (this.settings.sourceXmlPath && this.vault?.exists(this.settings.sourceXmlPath)) {
         await regenerateXml(this.commandsCtx);
       }
     } catch (e) {
-      console.warn("[Timeline XML Sync] pre-change sync skipped:", e);
+      logWarn("pre-change sync skipped:", e);
     }
     mutate();
     await this.saveSettings();
@@ -593,7 +595,6 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     keep: number
   ): Promise<number> {
     if (kind === "xml") return this.vault.pruneXmlBackups(arg, keep);
-    const { resolveBackupFolder } = await import("./settings");
     return this.vault.pruneFolderBackups(arg, keep, resolveBackupFolder(this.settings));
   }
 
@@ -656,7 +657,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
         [logPath]
       );
     } catch (e) {
-      console.warn("[Timeline XML Sync] sync log write failed:", e);
+      logWarn("sync log write failed:", e);
     }
   }
 
@@ -729,7 +730,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   private rebuildDebouncedSync(): void {
     this.debouncedSync = debounce(() => {
       regenerateXml(this.commandsCtx).catch((e) => {
-        console.error("[Timeline XML Sync] auto-sync error:", e);
+        logError("auto-sync error:", e);
         new Notice(`Timeline auto-sync error: ${(e as Error).message}`);
       });
     }, this.settings.autoSyncDebounceMs);
@@ -765,7 +766,7 @@ export default class TimelineXmlSyncPlugin extends Plugin {
       if (sinceLoad < this.settings.autoSyncStartupDelayMs) return;
       this.debouncedSync?.();
     } catch (e) {
-      console.error("[Timeline XML Sync] vault-event handler error:", e);
+      logError("vault-event handler error:", e);
       this.runtimeCrashes++;
       if (this.runtimeCrashes >= MAX_RUNTIME_CRASHES) {
         void this.tripSafetyNet(e as Error, "vault-event");

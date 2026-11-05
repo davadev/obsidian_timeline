@@ -2,7 +2,6 @@ import YAML from "yaml";
 import { toFrontmatterString } from "./date";
 import {
   DEFAULT_MIRROR_NAMES,
-  type EventNote,
   type MirrorPropertyNames,
   type TimelineEvent,
 } from "./model";
@@ -108,7 +107,7 @@ export function renderEventMarkdown(
   front[mirrors.render] = ev.render ?? true;
   front[mirrors.role] = ev.role ?? "event";
 
-  const body = opts.body ?? defaultBody(ev, optsTrimDescription(opts));
+  const body = opts.body ?? defaultBody(ev, opts.trimDescription !== false);
   const yaml = YAML.stringify(front, { lineWidth: 0 });
   return `---\n${yaml}---\n\n${body}`;
 }
@@ -148,27 +147,4 @@ function defaultBody(ev: TimelineEvent, trimDescription: boolean): string {
     ""
   );
   return lines.join("\n");
-}
-
-function optsTrimDescription(opts: WriteOptions | undefined): boolean {
-  if (!opts) return true;
-  return opts.trimDescription !== false;
-}
-
-/** Re-render an EventNote, preserving its existing body and extra frontmatter. */
-export function renderExistingEventNote(
-  note: EventNote,
-  sourceXmlPath: string,
-  timelineId: string,
-  mirrorNames?: MirrorPropertyNames,
-  sourceMtime?: number | null
-): string {
-  return renderEventMarkdown(note.event, {
-    sourceXmlPath,
-    timelineId,
-    mirrorNames,
-    extraFrontmatter: note.extraFrontmatter,
-    body: note.body,
-    sourceMtime: sourceMtime ?? note.lastSyncedXmlMtime ?? null,
-  });
 }

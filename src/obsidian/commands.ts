@@ -10,7 +10,7 @@ import type { TimelineCache } from "./cache";
 import { writeTimelineXml } from "../timeline/xml-writer";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import { parseEventNote } from "../timeline/markdown-parser";
-import { logDebug, logDump } from "../logger";
+import { logDebug, logDump, logError, logWarn } from "../logger";
 import { contentFingerprint } from "./sync-policy";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
@@ -42,6 +42,8 @@ export interface CommandsContext {
   withSelfWrite: <T>(fn: () => Promise<T>, paths?: string[]) => Promise<T>;
   /** Replace stored diagnostics. */
   setDiagnostics: (lines: string[]) => void;
+  /** The diagnostics last stored by `setDiagnostics`. */
+  getDiagnostics: () => string[];
   /** Interactive "new event" flow: prompt title, create note, open inspector. */
   createEventInteractive: () => Promise<void>;
   /** Append a structured line to the sync log (best-effort). */
@@ -217,7 +219,7 @@ export async function autoDetectEventNotes(
         bestN = n;
       }
     }
-    if (best) s.timelineId = best;
+    s.timelineId = best;
   }
   await ctx.saveSettings();
   ctx.cache.resetIndex();
@@ -227,16 +229,8 @@ export async function autoDetectEventNotes(
   );
 }
 
-async function writeBinary(
-  ctx: CommandsContext,
-  path: string,
-  data: ArrayBuffer
-): Promise<void> {
-  await ctx.vault.writeBinary(path, data);
-}
-
+/** Longest folder shared by every path ("" when they have none in common). */
 function longestCommonDir(paths: string[]): string {
-  if (!paths.length) return "";
   const parts = paths.map((p) => p.split("/").slice(0, -1));
   let common: string[] = parts[0].slice();
   for (let i = 1; i < parts.length; i++) {
@@ -311,15 +305,8 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   new Notice(`Reimport complete — removed ${removed} old notes.`);
 }
 
-/** Check whether the on-disk notes were written by an older schema. */
-export function needsSchemaReimport(s: TimelineXmlSyncSettings): boolean {
-  return s.lastImportSchemaVersion < EVENT_NOTE_SCHEMA_VERSION;
-}
-
-export { shouldSkipNoteOverwrite, shouldAbortXmlWrite } from "./sync-policy";
-
 function reportErr(e: unknown): void {
-  console.error("[Timeline XML Sync]", e);
+  logError(e);
   new Notice(`Timeline XML Sync: ${(e as Error).message}`);
 }
 
@@ -371,7 +358,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
           }
         } catch (e) {
           // Unparseable note — refuse to overwrite blindly.
-          console.warn("[Timeline XML Sync] could not parse existing note", path, e);
+          logWarn("could not parse existing note", path, e);
           skipped.push(path);
           continue;
         }
@@ -384,10 +371,10 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
           const attPath = `${attachmentsDir}/${ev.id}.${ext}`;
           await ctx.vault.ensureFolder(attachmentsDir);
           const bytes = base64ToArrayBuffer(ev.icon.trim());
-          await writeBinary(ctx, attPath, bytes);
+          await ctx.vault.writeBinary(attPath, bytes);
           ev.iconAttachmentPath = attPath;
         } catch (e) {
-          console.warn("[Timeline XML Sync] icon write failed for", ev.id, e);
+          logWarn("icon write failed for", ev.id, e);
         }
       }
       const md = renderEventMarkdown(ev, {
@@ -407,41 +394,33 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   // Era notes — one Markdown file per <era>, written into _eras/ so they
   // sit next to but not mingled with the editable event notes. Same
   // newer-than-stamp guard as events: inspector edits aren't overwritten.
-  let erasSkipped = 0;
-  if (doc.eras && doc.eras.length) {
+  const eras = doc.eras ?? [];
+  if (eras.length) {
     const erasDir = `${s.eventNotesDir}/_eras`;
     await ctx.vault.ensureFolder(erasDir);
-    const eraWrittenPaths: string[] = [];
     await ctx.withSelfWrite(async () => {
-      for (const era of doc.eras!) {
+      for (const era of eras) {
         const path = `${erasDir}/${era.id}.md`;
         const onDisk = ctx.vault.getFile(path);
         if (onDisk) {
           try {
             const raw = await ctx.vault.readText(path);
-            const parsed = (await import("../timeline/era-md")).parseEraNote(
-              raw,
-              era.id
-            );
+            const parsed = parseEraNote(raw, era.id);
             if (
               shouldSkipNoteOverwrite(onDisk.stat.mtime, parsed?.lastSyncedXmlMtime)
             ) {
-              erasSkipped++;
               skipped.push(path);
               continue;
             }
           } catch {
-            erasSkipped++;
             skipped.push(path);
             continue;
           }
         }
         const md = renderEraMarkdown(era, s.timelineId, s.sourceXmlPath, xmlMtime);
         await ctx.vault.writeText(path, md);
-        eraWrittenPaths.push(path);
       }
-    }, []);
-    void eraWrittenPaths; // reserved for future per-path self-write scoping
+    });
   }
 
   const metaDir = `${s.eventNotesDir}/_timeline`;
@@ -497,8 +476,8 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   } else {
     new Notice(
       `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
-        doc.eras?.length ? `, ${doc.eras.length} era(s)` : ""
-      }${erasSkipped ? `, ${erasSkipped} era(s) skipped` : ""}.`
+        eras.length ? `, ${eras.length} era(s)` : ""
+      }.`
     );
   }
 }
@@ -636,15 +615,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   }
 
   if (s.backupEnabled && ctx.vault.exists(s.sourceXmlPath)) {
-    const bak = await ctx.vault.backup(s.sourceXmlPath);
-    if (bak) {
-      logDebug("backup:", bak);
-      const pruned = await ctx.vault.pruneXmlBackups(
-        s.sourceXmlPath,
-        s.backupRetention
-      );
-      if (pruned > 0) logDebug(`pruned ${pruned} XML backup(s)`);
-    }
+    // The XML exists (checked above), so a backup path always comes back.
+    logDebug("backup:", await ctx.vault.backup(s.sourceXmlPath));
+    const pruned = await ctx.vault.pruneXmlBackups(
+      s.sourceXmlPath,
+      s.backupRetention
+    );
+    if (pruned > 0) logDebug(`pruned ${pruned} XML backup(s)`);
   }
 
   // Picture sync (MD → XML): for any event whose note carries an
@@ -656,11 +633,7 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
       const buf = await ctx.vault.readBinary(att);
       n.event.icon = arrayBufferToBase64(buf);
     } catch (e) {
-      console.warn(
-        "[Timeline XML Sync] could not read icon attachment",
-        att,
-        e
-      );
+      logWarn("could not read icon attachment", att, e);
     }
   }
 
@@ -686,12 +659,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
         `${s.eventNotesDir}/_timeline/timeline-metadata.md`,
         `metaStamp=${metaStamp} xmlMtime=${xmlNow}`
       );
-      if (metaPatch.eras) merged.eras = metaPatch.eras;
+      // A metadata patch always carries an era list (possibly empty).
+      merged.eras = metaPatch.eras;
     } else {
       merged.version = metaPatch.version ?? merged.version;
       merged.timetype = metaPatch.timetype ?? merged.timetype;
       if (metaPatch.categories) merged.categories = metaPatch.categories;
-      if (metaPatch.eras) merged.eras = metaPatch.eras;
+      merged.eras = metaPatch.eras;
       if (metaPatch.view) merged.view = metaPatch.view;
     }
   }
@@ -714,7 +688,7 @@ export function openDiagnostics(ctx: CommandsContext): void {
   // Printing to the console IS this command: the user explicitly asked for a
   // dump they can copy into a bug report. The settings tab shows the same
   // list. Not gated on logLevel for that reason.
-  logDump("diagnostics:", (ctx as unknown as { _diag?: string[] })._diag ?? []);
+  logDump("diagnostics:", ctx.getDiagnostics());
   new Notice("Timeline diagnostics printed to the developer console (verbose).");
 }
 

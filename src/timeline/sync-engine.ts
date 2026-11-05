@@ -54,13 +54,11 @@ export function debounce<A extends unknown[]>(
   ms: number
 ): (...args: A) => void {
   let t: number | null = null;
-  let lastArgs: A | null = null;
   return (...args: A) => {
-    lastArgs = args;
     if (t) window.clearTimeout(t);
     t = window.setTimeout(() => {
       t = null;
-      if (lastArgs) fn(...lastArgs);
+      fn(...args);
     }, ms);
   };
 }

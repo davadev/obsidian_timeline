@@ -65,7 +65,6 @@ export interface TimelineXmlSyncSettings {
   globalFilterPrecision: "year" | "day" | "time";
   /**
    * Multi-device sync hardening (Nextcloud / iCloud / Remotely Save).
-   * See plan: /Users/danielvavrik/.claude/plans/twinkly-crunching-noodle.md
    */
   /** mtime of the XML file as it was last written by this plugin. Used to detect remote edits. */
   lastWrittenXmlMtime: number | null;

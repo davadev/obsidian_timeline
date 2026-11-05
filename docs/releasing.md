@@ -25,10 +25,13 @@ Consequences:
 
 | File | Role |
 |---|---|
-| `.github/workflows/ci.yml` | Every push to `main` and every PR: lint → typecheck → build → test → release guard (no tag). |
-| `.github/workflows/release.yml` | Fires on a SemVer tag: stamps prereleases, runs the same gate, validates artifacts, attests provenance, publishes. |
+| `.github/workflows/ci.yml` | Every push to `main` and every PR: lint, stylelint, dependency lint, typecheck, build, tests at 100 % coverage, dead-code check, release guard (`--strict`, no tag), the review's type-blind lint. A separate `store-listing` job checks `main` never advertises a version without a published release. Make `check` and `store-listing` required status checks. |
+| `.github/workflows/release.yml` | Fires on a SemVer tag: checks the tag is on `main` (stable: or a `release/*` branch), stamps prereleases, runs the same gate, validates artifacts, attests provenance, publishes. Serialised by a static concurrency group. |
+| `.github/dependabot.yml`, `.npmrc` | Supply-chain policy, see below. `check-release` fails if either loses its 14-day age setting. |
+| `scripts/check-store-listing.mjs` | CI job `store-listing`: when `manifest.version` changes it needs a published, non-prerelease release with all three assets and a `versions.json` entry. Red on the stable release PR until the tag has published; re-run after. |
+| `scripts/lib/*.mjs` | The guard's pure predicates (`releaseChecks`, `supplyChainChecks`), unit-tested. |
 | `scripts/stamp-prerelease.mjs` | For suffixed tags only: rewrites version metadata in the **working tree** so assets carry the beta version while the committed manifest stays on the current stable. Nothing is committed. |
-| `scripts/check-release.mjs` | The guard. With `--tag`, manifest must equal the tag **exactly** (suffix included). Without one, the committed manifest must be plain `X.Y.Z`. Also checks manifest/package/lock/`versions.json` agreement and that the three assets are non-empty. |
+| `scripts/check-release.mjs` | The guard. With `--tag`, manifest must equal the tag **exactly** (suffix included). Without one, the committed manifest must be plain `X.Y.Z`. Also checks manifest/package/lock/`versions.json` agreement, the community-store manifest rules (see `docs/community-plugin-submission.md`), mobile-safe imports, that the three assets are non-empty, that `release.yml` still attests them, and the supply-chain policy. `--strict` turns warnings into failures (the release workflow uses it). |
 | `eslint.config.mjs` | `eslint-plugin-obsidianmd` at the severities used by the community-plugin review. `npm run lint` runs with `--max-warnings 0`, so a release is blocked by any error **or** warning. |
 
 Tags are **bare** — `0.10.0`, not `v0.10.0`. (Tags up to `v0.8.11` predate this
@@ -54,15 +57,10 @@ git push origin 0.10.0-beta.1
 Committed to `main`: **nothing**. The workflow stamps `0.10.0-beta.1` into the
 assets and publishes a GitHub prerelease.
 
-A beta can equally be tagged on a **feature branch head** — the workflow fires
-on the tag regardless of branch, and the invariant still holds because `main`'s
-manifest never moves. That is the right move when the work is not merged yet
-and you want it in testers' hands first:
-
-```bash
-git push -u origin my-branch     # the tagged commit must exist on the remote
-git tag 0.10.0-beta.2 && git push origin 0.10.0-beta.2
-```
+The release workflow refuses a prerelease tag whose commit is not on `main`
+(and a stable tag not on `main` or a `release/*` branch): releases come from
+reviewed code. Merge the PR first, **then** tag `main`. The invariant still
+holds because `main`'s manifest never moves for a beta.
 
 Before tagging, rebuild and refresh the committed demo-vault copy, so the
 plugin bundled in `demo-vault/` matches what ships:
@@ -134,12 +132,49 @@ never touched:
 git push origin :0.10.0 && git tag -d 0.10.0
 ```
 
+## Gate
+
+All of these must pass before a tag; CI runs them on every PR and the release
+workflow runs them again on a clean runner:
+
+```bash
+npm run lint && npm run lint:css && npm run lint:deps && npm run typecheck \
+  && npm run build && npm run test:cov && npm run check:dead-code \
+  && npm run check-release -- --strict && npm run lint:cloud-parity
+```
+
+`test:cov` fails under 100 % on statements, branches, functions and lines.
+Unreachable code is deleted, never ignored (`tests/coverage-gate.test.ts` pins
+this). `lint:cloud-parity` renames `node_modules/obsidian` while it runs; if a
+run is ever killed, `npm ci` repairs it.
+
+## Supply chain
+
+- **Actions are pinned to full commit SHAs** with the readable version in a
+  trailing comment; Dependabot updates both. Re-resolve by hand with
+  `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha` (deref
+  annotated tags via `git/tags/<sha>`). Checkouts use
+  `persist-credentials: false`; permissions are job-scoped.
+- **14-day dependency age**: `min-release-age=14` in `.npmrc` (needs npm >= 11.10;
+  `npm ci` ignores it, it guards hand-run `npm install/update`) and a 14-day
+  `cooldown` in `dependabot.yml` for both ecosystems (30 for npm majors).
+  Never pass `--min-release-age=0`; an urgent exception goes in
+  `min-release-age-exclude[]` in the PR that needs it.
+- **Install scripts denied**: `allowScripts` in `package.json` approves nothing.
+- **No runtime `dependencies`**: esbuild bundles everything, so everything is a
+  devDependency. `npm ls --all` must exit 0 (`npm ci` does not notice).
+- **Dependabot is PR-only.** Groups: `vitest` + `@vitest/*` together (coverage
+  peer-pins vitest exactly), other minor/patch together, majors alone. Ignores
+  live only in `dependabot.yml`; never reply `@dependabot ignore` on a PR.
+- A Dependabot PR is visibility, not an obligation. Tag a beta only if
+  `main.js` would change.
+
 ## Pre-promotion checklist
 
 - [ ] Prerelease installed via BRAT and exercised on **desktop and mobile**
 - [ ] `main`'s manifest still names the **old** stable version
 - [ ] Old stable release still resolves, with all three assets
-- [ ] `npm run lint` reports 0 errors
+- [ ] `npm run lint` reports 0 errors and 0 warnings
 - [ ] `npm run build` and `npm test` pass
 - [ ] `npm run check-release -- --tag <version>` passes
 - [ ] `manifest.json`, `package.json`, `package-lock.json`, `versions.json` agree

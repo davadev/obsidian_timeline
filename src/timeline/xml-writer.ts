@@ -1,4 +1,4 @@
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import XMLBuilder from "fast-xml-builder";
 import { toXmlString, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
@@ -7,7 +7,7 @@ import type {
   TimelineEvent,
   TimelineView,
 } from "./model";
-import { PARSER_OPTIONS, decodeEntities } from "./xml-parser";
+import { PARSER_OPTIONS } from "./xml-parser";
 
 /**
  * Browser-safe Timeline Project XML writer.
@@ -99,16 +99,14 @@ function dateLeaf(name: string, d: TimelineDate): RawNode {
   return leaf(name, toXmlString(d));
 }
 
-/** Find name (or null) of the single non-":@" key on a preserveOrder node. */
+// In preserveOrder mode every node has exactly one tag key (plus ":@" for
+// attributes) and an element's value is always an array of child nodes.
 function nodeName(n: RawNode): string {
-  for (const k of Object.keys(n)) if (k !== ":@") return k;
-  return "";
+  return Object.keys(n).find((k) => k !== ":@") as string;
 }
 
 function nodeChildren(n: RawNode): RawNode[] {
-  const name = nodeName(n);
-  const v = (n as Record<string, unknown>)[name];
-  return Array.isArray(v) ? (v as RawNode[]) : [];
+  return (n as Record<string, unknown>)[nodeName(n)] as RawNode[];
 }
 
 /**
@@ -126,7 +124,7 @@ function unknownChildren(raw: unknown, known: Set<string>): RawNode[] {
   });
 }
 
-const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
+const EVENT_DEFAULT_ORDER = [
   "start",
   "end",
   "text",
@@ -146,7 +144,11 @@ const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
   "default_color",
   "icon",
   "alert",
-];
+] as const;
+
+// Hyperlinks are written by buildEventNode itself (there can be several), so
+// the per-tag synthesizer only ever sees the other tags.
+type SynthEventTag = Exclude<(typeof EVENT_DEFAULT_ORDER)[number], "hyperlink">;
 
 /**
  * Build the children of an `<event>` node. When the event has a `raw`
@@ -158,7 +160,7 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   const wantsCData = descriptionWantsCData(ev);
   const hyperlinks = normalizeEventHyperlinks(ev);
   let hyperlinkIdx = 0;
-  const synth = (tag: string): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
+  const synth = (tag: SynthEventTag): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
 
   const children: RawNode[] = [];
   const seen = new Set<string>();
@@ -174,7 +176,7 @@ function buildEventNode(ev: TimelineEvent): RawNode {
         continue;
       }
       if (KNOWN_EVENT_TAGS.has(name)) {
-        const synthChild = synth(name);
+        const synthChild = synth(name as SynthEventTag);
         if (synthChild) {
           children.push(synthChild);
           seen.add(name);
@@ -250,7 +252,7 @@ function parseExtraNodes(rawNodes: string[] | undefined): RawNode[] {
 }
 
 function synthesizeEventChild(
-  tag: string,
+  tag: SynthEventTag,
   ev: TimelineEvent,
   wantsCData: boolean
 ): RawNode | null {
@@ -270,8 +272,6 @@ function synthesizeEventChild(
       return wantsCData
         ? cdataLeaf("description", ev.description)
         : leaf("description", ev.description);
-    case "hyperlink":
-      return maybeLeaf("hyperlink", ev.hyperlink);
     case "labels": {
       if (!ev.labels || !ev.labels.length) return null;
       const tokens = ev.labels.map((l) => l.trim().replace(/\s+/g, "_")).filter(Boolean);
@@ -299,8 +299,6 @@ function synthesizeEventChild(
       return maybeLeaf("icon", ev.icon);
     case "alert":
       return maybeLeaf("alert", ev.alert);
-    default:
-      return null;
   }
 }
 
@@ -334,17 +332,17 @@ function cdataLeaf(name: string, content: string): RawNode {
   ]);
 }
 
-const CATEGORY_DEFAULT_ORDER: ReadonlyArray<string> = [
+const CATEGORY_DEFAULT_ORDER = [
   "name",
   "color",
   "progress_color",
   "done_color",
   "font_color",
   "parent",
-];
+] as const;
 
 function buildCategoryNode(c: TimelineCategory): RawNode {
-  const synth = (tag: string): RawNode | null => {
+  const synth = (tag: (typeof CATEGORY_DEFAULT_ORDER)[number]): RawNode | null => {
     switch (tag) {
       case "name":
         return leaf("name", c.name);
@@ -358,8 +356,6 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
         return maybeLeaf("font_color", c.fontColor);
       case "parent":
         return maybeLeaf("parent", c.parent);
-      default:
-        return null;
     }
   };
   const children: RawNode[] = [];
@@ -369,13 +365,9 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
       const name = nodeName(child);
       if (!name || name === "#text") continue;
       if (KNOWN_CATEGORY_TAGS.has(name)) {
-        const synthChild = synth(name);
-        if (synthChild) {
-          children.push(synthChild);
-          seen.add(name);
-        } else {
-          seen.add(name);
-        }
+        const synthChild = synth(name as (typeof CATEGORY_DEFAULT_ORDER)[number]);
+        if (synthChild) children.push(synthChild);
+        seen.add(name);
       } else {
         children.push(child);
       }
@@ -488,19 +480,18 @@ export function writeTimelineXml(doc: TimelineDoc): string {
 
   // Preserve top-level unknown children (anything that wasn't version/timetype/categories/events/view)
   if (doc.raw && Array.isArray(doc.raw)) {
-    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
-    if (rawRoot) {
-      const known = new Set([
-        "version",
-        "timetype",
-        "categories",
-        "events",
-        "eras",
-        "view",
-      ]);
-      for (const u of unknownChildren(rawRoot, known)) {
-        timelineChildren.push(u);
-      }
+    // A parsed tree always contains its <timeline> root.
+    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline") as RawNode;
+    const known = new Set([
+      "version",
+      "timetype",
+      "categories",
+      "events",
+      "eras",
+      "view",
+    ]);
+    for (const u of unknownChildren(rawRoot, known)) {
+      timelineChildren.push(u);
     }
   }
   if (!(doc.raw && Array.isArray(doc.raw))) {
@@ -513,7 +504,6 @@ export function writeTimelineXml(doc: TimelineDoc): string {
     for (const n of doc.raw as RawNode[]) {
       const name = nodeName(n);
       if (name === "timeline") continue;
-      if (name === "#text") continue; // skip parser whitespace
       tree.push(n); // declaration/PI/comments preserved
     }
   }
@@ -525,82 +515,12 @@ export function writeTimelineXml(doc: TimelineDoc): string {
   }
   const timelineAttrs: Record<string, string> = {};
   if (doc.raw && Array.isArray(doc.raw)) {
-    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
-    if (rawRoot) {
-      const rawAttrs = ((rawRoot)[":@"] || {});
-      for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
-    }
+    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline") as RawNode;
+    const rawAttrs = rawRoot[":@"] || {};
+    for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
   }
   for (const [k, v] of Object.entries(doc.xmlAttrs ?? {})) timelineAttrs[k] = v;
   tree.push(elem("timeline", timelineChildren, timelineAttrs));
 
   return builder.build(tree);
-}
-
-/**
- * Walk a preserveOrder tree and drop pure-whitespace text-node siblings (the
- * indentation between elements that the parser preserved). Whitespace inside
- * a leaf element (a node whose only children are text) is left alone so that
- * the XML declaration and elements with meaningful text content survive.
- */
-function stripWhitespaceTextNodes(nodes: RawNode[]): RawNode[] {
-  // Detect mixed content: if at least one sibling is an element, treat text
-  // siblings as inter-element whitespace and drop them when pure-whitespace.
-  const hasElement = nodes.some((n) => {
-    const name = nodeName(n);
-    return name && name !== "#text";
-  });
-  const out: RawNode[] = [];
-  for (const n of nodes) {
-    const name = nodeName(n);
-    if (name === "#text") {
-      if (hasElement) {
-        const t = (n as Record<string, unknown>)["#text"];
-        if (typeof t === "string" && t.trim() === "") continue;
-      }
-      out.push(n);
-      continue;
-    }
-    const kids = nodeChildren(n);
-    if (kids.length) {
-      const cleaned = stripWhitespaceTextNodes(kids);
-      out.push({ ...n, [name]: cleaned });
-    } else {
-      out.push(n);
-    }
-  }
-  return out;
-}
-
-/**
- * Canonical normalization: parse, strip whitespace text nodes, and re-emit so
- * any two inputs that mean the same thing produce identical strings. Used by
- * the round-trip test instead of strict byte-equality.
- */
-export function canonicalizeXml(xml: string): string {
-  const parser = new XMLParser(PARSER_OPTIONS);
-  const builder = new XMLBuilder(BUILDER_OPTIONS);
-  const tree = parser.parse(xml) as RawNode[];
-  // Decode entities in text nodes before re-emitting — the parser is run with
-  // processEntities:false (to dodge fast-xml-parser's entity cap) but the
-  // builder is run with processEntities:true, which would otherwise double-
-  // escape an already-encoded `&apos;` into `&amp;apos;`.
-  decodeTextNodesInPlace(tree);
-  const cleaned = stripWhitespaceTextNodes(tree);
-  return builder.build(cleaned);
-}
-
-function decodeTextNodesInPlace(nodes: RawNode[]): void {
-  for (const n of nodes) {
-    for (const key of Object.keys(n)) {
-      if (key === ":@") continue;
-      if (key === "#text") {
-        const v = (n as Record<string, unknown>)[key];
-        if (typeof v === "string") (n as Record<string, unknown>)[key] = decodeEntities(v);
-        continue;
-      }
-      const v = (n as Record<string, unknown>)[key];
-      if (Array.isArray(v)) decodeTextNodesInPlace(v as RawNode[]);
-    }
-  }
 }

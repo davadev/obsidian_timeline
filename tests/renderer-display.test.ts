@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import "./setup-obsidian-dom";
+import "../testUtils/setup-obsidian-dom";
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderTimeline } from "../src/renderer";
 import type { TimelineEvent, TimelineCategory, TimelineEra } from "../src/timeline/model";

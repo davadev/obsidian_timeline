@@ -57,10 +57,6 @@ export function compare(a: TimelineDate, b: TimelineDate): number {
   return A.second - B.second;
 }
 
-export function equals(a: TimelineDate, b: TimelineDate): boolean {
-  return compare(a, b) === 0;
-}
-
 /** ISO-like canonical string: ±YYYY-MM-DD HH:MM:SS (used in XML round-trip). */
 export function toXmlString(d: TimelineDate): string {
   const c = complete(d);
@@ -116,25 +112,6 @@ export function parseFrontmatterDate(raw: unknown): TimelineDate | null {
   if (typeof raw === "number") return { year: raw };
   if (typeof raw !== "string") return null;
   return parseXmlDate(raw);
-}
-
-/** Whether `range` and `viewport` overlap. Both are inclusive ranges. */
-export function rangesOverlap(
-  aStart: TimelineDate,
-  aEnd: TimelineDate,
-  bStart: TimelineDate,
-  bEnd: TimelineDate
-): boolean {
-  return compare(aStart, bEnd) <= 0 && compare(aEnd, bStart) >= 0;
-}
-
-/** Whether a point date sits inside the inclusive viewport range. */
-export function pointInRange(
-  p: TimelineDate,
-  start: TimelineDate,
-  end: TimelineDate
-): boolean {
-  return compare(p, start) >= 0 && compare(p, end) <= 0;
 }
 
 /**

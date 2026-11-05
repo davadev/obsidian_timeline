@@ -81,7 +81,9 @@ export class InspectorView extends ItemView {
         this.renderEmpty(`No era found with id "${eraId}".`);
         return;
       }
-      this.currentEra = era;
+      // A copy: the form edits it in place, and the original belongs to the
+      // shared cache, where unsaved edits would show up everywhere.
+      this.currentEra = { ...era, start: { ...era.start }, end: { ...era.end } };
       const eraPath = `${this.args.getSettings().eventNotesDir}/_eras/${eraId}.md`;
       this.currentPath = this.app.vault.getAbstractFileByPath(eraPath)
         ? eraPath
@@ -153,22 +155,21 @@ export class InspectorView extends ItemView {
   }
 
   private renderEraForm(): void {
-    const era = this.currentEra;
-    if (!era) return this.renderEmpty();
+    // loadEra sets the era just before drawing it.
+    const era = this.currentEra as TimelineEra;
     this.contentEl.empty();
     this.contentEl.addClass("txs-inspector-root");
 
     const header = this.contentEl.createDiv({ cls: "txs-inspector-header" });
     header.createEl("h3", { text: `${era.name} — (era)` });
-    if (this.currentPath) {
+    const eraNotePath = this.currentPath;
+    if (eraNotePath) {
       const openBtn = header.createEl("button", {
         cls: "mod-cta",
         text: "Open era note",
       });
       openBtn.addEventListener("click", () => {
-        if (this.currentPath) {
-          void this.app.workspace.openLinkText(this.currentPath, "", false);
-        }
+        void this.app.workspace.openLinkText(eraNotePath, "", false);
       });
     }
 
@@ -229,8 +230,8 @@ export class InspectorView extends ItemView {
 
   /** Persist current era edits as a Markdown note in `<eventNotesDir>/_eras/`. */
   private async saveEra(): Promise<void> {
-    const era = this.currentEra;
-    if (!era) return;
+    // The Save button only exists while an era form is showing.
+    const era = this.currentEra as TimelineEra;
     const settings = this.args.getSettings();
     try {
       const { renderEraMarkdown } = await import("../timeline/era-md");
@@ -259,8 +260,8 @@ export class InspectorView extends ItemView {
   }
 
   private renderForm(): void {
-    const ev = this.current;
-    if (!ev) return this.renderEmpty();
+    // loadEvent sets the event just before drawing it.
+    const ev = this.current as TimelineEvent;
     this.contentEl.empty();
     this.contentEl.addClass("txs-inspector-root");
     const root = this.contentEl;
@@ -277,10 +278,9 @@ export class InspectorView extends ItemView {
       cls: "mod-cta",
       text: "Open note",
     });
+    const notePath = this.currentPath as string;
     openBtn.addEventListener("click", () => {
-      if (this.currentPath) {
-        void this.app.workspace.openLinkText(this.currentPath, "", false);
-      }
+      void this.app.workspace.openLinkText(notePath, "", false);
     });
 
     const body = root.createDiv({ cls: "txs-inspector-body" });
@@ -466,7 +466,7 @@ export class InspectorView extends ItemView {
         this.app,
         text,
         previewEl,
-        this.currentPath ?? "",
+        notePath,
         this
       );
     };
@@ -492,7 +492,8 @@ export class InspectorView extends ItemView {
 
     // Hyperlinks
     const linksArea = field(body, "Hyperlinks (one URL per line)", "textarea") as HTMLTextAreaElement;
-    const links = (ev.hyperlinks?.length ? ev.hyperlinks : ev.hyperlink ? [ev.hyperlink] : []).join("\n");
+    // parseEventNote always fills `hyperlinks` when there is a `hyperlink`.
+    const links = (ev.hyperlinks ?? []).join("\n");
     linksArea.rows = 4;
     linksArea.value = links;
     linksArea.addEventListener("input", () => {
@@ -571,12 +572,8 @@ export class InspectorView extends ItemView {
     progressInput.value = ev.progress != null ? String(ev.progress) : "";
     progressInput.addEventListener("input", () => {
       const raw = progressInput.value.trim();
-      if (!raw) {
-        ev.progress = undefined;
-      } else {
-        const n = Number(raw);
-        if (Number.isFinite(n)) ev.progress = n;
-      }
+      // A number input only ever holds a valid number, or nothing.
+      ev.progress = raw ? Number(raw) : undefined;
       this.markDirty();
     });
 
@@ -586,19 +583,15 @@ export class InspectorView extends ItemView {
     stampInput.value = ev.lastSyncedXmlMtime != null ? String(ev.lastSyncedXmlMtime) : "";
     stampInput.addEventListener("input", () => {
       const raw = stampInput.value.trim();
-      if (!raw) {
-        ev.lastSyncedXmlMtime = undefined;
-      } else {
-        const n = Number(raw);
-        if (Number.isFinite(n)) ev.lastSyncedXmlMtime = Math.trunc(n);
-      }
+      ev.lastSyncedXmlMtime = raw ? Math.trunc(Number(raw)) : undefined;
       this.markDirty();
     });
 
     const flagsWrap = body.createDiv({ cls: "txs-inspector-flags" });
     flagsWrap.createDiv({ cls: "txs-inspector-section-title", text: "Other flags" });
 
-    const enabledCheck = boolField(flagsWrap, "Enabled", ev.timelineEnabled ?? true, (v) => {
+    // Only enabled notes parse as events, so this is always true on load.
+    const enabledCheck = boolField(flagsWrap, "Enabled", ev.timelineEnabled as boolean, (v) => {
       ev.timelineEnabled = v;
       this.markDirty();
     });
@@ -687,18 +680,20 @@ export class InspectorView extends ItemView {
   }
 
   private async save(): Promise<void> {
-    if (!this.current || !this.currentPath) return;
+    // The Save button only exists while an event form is showing.
+    const current = this.current as TimelineEvent;
+    const path = this.currentPath as string;
     const settings = this.args.getSettings();
     try {
-      const raw = await this.args.vault.readText(this.currentPath);
+      const raw = await this.args.vault.readText(path);
       const parsed = parseEventNote(raw, {
-        path: this.currentPath,
+        path,
         mirrorNames: settings.mirrorNames,
       });
       const extraFrontmatter = { ...(parsed.note?.extraFrontmatter ?? {}) };
-      extraFrontmatter.title = this.current.text;
-      const body = patchEventBody(parsed.note?.body ?? "", this.current);
-      const md = renderEventMarkdown(this.current, {
+      extraFrontmatter.title = current.text;
+      const body = patchEventBody(parsed.note?.body ?? "", current);
+      const md = renderEventMarkdown(current, {
         sourceXmlPath: settings.sourceXmlPath,
         timelineId: settings.timelineId,
         mirrorNames: settings.mirrorNames,
@@ -707,13 +702,13 @@ export class InspectorView extends ItemView {
         trimDescription: settings.trimDescriptionOnWrite,
       });
       await this.args.withSelfWrite(async () => {
-        await this.args.vault.writeText(this.currentPath!, md);
+        await this.args.vault.writeText(path, md);
       });
       this.args.cache.invalidateMdDoc();
       // Make sure the id index sees the latest event_id (in case the user
       // edited a note that was just created — metadataCache may not have
       // re-indexed yet).
-      this.args.cache.updateFile(this.currentPath);
+      this.args.cache.updateFile(path);
       this.dirty = false;
       this.args.onEventSaved?.();
       new Notice("Event note saved.");

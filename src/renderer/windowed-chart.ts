@@ -13,7 +13,6 @@ import { labelFontSpec, measurerFor, type Measure } from "./text-metrics";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
-  ZOOM_STEP,
   wheelZoomFactor,
   type PinchPoint,
 } from "./zoom-math";
@@ -193,7 +192,7 @@ export class WindowedChart {
       ? windowFor(clampZoomFor(initialZoom ?? 1, next), midpoint(next), next)
       : clampWindow(this.window, next);
 
-    this.rebuild(true);
+    this.rebuild();
   }
 
   /** Current zoom, for the caller's readout. */
@@ -228,9 +227,9 @@ export class WindowedChart {
     if (this.zoomFrame != null) return;
     this.zoomFrame = window.requestAnimationFrame(() => {
       this.zoomFrame = null;
-      const next = this.pendingZoom;
+      // zoomTo set this before scheduling the frame, and only this frame clears it.
+      const next = this.pendingZoom as { zoom: number; focalPx: number };
       this.pendingZoom = null;
-      if (!next) return;
 
       const at = next.focalPx;
       const dateUnderPointer =
@@ -240,7 +239,7 @@ export class WindowedChart {
       const centre = dateUnderPointer + (0.5 - at / this.paneW) * days;
 
       this.window = windowFor(next.zoom, centre, this.span);
-      this.rebuild(true);
+      this.rebuild();
     });
   }
 
@@ -251,7 +250,7 @@ export class WindowedChart {
       midpoint(this.span),
       this.span
     );
-    this.rebuild(true);
+    this.rebuild();
   }
 
   destroy(): void {
@@ -264,7 +263,7 @@ export class WindowedChart {
   // ---------------------------------------------------------------- internals
 
   /** Recompute the page and spacer, then draw the tiles the viewport needs. */
-  private rebuild(syncScroll: boolean): void {
+  private rebuild(): void {
     this.paneW = this.measurePane();
     this.page = pageFor(this.window, this.span, this.paneW);
 
@@ -276,16 +275,14 @@ export class WindowedChart {
     if (this.vertical) this.spacer.setCssProps({ height: along, width: across });
     else this.spacer.setCssProps({ width: along, height: across });
 
-    if (syncScroll) {
-      const at = windowToScroll(this.window, this.page, this.paneW);
-      this.syncing = true;
-      if (this.vertical) this.scroller.scrollTop = at;
-      else this.scroller.scrollLeft = at;
-      // The scroll event this triggers must not be read as the user panning.
-      window.setTimeout(() => (this.syncing = false), 0);
-      // Tiles are indexed against the page, so a new page invalidates them.
-      this.dropAllTiles();
-    }
+    const at = windowToScroll(this.window, this.page, this.paneW);
+    this.syncing = true;
+    if (this.vertical) this.scroller.scrollTop = at;
+    else this.scroller.scrollLeft = at;
+    // The scroll event this triggers must not be read as the user panning.
+    window.setTimeout(() => (this.syncing = false), 0);
+    // Tiles are indexed against the page, so a new page invalidates them.
+    this.dropAllTiles();
 
     this.paintTiles();
     this.paintEdgeLabels();
@@ -340,7 +337,7 @@ export class WindowedChart {
       }
       entries.push({
         ev,
-        lane: this.laneByEventId.get(ev.id) ?? 0,
+        lane: this.laneByEventId.get(ev.id) as number, // set with `events` in setData
         startPx: (from - this.window.from) / perPx,
         endPx: (to - this.window.from) / perPx,
       });
@@ -373,9 +370,8 @@ export class WindowedChart {
       measure: this.measure,
     });
     for (const placement of placements) {
-      const ev = byId.get(placement.id);
-      if (!ev) continue;
-      drawCallout(svg, ev, placement, {
+      // Every placement was laid out from `entries`, so its event is always there.
+      drawCallout(svg, byId.get(placement.id) as TimelineEvent, placement, {
         isVertical: this.vertical,
         categoryColors: this.args.categoryColors,
         labelColorOverride: this.args.eventLabelColor,
@@ -405,7 +401,7 @@ export class WindowedChart {
         // Ran off the end of a paged scroller: re-anchor around what is on
         // screen. The dates under the viewport stay put; only the scrollbar
         // jumps, which is the price of an hour-deep zoom on a long timeline.
-        this.rebuild(true);
+        this.rebuild();
         return;
       }
 
@@ -424,7 +420,7 @@ export class WindowedChart {
     const zoom = this.zoom;
     this.paneW = next;
     this.window = windowFor(zoom, midpoint(this.window), this.span);
-    this.rebuild(true);
+    this.rebuild();
   }
 
   /**
@@ -443,8 +439,7 @@ export class WindowedChart {
   /** Scales the drawn tiles about the focal point. No DOM changes. */
   private updatePreview(scale: number, focalPx: number): void {
     if (!this.preview) this.beginPreview(focalPx);
-    const p = this.preview;
-    if (!p) return;
+    const p = this.preview as NonNullable<WindowedChart["preview"]>;
     p.scale = scale;
     p.focalPx = focalPx;
 
@@ -686,6 +681,3 @@ export class WindowedChart {
 function midpoint(range: { from: number; to: number }): number {
   return (range.from + range.to) / 2;
 }
-
-/** One press of +/-, exported so the caller's buttons agree with the pinch. */
-export const CHART_ZOOM_STEP = ZOOM_STEP;

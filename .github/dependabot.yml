@@ -1,0 +1,73 @@
+# Dependency update feed (npm + github-actions). PR-only: nothing here
+# auto-merges, so Dependabot can never publish or affect a release on its own.
+#
+# Never reply `@dependabot ignore ...` on a PR. That stores the ignore in
+# Dependabot's server-side state, invisible to review. Every ignore belongs in
+# the `ignore:` blocks below, where it is visible and revertible.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # A malicious release is usually live for hours to days before it is
+    # pulled, so do not adopt a version younger than 14 days (majors: 30). This
+    # matches `min-release-age` in .npmrc; scripts/check-release.mjs fails if
+    # either disappears. Cooldown applies to VERSION updates only, so a
+    # Dependabot SECURITY update still arrives at once.
+    cooldown:
+      default-days: 14
+      semver-major-days: 30
+    groups:
+      # vitest and @vitest/coverage-v8 must move TOGETHER, majors included:
+      # coverage-v8 peer-pins vitest to an EXACT version, so a PR bumping one
+      # alone can never install (ERESOLVE). No update-types filter on purpose,
+      # and listed FIRST because a dependency joins the first group it matches.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      # Everything else: patch/minor only. Majors arrive as individual PRs so
+      # each can be reviewed and shipped behind its own prerelease.
+      dev-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # esbuild is 0.x, so Dependabot classifies 0.20 -> 0.28 as a MINOR and the
+      # group's update-types filter cannot hold it back. It is also the only
+      # dependency whose output lands in the shipped main.js, so it moves
+      # deliberately, on a release of its own. Scoped to version-update types ON
+      # PURPOSE: a bare `dependency-name` ignore would also mute security
+      # updates, and the bundler must never go quiet.
+      - dependency-name: "esbuild"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      # obsidian publishes its CodeMirror peers at EXACT versions; bumping either
+      # alone breaks `npm ci` with ERESOLVE. They move by hand, with `obsidian`,
+      # re-pinned to its new peers. (A bare dependency-name ignore also mutes
+      # security updates; accepted here because they cannot be bumped alone.)
+      - dependency-name: "@codemirror/state"
+      - dependency-name: "@codemirror/view"
+      # typescript-eslint declares a `typescript` ceiling, so a TypeScript major
+      # can break the lint toolchain outright. Revisit when it lifts.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Should track the CI Node major, not run ahead of it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Actions are pinned to commit SHAs, and attestation would faithfully sign a
+    # build produced by a hijacked action, so the same waiting period applies.
+    # github-actions takes `default-days` only.
+    cooldown:
+      default-days: 14

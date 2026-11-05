@@ -14,8 +14,6 @@ import {
   filterErasToViewport,
 } from "../timeline/era-utils";
 
-export { DEFAULT_RENDER_OPTIONS, type RenderOptions } from "./render-options";
-
 export interface RenderArgs {
   container: HTMLElement;
   events: TimelineEvent[];
@@ -113,9 +111,6 @@ export function renderTimeline(args: RenderArgs): void {
         shortEventLabels: args.options.shortEventLabels,
       });
       if (effViewport) chart.setData(events, effEras ?? [], effViewport, effectiveZoom);
-    } else if (chart) {
-      chart.destroy();
-      chart = null;
     }
 
     listHost.empty();

@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
-import { writeTimelineXml, canonicalizeXml } from "../src/timeline/xml-writer";
+import { writeTimelineXml } from "../src/timeline/xml-writer";
+import { canonicalizeXml } from "../testUtils/canonical-xml";
 
-const fixturePath = join(__dirname, "fixtures", "sample.timeline");
+const fixturePath = join(__dirname, "..", "testUtils", "fixtures", "sample.timeline");
 
 describe("XML round-trip", () => {
   it("parses fixture and re-emits canonically-equal XML", () => {

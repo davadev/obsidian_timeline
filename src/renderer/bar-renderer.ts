@@ -407,8 +407,10 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
       }
       rect.setAttribute("rx", "4");
       rect.setAttribute("ry", "4");
-      const fuzzyStart = ev.fuzzyStart === true || (ev.fuzzy === true && ev.fuzzyEnd !== false);
-      const fuzzyEnd = ev.fuzzyEnd === true || (ev.fuzzy === true && ev.fuzzyStart !== false);
+      // `fuzzy` is the both-edges flag; an edge explicitly set to false opts
+      // itself out of it.
+      const fuzzyStart = ev.fuzzyStart === true || (ev.fuzzy === true && ev.fuzzyStart !== false);
+      const fuzzyEnd = ev.fuzzyEnd === true || (ev.fuzzy === true && ev.fuzzyEnd !== false);
       if (fuzzyStart || fuzzyEnd) {
         const id = gradientId();
         defs.appendChild(
@@ -479,9 +481,8 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
     for (const callout of layoutCallouts(needCallout, occupied, timeAxisSize, {
       measure,
     })) {
-      const ev = byId.get(callout.id);
-      if (!ev) continue;
-      drawCallout(svg, ev, callout, {
+      // Every callout was laid out from `placed`, so its event is always there.
+      drawCallout(svg, byId.get(callout.id) as TimelineEvent, callout, {
         isVertical,
         categoryColors,
         labelColorOverride,
@@ -495,17 +496,8 @@ export function renderBar(args: BarRenderArgs): HTMLElement {
   wrapper.appendChild(svg);
   if (tile) {
     // A tile never scrolls: it is a fixed slice of the window that the shell
-    // moves around. Paint its axis once, and pin each label to the start of
-    // the tile so a bar entering from off-screen still shows its name.
+    // moves around. Paint its axis once; labels are the shell's job.
     paintAxis(0, timeAxisSize);
-    for (const l of sticky) {
-      const target = Math.min(Math.max(l.from, 0), l.latest);
-      if (Math.abs(target - l.at) < 1) continue;
-      const rotate = isVertical ? " rotate(90)" : "";
-      const x = isVertical ? l.cross : target;
-      const y = isVertical ? target : l.cross;
-      l.g.setAttribute("transform", `translate(${x} ${y})${rotate}`);
-    }
   } else {
     attachViewportPainters(wrapper, isVertical, paintAxis, sticky);
   }
@@ -787,7 +779,7 @@ function saturateForLabel(era: TimelineEra): string {
   // color. Either way we drop opacity back to 1 so the label stands out
   // against the 0.18-opacity background band.
   const c = rgbToCss(era.color ?? "");
-  return c ?? hashColor(era.name || "era");
+  return c ?? hashColor(era.name);
 }
 
 function clamp01(v: number): number {
@@ -975,7 +967,6 @@ function srgbToLinear(c: number): number {
 }
 
 function parseColorToRgb(s: string): [number, number, number] | null {
-  if (!s) return null;
   const trimmed = s.trim();
   const hex = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (hex) {
@@ -1013,7 +1004,6 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 }
 
 function truncate(s: string, max: number): string {
-  if (max < 4) return "";
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "…";
 }
@@ -1027,18 +1017,10 @@ function makeGradientIdFactory(): () => string {
 /**
  * Returns the current document's URL stripped of any existing fragment, so we
  * can build absolute fragment refs like `url(<page>#id)` that bypass Obsidian
- * Mobile's iOS WebView `<base href>` resolution bug. Returns "" when window /
- * location aren't available (jsdom tests fall back to the bare `#id` form,
- * which works fine there).
+ * Mobile's iOS WebView `<base href>` resolution bug.
  */
 function makeFragmentBase(): string {
-  try {
-    const href = typeof window !== "undefined" ? window.location?.href : "";
-    if (!href) return "";
-    return href.split("#")[0];
-  } catch {
-    return "";
-  }
+  return window.location.href.split("#")[0];
 }
 
 function clampPercent(p: number): number {

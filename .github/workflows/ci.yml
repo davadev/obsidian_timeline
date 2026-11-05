@@ -1,27 +1,82 @@
 name: CI
 
+# Actions are pinned to full commit SHAs, not mutable tags: a tag can be
+# repointed by whoever controls the action's repo. The trailing comment records
+# the readable version; Dependabot updates both together. Re-resolve by hand:
+#   gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha
+# (if that returns an annotated tag object, deref it via git/tags/<sha>)
+
 on:
   push:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Least privilege: nothing here writes to the repo.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          # Later steps run `npm ci` (third-party code) in this workspace; do
+          # not leave a repo-writable token in .git/config.
+          persist-credentials: false
+          # Tags and history: check-release compares against released versions.
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run lint:css
+      - run: npm run lint:deps
       - run: npm run typecheck
       - run: npm run build
-      - run: npm test
-      # No tag: asserts the committed manifest names a plain stable version
-      # and that manifest/package/lock/versions.json all agree.
-      - run: npm run check-release
+      - run: npm run test:cov
+      # knip --production walks from src/main.ts and does not count tests as
+      # users: code only a test still reaches fails here. Delete it.
+      - run: npm run check:dead-code
+      # No tag: asserts the committed manifest names a plain stable version,
+      # manifest/package/lock/versions.json agree, and the supply-chain policy
+      # (.npmrc age, Dependabot cooldown, install scripts) is intact.
+      - run: npm run check-release -- --strict
+      # The review lints without the obsidian/@codemirror type declarations.
+      # Warnings from that blind view are expected; an ERROR is not. It hides
+      # node_modules/obsidian temporarily, so it runs last.
+      - name: Check the review's type-blind view has no errors
+        run: npm run lint:cloud-parity
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore
+
+  # The default branch must never advertise a version without a published
+  # release (docs/releasing.md, "The one invariant"). Red on the stable release
+  # PR until the tag has published; re-run after the release exists. Make it a
+  # REQUIRED check, and do not rename it: a renamed required job blocks every merge.
+  store-listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check the advertised version has a published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then node scripts/check-store-listing.mjs --base "origin/$BASE_REF"; else node scripts/check-store-listing.mjs; fi

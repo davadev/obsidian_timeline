@@ -78,32 +78,7 @@ export class TimelineView extends ItemView {
   private chart: WindowedChart | null = null;
   /** Framing the view opens with; what "Auto" returns to. */
   private autoZoom = 1;
-  /**
-   * Where the next render must land to keep the focal point still, expressed
-   * as a fraction of the content rather than a pixel offset: the rendered axis
-   * does not always grow by exactly the zoom ratio (the pixel cap, the auto
-   * zoom and rounding all interfere), and assuming it did was what slid the
-   * view sideways.
-   */
-  private pendingFocus: {
-    fraction: number;
-    focalPx: number;
-    vertical: boolean;
-  } | null = null;
   private zoomFrame: number | null = null;
-  /** Live pinch/wheel gesture: scales the rendered SVG until the user lets go. */
-  private preview: {
-    scroller: HTMLElement;
-    baseWidth: number;
-    baseHeight: number;
-    vertical: boolean;
-    base: number;
-    scale: number;
-    startLeft: number;
-    startTop: number;
-    focalX: number;
-    focalY: number;
-  } | null = null;
 
   async onOpen(): Promise<void> {
     await this.fullRender();
@@ -182,8 +157,8 @@ export class TimelineView extends ItemView {
   }
 
   private buildFilterPanel(settings: TimelineXmlSyncSettings): void {
-    const doc = this.cachedDoc;
-    if (!doc) return;
+    // Only called after the document has loaded.
+    const doc = this.cachedDoc as TimelineDoc;
 
     // Deliberately NOT a <details>. WebKit toggles the disclosure for clicks
     // anywhere inside it once the summary is styled, which collapsed the panel
@@ -340,13 +315,11 @@ export class TimelineView extends ItemView {
    * the start of the timeline on every chip toggle.
    */
   private renderChart(body: HTMLElement): void {
-    if (!this.cachedDoc) {
-      body.empty();
-      this.chart = null;
-      return;
-    }
+    // The body only exists once a document has loaded (a reload empties the
+    // whole view first), so there is always one here.
+    const doc = this.cachedDoc as TimelineDoc;
     const settings = this.args.getSettings();
-    const filtered = applyFilters(this.cachedDoc.events, this.filters);
+    const filtered = applyFilters(doc.events, this.filters);
 
     let host = body.querySelector<HTMLElement>(".txs-view-chart");
     let list = body.querySelector<HTMLElement>(".txs-view-list");
@@ -374,7 +347,7 @@ export class TimelineView extends ItemView {
         host.empty();
         this.chart = new WindowedChart({
           container: host,
-          categories: this.cachedDoc.categories,
+          categories: doc.categories,
           categoryColors: settings.categoryColors,
           orientation: settings.renderDefaults.orientation,
           isMobile: Platform.isMobile,
@@ -391,14 +364,11 @@ export class TimelineView extends ItemView {
           },
         });
       }
-      const viewport = autoViewport(filtered) ?? {
-        start: { year: 0 },
-        end: { year: 1 },
-      };
+      const viewport = autoViewport(filtered);
       this.autoZoom = pickAutoZoom(filtered.length, viewport, host);
       this.chart.setData(
         filtered,
-        this.cachedDoc.eras ?? [],
+        doc.eras ?? [],
         viewport,
         this.filters.zoom ?? this.autoZoom
       );
@@ -421,22 +391,22 @@ export class TimelineView extends ItemView {
         onOpenEvent: (id) => this.args.onEventClick(id),
         isMobile: Platform.isMobile,
         categoryColors: settings.categoryColors,
-        eras: this.cachedDoc.eras,
+        eras: doc.eras,
         onOpenEra: (id) => this.args.onEraClick(id),
       });
     }
   }
 
-  /** The horizontally (or vertically) scrolling box the bar chart lives in. */
   private updateZoomLabel(): void {
     if (!this.zoomLabelEl) return;
     const z = this.filters.zoom;
     this.zoomLabelEl.textContent = z == null ? "Auto" : `${formatZoom(z)}×`;
 
     // At the ceiling the chart cannot grow further, so say so rather than
-    // letting the number climb against a frozen view.
+    // letting the number climb against a frozen view. The ceiling runs to
+    // millions, so the tolerance has to be relative, not an absolute epsilon.
     const atMax =
-      z != null && this.chart != null && z >= this.chart.maxZoom - 0.001;
+      z != null && this.chart != null && z >= this.chart.maxZoom * (1 - 1e-6);
     if (this.zoomInEl) this.zoomInEl.disabled = atMax;
     this.zoomLabelEl.setAttr(
       "aria-label",
@@ -446,8 +416,6 @@ export class TimelineView extends ItemView {
     );
   }
 
-  /** Clamp that respects both the absolute limits and this pane's ceiling. */
-  /** Multiply the current zoom, keeping `focalClient` (px, viewport) steady. */
   /** The chart owns the window; it reports the new zoom back through onWindowChange. */
   private zoomBy(factor: number): void {
     this.chart?.zoomBy(factor);
@@ -462,7 +430,6 @@ export class TimelineView extends ItemView {
     }
     if (this.filters.zoom == null) return;
     this.filters.zoom = null;
-    this.pendingFocus = null;
     this.updateZoomLabel();
     this.scheduleZoomRender();
   }
@@ -476,14 +443,8 @@ export class TimelineView extends ItemView {
     });
   }
 
-  /** Drop every trace of an in-flight gesture. Safe to call at any time. */
-  /** Snapshot what the gesture will scale, and freeze the scroll it started from. */
-  /** Live feedback: stretch the rendered SVG, no geometry recomputed. */
-  /** Drop the transform and re-render once, at the zoom the gesture landed on. */
 }
 
-/** Fraction of the scroller's content sitting under `focalPx`. */
-/** The touches currently down, in viewport coordinates. */
 function applyFilters(events: TimelineEvent[], f: ViewFilters): TimelineEvent[] {
   // Delegate to the shared RichFilterState applicator so global view, inline
   // ```timeline blocks, and the single-event view share one filter
@@ -549,16 +510,10 @@ function renderDateInputs(
       onChange(null);
       return;
     }
+    // The inputs are type="number", so a non-blank value is always numeric.
     const year = parseInt(y, 10);
-    if (!Number.isFinite(year)) {
-      onChange(null);
-      return;
-    }
-    const intOf = (el: HTMLInputElement | null) => {
-      if (!el || el.value.trim() === "") return undefined;
-      const n = parseInt(el.value, 10);
-      return Number.isFinite(n) ? n : undefined;
-    };
+    const intOf = (el: HTMLInputElement | null) =>
+      !el || el.value.trim() === "" ? undefined : parseInt(el.value, 10);
     onChange({
       year,
       month: intOf(moIn),
@@ -578,8 +533,8 @@ function renderDateInputs(
   };
 }
 
+/** Smallest span covering `events` (never empty), with a little air either side. */
 function autoViewport(events: { start: { year: number }; end: { year: number } }[]) {
-  if (!events.length) return undefined;
   let minY = events[0].start.year;
   let maxY = events[0].end.year;
   for (const e of events) {
@@ -593,10 +548,9 @@ function autoViewport(events: { start: { year: number }; end: { year: number } }
 
 function pickAutoZoom(
   eventCount: number,
-  vp: { start: { year: number }; end: { year: number } } | undefined,
+  vp: { start: { year: number }; end: { year: number } },
   container: HTMLElement
 ): number {
-  if (!vp) return 1;
   const width = Math.max(320, container.clientWidth || 800);
   const span = Math.max(1, vp.end.year - vp.start.year);
   const desiredByEvents = Math.ceil((eventCount * 60) / width);

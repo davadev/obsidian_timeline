@@ -1,4 +1,4 @@
-import { fromJulian, toJulian, type TimelineDate } from "../timeline/date";
+import { toJulian, type TimelineDate } from "../timeline/date";
 
 /**
  * Maps between a time window, a scroll position and the tiles that get drawn.
@@ -94,7 +94,6 @@ export function windowFor(
   let from = centre - half;
   if (from < span.from) from = span.from;
   if (from + days > span.to) from = span.to - days;
-  if (from < span.from) from = span.from; // window wider than the span
   return { from, to: from + days };
 }
 
@@ -130,7 +129,6 @@ export function pageFor(
   let from = centre - pageDays / 2;
   if (from < span.from) from = span.from;
   if (from + pageDays > span.to) from = span.to - pageDays;
-  if (from < span.from) from = span.from;
   return { from, to: from + pageDays, px: maxPx };
 }
 
@@ -230,9 +228,4 @@ export function tileRange(
     if (i >= 0 && i <= last) out.push(i);
   }
   return out;
-}
-
-/** Dates for a window, for callers that need them (axis, era filtering). */
-export function windowDates(w: TimeWindow): { start: TimelineDate; end: TimelineDate } {
-  return { start: fromJulian(w.from), end: fromJulian(w.to) };
 }

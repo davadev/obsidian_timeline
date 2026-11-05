@@ -40,6 +40,7 @@ export function logWarn(...args: unknown[]): void {
   if (enabled("warn")) console.warn(PREFIX, ...args);
 }
 
+/** Errors always go out: "error" is the lowest level a user can pick. */
 export function logError(...args: unknown[]): void {
-  if (enabled("error")) console.error(PREFIX, ...args);
+  console.error(PREFIX, ...args);
 }

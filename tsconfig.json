@@ -13,9 +13,9 @@
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "lib": ["DOM", "ES2020", "ES2021.String"],
+    "lib": ["DOM", "DOM.Iterable", "ES2020", "ES2021.String"],
     "types": ["node"],
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "testUtils/**/*.ts"]
 }
