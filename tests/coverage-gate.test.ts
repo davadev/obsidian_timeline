@@ -11,7 +11,7 @@ const coverage = config.slice(config.indexOf("coverage: {"));
 
 // The ratchet. Raise these as coverage grows; the test fails if the config is
 // below them, so a lowered threshold cannot be merged unnoticed.
-const FLOOR = { lines: 47, functions: 80, branches: 74, statements: 47 };
+const FLOOR = { lines: 49, functions: 82, branches: 76, statements: 49 };
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

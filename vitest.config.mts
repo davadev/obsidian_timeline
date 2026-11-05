@@ -23,7 +23,7 @@ export default defineConfig({
       // Nothing else. Write the test or delete the code.
       exclude: ["src/**/*.d.ts"],
       // Ratchet: raise as coverage grows, never lower. Target is 100 on all four.
-      thresholds: { lines: 47, functions: 80, branches: 74, statements: 47 },
+      thresholds: { lines: 49, functions: 82, branches: 76, statements: 49 },
     },
   },
 });
