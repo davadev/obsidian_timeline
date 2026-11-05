@@ -20,6 +20,44 @@ export function shouldSkipNoteOverwrite(
   return fileMtime > noteStamp + graceMs;
 }
 
+const HASH_LINE_RE = /^---\r?\ntimeline_hash: ([^\r\n]+)\r?\n/;
+
+/**
+ * Seal a note the plugin has just rendered with a fingerprint of its own text,
+ * as the first frontmatter line. Whether the user (or Obsidian) has touched the
+ * note since is then a fact about the note itself, instead of a guess from file
+ * times: a sync client or an Obsidian rewrite moves mtime without editing, and
+ * mtime can never be compared with the XML's own timestamp.
+ */
+export function withContentHash(md: string): string {
+  return md.replace(/^---\n/, `---\ntimeline_hash: ${contentFingerprint(md)}\n`);
+}
+
+/**
+ * true: sealed and untouched. false: sealed, but the text no longer matches
+ * (edited by hand, by the inspector, or re-encoded by a sync client). null: no
+ * seal (a note from before seals existed, or one the user wrote).
+ */
+export function isUntouched(raw: string): boolean | null {
+  const m = HASH_LINE_RE.exec(raw);
+  if (!m) return null;
+  return contentFingerprint("---\n" + raw.slice(m[0].length)) === m[1];
+}
+
+/**
+ * importXml's question for an existing note. A seal answers it exactly; without
+ * one we fall back to the timestamp rule.
+ */
+export function shouldSkipImportOverwrite(
+  raw: string,
+  fileMtime: number | undefined,
+  noteStamp: number | undefined
+): boolean {
+  const untouched = isUntouched(raw);
+  if (untouched !== null) return !untouched;
+  return shouldSkipNoteOverwrite(fileMtime, noteStamp);
+}
+
 /**
  * CAS-style guard for regenerateXml. Abort the write when the XML file's
  * mtime moved between the in-memory read and the about-to-happen write AND

@@ -117,6 +117,7 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
   const extraFrontmatter: Record<string, unknown> = {};
   const reservedTop = new Set<string>([
     "timeline",
+    "timeline_hash",
     "title",
     "tags",
     mirrors.start,

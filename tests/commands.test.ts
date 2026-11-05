@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "../testUtils/setup-obsidian-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Modal, Notice, Plugin, Setting } from "../testUtils/obsidian";
+import { Modal, Notice, Plugin, Setting, type TFile } from "../testUtils/obsidian";
 import {
   autoDetectEventNotes,
   autoDetectXml,
@@ -146,35 +146,67 @@ describe("importXml", () => {
     expect(settings.categoryColors).toEqual({ War: "#123456", Peace: "teal" });
   });
 
-  it("skips notes whose files are newer than the XML they were written from", async () => {
-    app.vault.clock = 100_000; // notes are written "long after" the XML's mtime stamp
+  it("re-imports untouched notes without skipping or rewriting them", async () => {
+    app.vault.clock = 100_000; // notes are written "long after" the XML's mtime
     app.vault.seed("t.timeline", XML(), 50);
     await importXml(ctx);
+    const mtimes = ["Events/a.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"].map((p) => (app.vault.files.get(p) as TFile).stat.mtime);
     Notice.reset();
     await importXml(ctx);
-    expect(Notice.messages().pop()).toContain("0 created, 0 updated, 4 skipped");
-    expect(syncLog[0][0]).toBe("import-skipped");
+    expect(Notice.messages().pop()).toBe("Timeline import done — 0 created, 0 updated, 2 total, 1 era(s).");
+    expect(syncLog).toEqual([]);
+    expect(["Events/a.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"].map((p) => (app.vault.files.get(p) as TFile).stat.mtime)).toEqual(mtimes);
   });
 
-  it("reports updates when stamps say the note is the plugin's own", async () => {
-    app.vault.seed("t.timeline", XML(), 50);
-    await importXml(ctx);
-    for (const p of ["Events/a.md", "Events/b.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"]) {
-      setMtime(p, 40);
-    }
-    Notice.reset();
-    await importXml(ctx);
-    expect(Notice.messages().pop()).toContain("0 created, 2 updated, 2 total, 1 era(s).");
-  });
-
-  it("reports era skips in the summary", async () => {
+  it("brings untouched notes up to date when the XML changed", async () => {
     app.vault.clock = 100_000;
     app.vault.seed("t.timeline", XML(), 50);
     await importXml(ctx);
-    for (const p of ["Events/a.md", "Events/b.md", "Events/_timeline/timeline-metadata.md"]) setMtime(p, 40);
+    app.vault.seed("t.timeline", XML().replace("Alpha", "Alpha, revised"), 60);
     Notice.reset();
     await importXml(ctx);
-    expect(Notice.messages().pop()).toContain("1 skipped");
+    // Every note carries the XML's mtime, so both are rewritten; only a changed.
+    expect(Notice.messages().pop()).toContain("0 created, 2 updated");
+    expect(app.vault.text("Events/a.md")).toContain("Alpha, revised");
+  });
+
+  it("skips notes that were edited after they were written, and says so", async () => {
+    app.vault.seed("t.timeline", XML(), 50);
+    await importXml(ctx);
+    for (const p of ["Events/a.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"]) {
+      app.vault.seed(p, app.vault.text(p) + "\nmy own words\n");
+    }
+    Notice.reset();
+    await importXml(ctx);
+    expect(Notice.messages().pop()).toContain("3 skipped");
+    expect(syncLog[0][0]).toBe("import-skipped");
+    expect(app.vault.text("Events/a.md")).toContain("my own words");
+  });
+
+  it("falls back to timestamps for notes without a seal", async () => {
+    app.vault.seed("t.timeline", XML(), 50);
+    await importXml(ctx);
+    const unseal = (p: string, mtime: number) => {
+      app.vault.seed(p, app.vault.text(p).replace(/^timeline_hash: .*\n/m, ""));
+      setMtime(p, mtime);
+    };
+    for (const p of ["Events/a.md", "Events/b.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"]) unseal(p, 40); // older than the stamp: the plugin's own
+    Notice.reset();
+    await importXml(ctx);
+    expect(Notice.messages().pop()).toContain("0 created, 2 updated, 2 total, 1 era(s).");
+    for (const p of ["Events/a.md", "Events/b.md", "Events/_eras/old-era.md", "Events/_timeline/timeline-metadata.md"]) unseal(p, 100_000); // newer: edited since
+    Notice.reset();
+    await importXml(ctx);
+    expect(Notice.messages().pop()).toContain("4 skipped");
+  });
+
+  it("truncates a long skipped list in the log", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => `<event id="e${i}"><start>0100-01-01 00:00:00</start><end>0100-01-01 00:00:00</end><text>E${i}</text></event>`).join("");
+    app.vault.seed("t.timeline", XML("", many), 50);
+    await importXml(ctx);
+    for (let i = 0; i < 12; i++) app.vault.seed(`Events/e${i}.md`, app.vault.text(`Events/e${i}.md`) + "\nedited\n");
+    await importXml(ctx);
+    expect(syncLog[0][2]).toMatch(/…$/);
   });
 
   it("refuses to overwrite a note it cannot parse", async () => {
@@ -194,15 +226,6 @@ describe("importXml", () => {
     expect(syncLog[0][2]).toContain("timeline-metadata.md");
     expect(Notice.messages().pop()).toContain("3 skipped");
     read.mockRestore();
-  });
-
-  it("truncates a long skipped list in the log", async () => {
-    const many = Array.from({ length: 12 }, (_, i) => `<event id="e${i}"><start>0100-01-01 00:00:00</start><end>0100-01-01 00:00:00</end><text>E${i}</text></event>`).join("");
-    app.vault.clock = 100_000;
-    app.vault.seed("t.timeline", XML("", many), 50);
-    await importXml(ctx);
-    await importXml(ctx);
-    expect(syncLog[0][2]).toMatch(/…$/);
   });
 
   it("writes an event's embedded image to an attachment", async () => {
@@ -373,10 +396,19 @@ describe("regenerateXml", () => {
     await prime();
     const meta = "Events/_timeline/timeline-metadata.md";
     app.vault.seed(meta, app.vault.text(meta).replace(/last_synced_xml_mtime: \d+/, "last_synced_xml_mtime: 1"));
-    setMtime("t.timeline", 99_999);
-    settings.lastWrittenXmlMtime = 99_999;
+    setMtime("t.timeline", 99_999); // somebody else saved it: lastWrittenXmlMtime still names our own write
     await regenerateXml(ctx);
     expect(Notice.messages()).toContain("Timeline metadata note is older than the XML — keeping XML's categories/eras/view. Run \"import XML\" to refresh the metadata note.");
+    expect(syncLog.map((l) => l[0])).toContain("meta-stale-skip");
+  });
+
+  it("treats a metadata note as stale when no write of ours is on record", async () => {
+    await prime();
+    const meta = "Events/_timeline/timeline-metadata.md";
+    app.vault.seed(meta, app.vault.text(meta).replace(/last_synced_xml_mtime: \d+/, "last_synced_xml_mtime: 1"));
+    setMtime("t.timeline", 99_999);
+    settings.lastWrittenXmlMtime = null;
+    await regenerateXml(ctx);
     expect(syncLog.map((l) => l[0])).toContain("meta-stale-skip");
   });
 
@@ -386,7 +418,6 @@ describe("regenerateXml", () => {
     app.vault.seed(meta, app.vault.text(meta).replace(/last_synced_xml_mtime: \d+/, "last_synced_xml_mtime: 1").replace(/eras:[\s\S]*?view:/, "eras: []\nview:"));
     app.vault.remove("Events/_eras/old-era.md");
     setMtime("t.timeline", 99_999);
-    settings.lastWrittenXmlMtime = 99_999;
     await regenerateXml(ctx);
     expect(parseTimelineXml(app.vault.text("t.timeline")).eras?.length).toBe(1);
   });

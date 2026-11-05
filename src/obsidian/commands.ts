@@ -17,7 +17,8 @@ import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
 import {
-  shouldSkipNoteOverwrite,
+  shouldSkipImportOverwrite,
+  withContentHash,
   shouldAbortXmlWrite,
 } from "./sync-policy";
 import {
@@ -341,20 +342,28 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   const writtenPaths: string[] = [];
   await ctx.withSelfWrite(async () => {
     for (const ev of doc.events) {
-      const path = `${s.eventNotesDir}/${safeFileName(ev.id)}.md`;
+      // The note may have been renamed or moved since it was written: look it
+      // up by event id before assuming the default file name, or the import
+      // writes a second note with the same id and regenerate then refuses
+      // ("duplicate event_id") until one is deleted by hand.
+      const path =
+        ctx.cache.resolvePath(ev.id) ??
+        `${s.eventNotesDir}/${safeFileName(ev.id)}.md`;
       // Skip notes that have local edits made after the last XML-driven write.
       // Stamp check first — if the note never carried a stamp we treat it as
       // unknown and skip too (legacy notes; reset by `Wipe and reimport`).
       const onDisk = ctx.vault.getFile(path);
+      let existingRaw: string | undefined;
       if (onDisk) {
         try {
           const raw = await ctx.vault.readText(path);
+          existingRaw = raw;
           const parsed = parseEventNote(raw, {
             path,
             mirrorNames: s.mirrorNames,
           });
           if (
-            shouldSkipNoteOverwrite(onDisk.stat.mtime, parsed.note?.lastSyncedXmlMtime)
+            shouldSkipImportOverwrite(raw, onDisk.stat.mtime, parsed.note?.lastSyncedXmlMtime)
           ) {
             skipped.push(path);
             continue;
@@ -380,13 +389,18 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
           logWarn("icon write failed for", ev.id, e);
         }
       }
-      const md = renderEventMarkdown(ev, {
-        sourceXmlPath: s.sourceXmlPath,
-        timelineId: s.timelineId,
-        mirrorNames: s.mirrorNames,
-        sourceMtime: xmlMtime,
-        trimDescription: s.trimDescriptionOnWrite,
-      });
+      const md = withContentHash(
+        renderEventMarkdown(ev, {
+          sourceXmlPath: s.sourceXmlPath,
+          timelineId: s.timelineId,
+          mirrorNames: s.mirrorNames,
+          sourceMtime: xmlMtime,
+          trimDescription: s.trimDescriptionOnWrite,
+        })
+      );
+      // Same text as what is there: leave the file alone, so sync clients
+      // have nothing to upload and no other device sees a change.
+      if (existingRaw === md) continue;
       const existed = !!onDisk;
       await ctx.vault.writeText(path, md);
       writtenPaths.push(path);
@@ -405,12 +419,14 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       for (const era of eras) {
         const path = `${erasDir}/${era.id}.md`;
         const onDisk = ctx.vault.getFile(path);
+        let existingRaw: string | undefined;
         if (onDisk) {
           try {
             const raw = await ctx.vault.readText(path);
+            existingRaw = raw;
             const parsed = parseEraNote(raw, era.id);
             if (
-              shouldSkipNoteOverwrite(onDisk.stat.mtime, parsed?.lastSyncedXmlMtime)
+              shouldSkipImportOverwrite(raw, onDisk.stat.mtime, parsed?.lastSyncedXmlMtime)
             ) {
               skipped.push(path);
               continue;
@@ -420,7 +436,10 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
             continue;
           }
         }
-        const md = renderEraMarkdown(era, s.timelineId, s.sourceXmlPath, xmlMtime);
+        const md = withContentHash(
+          renderEraMarkdown(era, s.timelineId, s.sourceXmlPath, xmlMtime)
+        );
+        if (existingRaw === md) continue;
         await ctx.vault.writeText(path, md);
       }
     });
@@ -431,11 +450,13 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   await ctx.vault.ensureFolder(metaDir);
   const onDiskMeta = ctx.vault.getFile(metaPath);
   let skipMeta = false;
+  let existingMeta: string | undefined;
   if (onDiskMeta) {
     try {
       const raw = await ctx.vault.readText(metaPath);
+      existingMeta = raw;
       const parsed = parseTimelineMetaNote(raw);
-      if (shouldSkipNoteOverwrite(onDiskMeta.stat.mtime, parsed?.lastSyncedXmlMtime)) {
+      if (shouldSkipImportOverwrite(raw, onDiskMeta.stat.mtime, parsed?.lastSyncedXmlMtime)) {
         skipMeta = true;
         skipped.push(metaPath);
       }
@@ -445,10 +466,14 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     }
   }
   if (!skipMeta) {
-    const metaMd = renderTimelineMetaNote(doc, s.sourceXmlPath, xmlMtime);
-    await ctx.withSelfWrite(async () => {
-      await ctx.vault.writeText(metaPath, metaMd);
-    }, [metaPath]);
+    const metaMd = withContentHash(
+      renderTimelineMetaNote(doc, s.sourceXmlPath, xmlMtime)
+    );
+    if (existingMeta !== metaMd) {
+      await ctx.withSelfWrite(async () => {
+        await ctx.vault.writeText(metaPath, metaMd);
+      }, [metaPath]);
+    }
   }
 
 
@@ -667,10 +692,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     // Era edits done via the inspector still propagate because they live in
     // their own _eras/<id>.md notes (no stamp dependency there).
     const xmlNow = ctx.vault.getMtime(s.sourceXmlPath);
+    // The XML's own mtime moves every time WE regenerate it, so compare with
+    // the later of the import stamp and our last write; only a newer file is
+    // somebody else's edit.
     const metaStale =
       metaStamp != null &&
       xmlNow != null &&
-      xmlNow > metaStamp + 2000;
+      xmlNow > Math.max(metaStamp, s.lastWrittenXmlMtime ?? 0) + 2000;
     if (metaStale) {
       new Notice(
         "Timeline metadata note is older than the XML — keeping XML's categories/eras/view. Run \"import XML\" to refresh the metadata note.",
@@ -692,6 +720,15 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     }
   }
   const xml = writeTimelineXml(merged);
+  // Nothing changed: leave the file (and its mtime) alone. Rewriting identical
+  // bytes would make every other device see an "external change".
+  if (
+    ctx.vault.exists(s.sourceXmlPath) &&
+    (await ctx.vault.readText(s.sourceXmlPath)) === xml
+  ) {
+    new Notice(`Timeline XML already up to date — ${notes.length} events.`);
+    return;
+  }
   await ctx.withSelfWrite(async () => {
     await ctx.vault.writeText(s.sourceXmlPath, xml);
   }, [s.sourceXmlPath]);
