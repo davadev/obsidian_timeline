@@ -605,8 +605,8 @@ export default class TimelineXmlSyncPlugin extends Plugin {
    * edits and trigger a sync loop.
    *
    * If `paths` is provided each one is stamped individually so only events for
-   * those paths are suppressed. The `__SELF__` sentinel is always set as a
-   * coarse fallback for legacy callers that don't know the target paths.
+   * those paths are suppressed. The `__SELF__` sentinel is the coarse fallback
+   * for callers that don't know the target paths.
    *
    * TTL comes from `settings.selfWriteTtlMs` — remote sync (Nextcloud / iCloud)
    * can land a just-written file seconds after the local write, so the old
@@ -617,8 +617,12 @@ export default class TimelineXmlSyncPlugin extends Plugin {
     const exp = Date.now() + ttl;
     if (paths) {
       for (const p of paths) this.recentSelfWrites.set(normalizePath(p), exp);
+    } else {
+      // Only a caller that cannot name its targets gets the blanket window; it
+      // would otherwise swallow a real edit made in the seconds after any
+      // plugin write, leaving that edit out of the next sync.
+      this.recentSelfWrites.set("__SELF__", exp);
     }
-    this.recentSelfWrites.set("__SELF__", exp);
     try {
       return await fn();
     } finally {
@@ -730,11 +734,39 @@ export default class TimelineXmlSyncPlugin extends Plugin {
 
   private rebuildDebouncedSync(): void {
     this.debouncedSync = debounce(() => {
-      regenerateXml(this.commandsCtx).catch((e) => {
-        logError("auto-sync error:", e);
-        new Notice(`Timeline auto-sync error: ${(e as Error).message}`);
-      });
+      void this.runAutoSync();
     }, this.settings.autoSyncDebounceMs);
+  }
+
+  private syncing = false;
+  private syncAgain = false;
+
+  /**
+   * One regenerate at a time. On a big vault a run outlasts the debounce, and
+   * two runs reading the notes and writing the XML at once is how a slower
+   * run overwrites a newer one. An edit that lands mid-run schedules exactly
+   * one more run afterwards.
+   */
+  private async runAutoSync(): Promise<void> {
+    if (this.syncing) {
+      this.syncAgain = true;
+      return;
+    }
+    this.syncing = true;
+    try {
+      do {
+        this.syncAgain = false;
+        try {
+          await regenerateXml(this.commandsCtx);
+        } catch (e) {
+          logError("auto-sync error:", e);
+          new Notice(`Timeline auto-sync error: ${(e as Error).message}`);
+          break;
+        }
+      } while (this.syncAgain);
+    } finally {
+      this.syncing = false;
+    }
   }
 
   private onVaultEvent(

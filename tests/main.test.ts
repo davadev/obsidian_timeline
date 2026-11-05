@@ -503,10 +503,12 @@ describe("vault events and auto-sync", () => {
   it("scopes self-write suppression: path stamps, the coarse sentinel, expiry and clean-up", async () => {
     await plugin.withSelfWrite(async () => {}, ["Events/a.md"]);
     expect(priv.isSelfWrite("Events/a.md")).toBe(true);
-    expect(priv.isSelfWrite("Events/other.md")).toBe(true); // the sentinel covers legacy callers
+    // A write that names its targets does not blank out edits to other notes.
+    expect(priv.isSelfWrite("Events/other.md")).toBe(false);
     vi.setSystemTime(Date.now() + 6000);
     expect(priv.isSelfWrite("Events/a.md")).toBe(false);
     await plugin.withSelfWrite(async () => {});
+    expect(priv.isSelfWrite("Events/other.md")).toBe(true); // the blanket fallback for callers with no paths
     await settle(6000);
     expect(priv.recentSelfWrites.size).toBe(0);
     // An entry refreshed by a later write survives the earlier write's clean-up.
@@ -521,6 +523,26 @@ describe("vault events and auto-sync", () => {
     await plugin.withSelfWrite(async () => {});
     expect(priv.isSelfWrite("x")).toBe(true);
     await expect(plugin.withSelfWrite(async () => { throw new Error("inner"); })).rejects.toThrow("inner");
+  });
+
+  it("runs one auto-sync at a time and one more for an edit made meanwhile", async () => {
+    const commands = await import("../src/obsidian/commands");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const regenerate = vi.spyOn(commands, "regenerateXml").mockImplementation(async () => { await gate; });
+    priv.rebuildDebouncedSync();
+    priv.debouncedSync!();
+    await settle(plugin.settings.autoSyncDebounceMs + 1);
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    priv.debouncedSync!(); // an edit while the first run is still going
+    await settle(plugin.settings.autoSyncDebounceMs + 1);
+    priv.debouncedSync!();
+    await settle(plugin.settings.autoSyncDebounceMs + 1);
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    release();
+    await settle(1);
+    expect(regenerate).toHaveBeenCalledTimes(2); // exactly one catch-up run
+    regenerate.mockRestore();
   });
 
   it("debounces the real auto-sync, and reports a failing sync", async () => {

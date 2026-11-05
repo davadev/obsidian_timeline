@@ -7,10 +7,10 @@ const parse = (raw: string) => parseEventNote(raw, { path: "e.md" });
 const dates = "  start: {year: 1}\n  end: {year: 2}";
 
 describe("parseEventNote: frontmatter problems", () => {
-  it("reports missing, non-mapping and invalid YAML frontmatter", () => {
-    expect(parse("plain").errors).toEqual(["No YAML frontmatter found"]);
-    expect(parse("---\n- a\n---\n").errors).toEqual(["Frontmatter is not a YAML mapping"]);
-    expect(parse("---\n\n---\n").errors).toEqual(["Frontmatter is not a YAML mapping"]);
+  it("ignores notes without a frontmatter mapping and reports invalid YAML", () => {
+    for (const raw of ["plain", "---\n- a\n---\n", "---\n\n---\n"]) {
+      expect(parse(raw)).toEqual({ errors: [] });
+    }
     expect(parse("---\nkey: [oops\n---\n").errors[0]).toMatch(/^Invalid YAML frontmatter: /);
   });
 

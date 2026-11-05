@@ -31,14 +31,17 @@ export function parseEventNote(raw: string, opts: ParseOptions): ParseResult {
   const errors: string[] = [];
   const fmMatch = raw.match(FRONTMATTER_RE);
   if (!fmMatch) {
-    return { errors: ["No YAML frontmatter found"] };
+    // An ordinary note that happens to live in the folder: not an event, and
+    // not a problem. Reporting it would make "regenerate XML" refuse to run
+    // until the note was moved away.
+    return { errors: [] };
   }
 
   let front: Record<string, unknown>;
   try {
     const parsed: unknown = YAML.parse(fmMatch[1]);
     if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { errors: ["Frontmatter is not a YAML mapping"] };
+      return { errors: [] }; // empty or list frontmatter: not an event
     }
     front = parsed as Record<string, unknown>;
   } catch (e) {

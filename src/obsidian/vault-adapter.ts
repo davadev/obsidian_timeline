@@ -155,13 +155,15 @@ export class VaultAdapter {
 
   /**
    * Keep only the most recent `keep` XML backup siblings of `originalXmlPath`
-   * (files matching `<originalXmlPath>.bak-*`). Returns the count deleted.
+   * (files matching `<originalXmlPath>.bak-*`, newest by name). Returns the count deleted.
    */
   async pruneXmlBackups(originalXmlPath: string, keep: number): Promise<number> {
     const np = normalizePath(originalXmlPath);
     const prefix = `${np}.bak-`;
     const all = this.app.vault.getFiles().filter((f) => f.path.startsWith(prefix));
-    all.sort((a, b) => b.stat.mtime - a.stat.mtime); // newest first
+    // Newest first by name (ISO timestamp), not by mtime: a sync client that
+    // re-downloads the backups gives them all a fresh, arbitrary mtime.
+    all.sort((a, b) => b.path.localeCompare(a.path));
     let deleted = 0;
     for (const f of all.slice(Math.max(0, keep))) {
       await this.app.fileManager.trashFile(f);

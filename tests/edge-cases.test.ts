@@ -342,3 +342,66 @@ describe("events that are switched off or run to today", () => {
     }
   });
 });
+
+describe("regenerate and ordinary notes", () => {
+  const setup = () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const log: string[] = [];
+    const ctx = {
+      app: app as never,
+      plugin: new Plugin(app) as never,
+      vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings,
+      saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {},
+      getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}),
+      appendSyncLog: async (e: string) => { log.push(e); },
+    } as unknown as CommandsContext;
+    return { app, ctx, log };
+  };
+  const X = xml(`<event id="a"><start>0100-01-01</start><end>0200-01-01</end><text>Alpha</text></event>`);
+
+  it("is not blocked by a plain note dropped into the events folder", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", X, 50);
+    await importXml(ctx);
+    app.vault.seed("Events/README.md", "Just some words, no frontmatter.");
+    app.vault.seed("Events/empty.md", "---\n---\nbody");
+    await regenerateXml(ctx);
+    expect(Notice.messages().some((m) => m.includes("refusing"))).toBe(false);
+    expect(parseTimelineXml(app.vault.text("t.timeline")).events.map((e) => e.id)).toEqual(["a"]);
+  });
+
+  it("still refuses on broken YAML, which may be an event", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", X, 50);
+    await importXml(ctx);
+    app.vault.seed("Events/bad.md", "---\nkey: [oops\n---\n");
+    await regenerateXml(ctx);
+    expect(Notice.messages().some((m) => m.includes("refusing to write XML"))).toBe(true);
+  });
+
+  it("will not replace a XML that has events with one that has none", async () => {
+    const { app, ctx, log } = setup();
+    Notice.reset();
+    app.vault.seed("t.timeline", X, 50);
+    const before = app.vault.text("t.timeline");
+    await regenerateXml(ctx); // the notes folder has not synced in
+    expect(app.vault.text("t.timeline")).toBe(before);
+    expect(Notice.messages()[0]).toContain("no event notes found");
+    expect(log).toEqual(["regen-aborted-no-notes"]);
+  });
+
+  it("still writes a first XML when there is none", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("Events/a.md", note("a"));
+    await regenerateXml(ctx);
+    expect(parseTimelineXml(app.vault.text("t.timeline")).events.map((e) => e.id)).toEqual(["a"]);
+  });
+});
