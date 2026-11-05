@@ -1,27 +1,41 @@
 name: CI
 
+# Actions are pinned to full commit SHAs, not mutable tags: a tag can be
+# repointed by whoever controls the action's repo. The trailing comment records
+# the readable version; Dependabot updates both together. Re-resolve by hand:
+#   gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha
+# (if that returns an annotated tag object, deref it via git/tags/<sha>)
+
 on:
   push:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Least privilege: nothing here writes to the repo.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 22
+          # Later steps run `npm ci` (third-party code) in this workspace; do
+          # not leave a repo-writable token in .git/config.
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
-      # No tag: asserts the committed manifest names a plain stable version
-      # and that manifest/package/lock/versions.json all agree.
+      # No tag: asserts the committed manifest names a plain stable version,
+      # manifest/package/lock/versions.json agree, and the supply-chain policy
+      # (.npmrc age, Dependabot cooldown, install scripts) is intact.
       - run: npm run check-release

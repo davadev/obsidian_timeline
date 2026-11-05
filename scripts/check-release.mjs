@@ -6,9 +6,18 @@
 //   node scripts/check-release.mjs                  # committed state
 //   node scripts/check-release.mjs --tag 0.10.0     # stable release
 //   node scripts/check-release.mjs --tag 0.10.0-beta.1 --artifacts
+import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  MIN_AGE_DAYS,
+  MIN_NPM_WITH_RELEASE_AGE,
+  checkAllowScripts,
+  checkDependabotCooldown,
+  checkNpmrc,
+  npmSupportsMinReleaseAge,
+} from "./lib/supplyChainChecks.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = async (f) => JSON.parse(await readFile(join(ROOT, f), "utf8"));
@@ -127,6 +136,38 @@ for (const file of ARTIFACTS) {
     `artifact ${file} present (${size} bytes)`,
   );
 }
+
+// Supply chain: a version younger than MIN_AGE_DAYS is never adopted, and no
+// dependency runs install scripts. docs/releasing.md and the playbook explain why.
+const readText = async (f) => readFile(join(ROOT, f), "utf8").catch(() => undefined);
+const rc = checkNpmrc(await readText(".npmrc"));
+check(rc.ok, `.npmrc: ${rc.problem}`, `.npmrc min-release-age is ${rc.days} days`);
+const dep = checkDependabotCooldown(await readText(".github/dependabot.yml"));
+check(
+  dep.ok,
+  `dependabot cooldown: ${dep.problems.join("; ")}`,
+  `dependabot cooldown >= ${MIN_AGE_DAYS} days (npm + github-actions)`,
+);
+const npmV = spawnSync("npm", ["-v"], { encoding: "utf8" });
+const npmVersion = npmV.status === 0 ? npmV.stdout.trim() : "";
+check(
+  npmSupportsMinReleaseAge(npmVersion),
+  `npm ${npmVersion || "?"} is older than ${MIN_NPM_WITH_RELEASE_AGE}: .npmrc min-release-age would be a silent no-op`,
+  `npm ${npmVersion} honours min-release-age`,
+);
+const scripts = checkAllowScripts(pkg.allowScripts);
+check(scripts.ok, `install scripts: ${scripts.problem}`, "install scripts: nothing approved");
+check(
+  !pkg.dependencies || Object.keys(pkg.dependencies).length === 0,
+  "package.json has runtime dependencies; the bundler inlines everything, keep them in devDependencies",
+  "no runtime dependencies",
+);
+const tree = spawnSync("npm", ["ls", "--all"], { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+check(
+  tree.status === 0,
+  "`npm ls --all` reports problems (npm ci does not catch an inconsistent tree)",
+  "dependency tree is internally consistent",
+);
 
 for (const line of ok) console.log(`  ok  ${line}`);
 if (errors.length) {

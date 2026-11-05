@@ -1,71 +1,196 @@
 name: Release
 
-# Tag-driven: pushing a SemVer tag is the only way anything is published.
-#   0.10.0          -> stable release, marked latest
-#   0.10.0-beta.1   -> prerelease for BRAT testers; the default branch is
-#                      never touched and keeps advertising the current stable
-# See docs/releasing.md.
+# Triggered on push of a SemVer-shaped tag. Bare `0.3.4` ships as the
+# `latest` GitHub Release; suffixed `0.3.4-beta.1` / `0.3.4-rc.2` ship as
+# prereleases. The whole verification chain (npm ci -> lint -> typecheck ->
+# build -> test -> check-release) runs on a clean Ubuntu runner
+# before any release is created - a single lint Error aborts the
+# pipeline, so a broken release can never reach the directory.
+#
+# Prerelease safety: the default branch manifest.json always advertises the
+# CURRENT STABLE version, because Obsidian uses it to decide which release to
+# offer Community Plugin users. For a suffixed tag this workflow stamps the
+# prerelease version into the working tree only (scripts/stamp-prerelease.mjs),
+# so the uploaded assets carry the beta version for BRAT while `main` keeps
+# pointing at the last good stable release. See docs/releasing.md.
+#
+# Actions are pinned to full commit SHAs, not mutable tags — this workflow
+# builds the main.js that ships to users, and the attestation below would
+# faithfully sign a build produced by a hijacked action. The trailing comment
+# records the readable version; Dependabot keeps both current. See ci.yml for
+# how to re-resolve a SHA by hand.
+
 on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-*"
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
+# Serialize releases. A STATIC group (not one keyed on the ref) is what makes
+# two tags pushed in quick succession queue instead of racing — distinct tags
+# are distinct refs, so a per-ref group would not serialize them at all.
+# cancel-in-progress MUST stay false: interrupting a run mid-publish is
+# precisely the failure this guards against. timeout-minutes bounds the queue.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+    timeout-minutes: 20
 
-      # Suffixed tags only. Keeps the committed manifest on the current stable
-      # version while the uploaded assets carry the beta version.
-      - name: Stamp prerelease version
+    # Scoped to the job that needs them rather than granted workflow-wide.
+    permissions:
+      # Create the GitHub Release.
+      contents: write
+      # Mint the OIDC token used to request a Sigstore signing certificate.
+      id-token: write
+      # Persist the attestation.
+      attestations: write
+      # Create the artifact storage record. Required by actions/attest; this
+      # scope exists precisely to replace broader `contents` access for the
+      # artifact-metadata APIs, so granting it is least-privilege-consistent.
+      artifact-metadata: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Don't leave a repo-writable GITHUB_TOKEN in .git/config:
+          # later steps run `npm ci`, i.e. third-party code, in this
+          # same workspace. Nothing here does git writes — `gh` uses an
+          # explicit GH_TOKEN env instead.
+          persist-credentials: false
+          # Full history: the next step asks which branches contain the tagged commit.
+          fetch-depth: 0
+
+      # A release must come from reviewed code. A prerelease tag has to sit on `main` (merge first, then tag). A stable
+      # tag is pushed on the `release/X.Y.Z` branch head BEFORE that branch merges, so it may also sit on a release
+      # branch. Anything else (a feature branch, a stale commit) is refused before anything is built or published.
+      - name: Check the tag is on main or a release branch
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "tag ${GITHUB_REF_NAME} is on main"
+            exit 0
+          fi
+          if [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            for branch in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
+              if git merge-base --is-ancestor "${GITHUB_SHA}" "${branch}"; then
+                echo "stable tag ${GITHUB_REF_NAME} is on ${branch}"
+                exit 0
+              fi
+            done
+          fi
+          echo "::error::${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main (prerelease) or on a release/* branch (stable). Merge first, then retag."
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Prerelease tags only. The checkout carries the default branch manifest,
+      # which advertises the CURRENT STABLE version to Obsidian's Community
+      # Plugin system — that must not change while we are only testing betas.
+      # BRAT, however, reads manifest.json from the release ASSETS, so the
+      # published assets must carry the prerelease version. Stamping the working
+      # tree (never committed) satisfies both at once, and everything below —
+      # lint, build, test, release guard - then runs against the exact artifact
+      # that gets uploaded.
+      - name: Stamp prerelease version into working tree
         if: contains(github.ref_name, '-')
         run: node scripts/stamp-prerelease.mjs "${GITHUB_REF_NAME}"
 
-      - run: npm run lint
-      - run: npm run build
-      - run: npm test
-      - run: npm run check-release -- --tag "${GITHUB_REF_NAME}"
+      - name: Run lint (Obsidian-parity)
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
 
-      # Bytes on disk, immediately before anything becomes public.
+      - name: Build plugin
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run release guard
+        run: npm run check-release -- --tag "${GITHUB_REF_NAME}"
+
+      # Last gate before anything becomes externally visible. `check-release`
+      # already asserts manifest.version === tag, but this re-checks the three
+      # files we are about to upload, on disk, as bytes — a build that silently
+      # produced no styles.css or an empty main.js dies here rather than
+      # shipping. (The 0.1.56-0.1.59 iPad regression was a missing styles.css.)
       - name: Validate release artifacts
         run: |
           set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          fail=0
           for f in main.js manifest.json styles.css; do
-            [ -s "$f" ] || { echo "::error::missing or empty $f"; exit 1; }
+            if [ ! -s "$f" ]; then
+              echo "::error title=Missing release artifact::$f is absent or empty"
+              fail=1
+            else
+              echo "ok: $f ($(wc -c <"$f") bytes)"
+            fi
           done
-          v=$(node -p "require('./manifest.json').version")
-          [ "$v" = "${GITHUB_REF_NAME}" ] || {
-            echo "::error::asset manifest $v != tag ${GITHUB_REF_NAME}"; exit 1; }
+          asset_version=$(node -p "require('./manifest.json').version")
+          if [ "$asset_version" != "$tag" ]; then
+            echo "::error title=Version mismatch::manifest.json asset says '$asset_version' but the tag is '$tag'"
+            fail=1
+          else
+            echo "ok: manifest.json asset version == tag ($tag)"
+          fi
+          exit $fail
 
-      - uses: actions/attest-build-provenance@v4
+      # Cryptographic provenance for the exact built assets we upload below, so
+      # users (and the Obsidian review) can verify they came from this repo's CI.
+      #
+      # actions/attest, not actions/attest-build-provenance: as of v4 the latter
+      # is only a wrapper over this action, and GitHub's own release notes say
+      # new implementations should use actions/attest. It is also what
+      # obsidian-sample-plugin and docs.obsidian.md use.
+      #
+      # With only subject-path given (no sbom-path, no predicate inputs) this
+      # emits SLSA build provenance — identical in kind to what v1 produced.
+      # The three subjects share ONE attestation rather than getting one each;
+      # Obsidian's scorecard reads that correctly (verified against Templater,
+      # which ships the same multi-subject setup).
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             main.js
             manifest.json
             styles.css
 
-      - name: Publish
+      - name: Decide prerelease vs latest
+        id: rel
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" == *-* ]]; then
+            echo "flag=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=--latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          if [[ "$tag" == *-* ]]; then
-            flag=--prerelease
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists for $tag — uploading assets."
+            gh release upload "$tag" main.js manifest.json styles.css --clobber
           else
-            flag=--latest
+            gh release create "$tag" \
+              --title "$tag" \
+              --generate-notes \
+              ${{ steps.rel.outputs.flag }} \
+              main.js manifest.json styles.css
           fi
-          gh release create "$tag" --title "$tag" --generate-notes "$flag" \
-            main.js manifest.json styles.css

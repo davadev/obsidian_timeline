@@ -13,6 +13,10 @@
     "typecheck": "tsc -noEmit -skipLibCheck",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
+  "allowScripts": {
+    "esbuild": false,
+    "fsevents": false
+  },
   "keywords": [
     "obsidian",
     "plugin",
@@ -27,15 +31,13 @@
     "esbuild": "^0.20.0",
     "eslint": "^9.39.5",
     "eslint-plugin-obsidianmd": "^0.4.2",
+    "fast-xml-parser": "^4.3.5",
     "jsdom": "^29.1.1",
     "obsidian": "^1.13.1",
     "tslib": "^2.6.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.70.0",
-    "vitest": "^1.4.0"
-  },
-  "dependencies": {
-    "fast-xml-parser": "^4.3.5",
+    "vitest": "^1.4.0",
     "yaml": "^2.4.1"
   }
 }
