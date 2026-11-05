@@ -262,6 +262,8 @@ export function parseTimelineXml(xml: string): TimelineDoc {
   const eventsNode = findChild(root, "events");
   const events: TimelineEvent[] = [];
   const usedIds = new Set<string>();
+  const unparsedEvents: RawNode[] = [];
+  const unparsedEras: RawNode[] = [];
   if (eventsNode) {
     for (const e of findAllChildren(nodeChildren(eventsNode), "event")) {
       const ch = nodeChildren(e);
@@ -269,7 +271,10 @@ export function parseTimelineXml(xml: string): TimelineDoc {
       const text = readText(ch, "text") ?? "";
       const start = readDate(ch, "start");
       const end = readDate(ch, "end");
-      if (!start || !end) continue; // skip malformed
+      if (!start || !end) {
+        unparsedEvents.push(e); // malformed: keep it for the writer
+        continue;
+      }
       const idAttr = (e[":@"] && (e[":@"])["@_id"]) || undefined;
       const baseId = idAttr || slugify(text || "event");
       const id = uniqueSlug(baseId, usedIds);
@@ -314,7 +319,10 @@ export function parseTimelineXml(xml: string): TimelineDoc {
       const name = readText(ch, "name") ?? "";
       const start = readDate(ch, "start");
       const end = readDate(ch, "end");
-      if (!start || !end) continue;
+      if (!start || !end) {
+        unparsedEras.push(eraNode);
+        continue;
+      }
       const baseId = slugify(name || "era");
       const id = uniqueSlug(baseId, usedEraIds);
       eras.push({
@@ -365,6 +373,8 @@ export function parseTimelineXml(xml: string): TimelineDoc {
     categories,
     events,
     eras,
+    unparsedEvents: unparsedEvents.length ? unparsedEvents : undefined,
+    unparsedEras: unparsedEras.length ? unparsedEras : undefined,
     view,
     xmlAttrs: extractXmlAttrs(timelineNode),
     xmlExtraNodes: extractUnknownNodes(

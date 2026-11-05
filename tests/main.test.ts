@@ -293,7 +293,7 @@ describe("opening things", () => {
       plugin.settings.clickBehavior = "open-note";
       plugin.onEraClick("r1");
       plugin.onEraClick("none");
-      expect(app.openedLinks).toHaveLength(2);
+      await vi.waitFor(() => expect(app.openedLinks).toHaveLength(2));
     });
   });
 });
@@ -669,6 +669,12 @@ describe("sync log", () => {
       "2024-01-01T00:00:00.000Z\tevt\ta.md\tdetail",
       "2024-01-01T00:00:00.000Z\tevt2\tb.md\tmore",
     ]);
+  });
+
+  it("keeps every line when several are logged at once", async () => {
+    await Promise.all(["one", "two", "three", "four"].map((e) => plugin.appendSyncLog(e, "a", "d")));
+    const events = app.vault.text("Timeline events/_logs/timeline-sync.log").split("\n").filter(Boolean).map((l) => l.split("\t")[1]);
+    expect(events).toEqual(["one", "two", "three", "four"]);
   });
 
   it("rotates a log that has grown past ~200KB", async () => {

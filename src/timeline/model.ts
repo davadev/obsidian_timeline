@@ -128,6 +128,14 @@ export interface TimelineDoc {
   events: TimelineEvent[];
   eras?: TimelineEra[];
   view?: TimelineView;
+  /**
+   * <event>/<era> nodes the parser could not read (no or unreadable start/end,
+   * typically a hand edit). They are not part of the model, but they are kept
+   * and written back untouched: dropping them would delete data the user never
+   * asked to delete the next time the XML is regenerated.
+   */
+  unparsedEvents?: unknown[];
+  unparsedEras?: unknown[];
   /** Root <timeline> XML attributes. */
   xmlAttrs?: Record<string, string>;
   /** Unknown root-level timeline child nodes serialized as preserveOrder JSON strings. */
