@@ -39,6 +39,9 @@ export const PARSER_OPTIONS = {
   // their content out — Timeline Project sometimes wraps descriptions /
   // hyperlinks in CDATA which would otherwise vanish in the default config.
   cdataPropName: "#cdata",
+  // Keep XML comments so a hand-annotated file round-trips; without this they
+  // are dropped on read and silently lost on the next write.
+  commentPropName: "#comment",
 } as const;
 
 /**
@@ -51,16 +54,12 @@ export function decodeEntities(s: string): string {
   const ENTITY_RE = /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g;
   return s.replace(ENTITY_RE, (full: string, body: string) => {
     if (body[0] === "#") {
-      const hex = body[1] === "x" || body[1] === "X";
+      const hex = body[1] === "x";
       const codepoint = parseInt(body.slice(hex ? 2 : 1), hex ? 16 : 10);
       if (!Number.isFinite(codepoint) || codepoint < 0 || codepoint > 0x10ffff) {
         return full;
       }
-      try {
-        return String.fromCodePoint(codepoint);
-      } catch {
-        return full;
-      }
+      return String.fromCodePoint(codepoint);
     }
     switch (body) {
       case "amp":
@@ -115,17 +114,14 @@ const KNOWN_VIEW_TAGS = new Set(["displayed_period", "hidden_categories"]);
 
 const TEXT_KEY = "#text";
 
+// In preserveOrder mode every node has exactly one tag key (plus ":@" for
+// attributes) and an element's value is always an array of child nodes.
 function nodeName(n: RawNode): string {
-  for (const k of Object.keys(n)) {
-    if (k !== ":@") return k;
-  }
-  return "";
+  return Object.keys(n).find((k) => k !== ":@") as string;
 }
 
 function nodeChildren(n: RawNode): RawNode[] {
-  const name = nodeName(n);
-  const v = (n as Record<string, unknown>)[name];
-  return Array.isArray(v) ? (v as RawNode[]) : [];
+  return (n as Record<string, unknown>)[nodeName(n)] as RawNode[];
 }
 
 /**
@@ -150,19 +146,17 @@ function deepTextOf(children: RawNode[]): string {
   let out = "";
   for (const c of children) {
     const name = nodeName(c);
-    if (name === "#text" || name === "") {
+    if (name === "#text") {
       const t = (c as Record<string, unknown>)[TEXT_KEY];
       if (typeof t === "string") out += decodeEntities(t);
       continue;
     }
+    if (name === "#comment") continue; // comments are not text content
     if (name === "#cdata") {
-      const v = (c as Record<string, unknown>)["#cdata"];
-      if (typeof v === "string") out += v; // CDATA content is verbatim, no entity decode
-      else if (Array.isArray(v)) {
-        for (const item of v) {
-          const t = (item as Record<string, unknown>)?.[TEXT_KEY];
-          if (typeof t === "string") out += t;
-        }
+      // CDATA content is verbatim, no entity decode.
+      for (const item of (c as Record<string, unknown>)["#cdata"] as RawNode[]) {
+        const t = (item as Record<string, unknown>)[TEXT_KEY];
+        if (typeof t === "string") out += t;
       }
       continue;
     }

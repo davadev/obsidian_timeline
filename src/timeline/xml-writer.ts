@@ -99,16 +99,14 @@ function dateLeaf(name: string, d: TimelineDate): RawNode {
   return leaf(name, toXmlString(d));
 }
 
-/** Find name (or null) of the single non-":@" key on a preserveOrder node. */
+// In preserveOrder mode every node has exactly one tag key (plus ":@" for
+// attributes) and an element's value is always an array of child nodes.
 function nodeName(n: RawNode): string {
-  for (const k of Object.keys(n)) if (k !== ":@") return k;
-  return "";
+  return Object.keys(n).find((k) => k !== ":@") as string;
 }
 
 function nodeChildren(n: RawNode): RawNode[] {
-  const name = nodeName(n);
-  const v = (n as Record<string, unknown>)[name];
-  return Array.isArray(v) ? (v as RawNode[]) : [];
+  return (n as Record<string, unknown>)[nodeName(n)] as RawNode[];
 }
 
 /**
@@ -126,7 +124,7 @@ function unknownChildren(raw: unknown, known: Set<string>): RawNode[] {
   });
 }
 
-const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
+const EVENT_DEFAULT_ORDER = [
   "start",
   "end",
   "text",
@@ -146,7 +144,11 @@ const EVENT_DEFAULT_ORDER: ReadonlyArray<string> = [
   "default_color",
   "icon",
   "alert",
-];
+] as const;
+
+// Hyperlinks are written by buildEventNode itself (there can be several), so
+// the per-tag synthesizer only ever sees the other tags.
+type SynthEventTag = Exclude<(typeof EVENT_DEFAULT_ORDER)[number], "hyperlink">;
 
 /**
  * Build the children of an `<event>` node. When the event has a `raw`
@@ -158,7 +160,7 @@ function buildEventNode(ev: TimelineEvent): RawNode {
   const wantsCData = descriptionWantsCData(ev);
   const hyperlinks = normalizeEventHyperlinks(ev);
   let hyperlinkIdx = 0;
-  const synth = (tag: string): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
+  const synth = (tag: SynthEventTag): RawNode | null => synthesizeEventChild(tag, ev, wantsCData);
 
   const children: RawNode[] = [];
   const seen = new Set<string>();
@@ -174,7 +176,7 @@ function buildEventNode(ev: TimelineEvent): RawNode {
         continue;
       }
       if (KNOWN_EVENT_TAGS.has(name)) {
-        const synthChild = synth(name);
+        const synthChild = synth(name as SynthEventTag);
         if (synthChild) {
           children.push(synthChild);
           seen.add(name);
@@ -250,7 +252,7 @@ function parseExtraNodes(rawNodes: string[] | undefined): RawNode[] {
 }
 
 function synthesizeEventChild(
-  tag: string,
+  tag: SynthEventTag,
   ev: TimelineEvent,
   wantsCData: boolean
 ): RawNode | null {
@@ -270,8 +272,6 @@ function synthesizeEventChild(
       return wantsCData
         ? cdataLeaf("description", ev.description)
         : leaf("description", ev.description);
-    case "hyperlink":
-      return maybeLeaf("hyperlink", ev.hyperlink);
     case "labels": {
       if (!ev.labels || !ev.labels.length) return null;
       const tokens = ev.labels.map((l) => l.trim().replace(/\s+/g, "_")).filter(Boolean);
@@ -299,8 +299,6 @@ function synthesizeEventChild(
       return maybeLeaf("icon", ev.icon);
     case "alert":
       return maybeLeaf("alert", ev.alert);
-    default:
-      return null;
   }
 }
 
@@ -334,17 +332,17 @@ function cdataLeaf(name: string, content: string): RawNode {
   ]);
 }
 
-const CATEGORY_DEFAULT_ORDER: ReadonlyArray<string> = [
+const CATEGORY_DEFAULT_ORDER = [
   "name",
   "color",
   "progress_color",
   "done_color",
   "font_color",
   "parent",
-];
+] as const;
 
 function buildCategoryNode(c: TimelineCategory): RawNode {
-  const synth = (tag: string): RawNode | null => {
+  const synth = (tag: (typeof CATEGORY_DEFAULT_ORDER)[number]): RawNode | null => {
     switch (tag) {
       case "name":
         return leaf("name", c.name);
@@ -358,8 +356,6 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
         return maybeLeaf("font_color", c.fontColor);
       case "parent":
         return maybeLeaf("parent", c.parent);
-      default:
-        return null;
     }
   };
   const children: RawNode[] = [];
@@ -369,13 +365,9 @@ function buildCategoryNode(c: TimelineCategory): RawNode {
       const name = nodeName(child);
       if (!name || name === "#text") continue;
       if (KNOWN_CATEGORY_TAGS.has(name)) {
-        const synthChild = synth(name);
-        if (synthChild) {
-          children.push(synthChild);
-          seen.add(name);
-        } else {
-          seen.add(name);
-        }
+        const synthChild = synth(name as (typeof CATEGORY_DEFAULT_ORDER)[number]);
+        if (synthChild) children.push(synthChild);
+        seen.add(name);
       } else {
         children.push(child);
       }
@@ -513,7 +505,6 @@ export function writeTimelineXml(doc: TimelineDoc): string {
     for (const n of doc.raw as RawNode[]) {
       const name = nodeName(n);
       if (name === "timeline") continue;
-      if (name === "#text") continue; // skip parser whitespace
       tree.push(n); // declaration/PI/comments preserved
     }
   }

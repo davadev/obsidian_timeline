@@ -108,7 +108,7 @@ export function renderEventMarkdown(
   front[mirrors.render] = ev.render ?? true;
   front[mirrors.role] = ev.role ?? "event";
 
-  const body = opts.body ?? defaultBody(ev, optsTrimDescription(opts));
+  const body = opts.body ?? defaultBody(ev, opts.trimDescription !== false);
   const yaml = YAML.stringify(front, { lineWidth: 0 });
   return `---\n${yaml}---\n\n${body}`;
 }
@@ -148,11 +148,6 @@ function defaultBody(ev: TimelineEvent, trimDescription: boolean): string {
     ""
   );
   return lines.join("\n");
-}
-
-function optsTrimDescription(opts: WriteOptions | undefined): boolean {
-  if (!opts) return true;
-  return opts.trimDescription !== false;
 }
 
 /** Re-render an EventNote, preserving its existing body and extra frontmatter. */
