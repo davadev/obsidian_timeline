@@ -12,6 +12,7 @@ import { safeFileName, slugify } from "../src/timeline/id-utils";
 import { contentFingerprint, isUntouched, shouldSkipImportOverwrite, withContentHash } from "../src/obsidian/sync-policy";
 import { findEraNotePath } from "../src/obsidian/era-files";
 import { eventSourceKey } from "../src/timeline/event-source";
+import { withoutTimelineFrontmatter } from "../src/timeline/export-md";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
 import { writeTimelineXml } from "../src/timeline/xml-writer";
 import { parseEventNote } from "../src/timeline/markdown-parser";
@@ -856,5 +857,98 @@ describe("remaining branches of the sync leftovers", () => {
     app.vault.seed("t.timeline", xml(events(" changed")), 60);
     await importXml(ctx);
     expect(logs.find(([e]) => e === "import-conflict")?.[1]).toMatch(/…$/);
+  });
+});
+
+describe("exported copies of event notes", () => {
+  it("stop being events but keep everything else", () => {
+    const raw = "---\ntitle: Caesar\ntags: [a]\ntimeline_event_id: c\ntimeline_start: 1\ntimeline:\n  enabled: true\n  event_id: c\ntimeline_hash: 1-2\ntimeline_src: 3-4\n---\n\nBody\n";
+    const out = withoutTimelineFrontmatter(raw);
+    expect(out).toContain("title: Caesar");
+    expect(out).toContain("tags:");
+    expect(out).toContain("\nBody\n");
+    expect(out).not.toMatch(/timeline/);
+    expect(parseEventNote(out, { path: "x" })).toEqual({ errors: [] });
+  });
+
+  it("honours custom mirror names and leaves other notes alone", () => {
+    const out = withoutTimelineFrontmatter("---\nev_id: c\nkeep: 1\n---\nBody", { start: "ev_s", end: "ev_e", category: "ev_c", eventId: "ev_id", render: "ev_r", role: "ev_ro" });
+    expect(out).toBe("---\nkeep: 1\n---\n\nBody");
+    expect(withoutTimelineFrontmatter("no frontmatter")).toBe("no frontmatter");
+    expect(withoutTimelineFrontmatter("---\ntitle: x\n---\nBody")).toBe("---\ntitle: x\n---\nBody");
+    expect(withoutTimelineFrontmatter("---\nkey: [oops\n---\nBody")).toBe("---\nkey: [oops\n---\nBody");
+    expect(withoutTimelineFrontmatter("---\n- a\n---\nBody")).toBe("---\n- a\n---\nBody");
+  });
+
+  it("drops the frontmatter block altogether when nothing else is left", () => {
+    expect(withoutTimelineFrontmatter("---\ntimeline:\n  enabled: true\n---\n\nBody")).toBe("Body");
+  });
+});
+
+describe("wipe and reimport safety", () => {
+  const ev = `<event id="a"><start>0100-01-01</start><end>0200-01-01</end><text>Alpha</text></event>`;
+  const setup = () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main" };
+    const vault = new VaultAdapter(app as never);
+    const ctx = {
+      app: app as never, plugin: new Plugin(app) as never, vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings, saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {}, getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}), appendSyncLog: async () => {},
+    } as unknown as CommandsContext;
+    return { app, ctx };
+  };
+
+  it("deletes nothing when the XML cannot be parsed", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev), 50);
+    await importXml(ctx);
+    app.vault.seed("t.timeline", "<timeline><events><event", 60);
+    await expect(wipeAndReimport(ctx)).rejects.toThrow();
+    expect(app.vault.files.has("Events/a.md")).toBe(true);
+    expect(app.trashed).toEqual([]);
+  });
+
+  it("deletes nothing when the XML has no events", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev), 50);
+    await importXml(ctx);
+    app.vault.seed("t.timeline", xml(""), 60);
+    await expect(wipeAndReimport(ctx)).rejects.toThrow("nothing to reimport");
+    expect(app.vault.files.has("Events/a.md")).toBe(true);
+  });
+
+  it("leaves the user's own pages in the folder alone", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/My research notes.md", "# my own page\n");
+    app.vault.seed("Events/Locked.md", "x");
+    const read = vi.spyOn(VaultAdapter.prototype, "readText").mockImplementation(async function (this: VaultAdapter, p: string) {
+      if (p === "Events/Locked.md") throw new Error("not downloaded");
+      return app.vault.text(p);
+    });
+    await wipeAndReimport(ctx);
+    read.mockRestore();
+    expect(app.vault.text("Events/My research notes.md")).toBe("# my own page\n");
+    expect(app.vault.files.has("Events/Locked.md")).toBe(true);
+    expect(app.trashed).toEqual(expect.arrayContaining(["Events/a.md", "Events/_timeline/timeline-metadata.md"]));
+  });
+});
+
+describe("replaceIfUnchanged", () => {
+  it("replaces only text that is still what the caller saw", async () => {
+    const app = new FakeApp();
+    const va = new VaultAdapter(app as never);
+    app.vault.seed("n.md", "one");
+    expect(await va.replaceIfUnchanged("n.md", "one", "two")).toBe(true);
+    expect(app.vault.text("n.md")).toBe("two");
+    expect(await va.replaceIfUnchanged("n.md", "one", "three")).toBe(false);
+    expect(app.vault.text("n.md")).toBe("two");
+    await expect(va.replaceIfUnchanged("gone.md", "a", "b")).rejects.toThrow("File not found: gone.md");
   });
 });

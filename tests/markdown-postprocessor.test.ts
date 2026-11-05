@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, type TimelineXmlSyncSettings } from "../src/settings"
 import { DEFAULT_RENDER_OPTIONS } from "../src/renderer/render-options";
 import type { TimelineDoc, TimelineEvent } from "../src/timeline/model";
 import { FakeApp } from "../testUtils/fake-app";
+import { isUntouched, withContentHash } from "../src/obsidian/sync-policy";
 
 const rendered: RenderArgs[] = [];
 vi.mock("../src/renderer", async (orig) => ({
@@ -304,6 +305,30 @@ describe("persisting filter changes into the block", () => {
     expect(app.vault.text("note.md")).toContain("zoom: 5");
     await change(state({ search: "b", zoom: null })); // override cleared: the author's value is back
     expect(app.vault.text("note.md")).toContain("zoom: 2");
+  });
+
+  it("writes search text containing replacement patterns literally", async () => {
+    await run("mode: bar");
+    vi.useFakeTimers();
+    await change(state({ search: "US$$ $& it's $'" }));
+    expect(app.vault.text("note.md")).toContain("search: US$$ $& it's $'");
+    expect(app.vault.text("note.md").startsWith("intro\n```timeline\n")).toBe(true);
+    expect(app.vault.text("note.md").endsWith("\n```\noutro")).toBe(true);
+  });
+
+  it("keeps an untouched event note untouched-looking when the chart persists its filter", async () => {
+    const sealed = withContentHash("---\ntitle: x\n---\n\n```timeline\nmode: bar\n```\n");
+    app.vault.seed("note.md", sealed);
+    await run("mode: bar");
+    vi.useFakeTimers();
+    await change(state({ search: "rome" }));
+    const after = app.vault.text("note.md");
+    expect(after).toContain("search: rome");
+    expect(isUntouched(after)).toBe(true); // the plugin's own UI state is not a user edit
+    // a note the user had already edited stays "edited"
+    app.vault.seed("note.md", sealed + "my words\n");
+    await change(state({ search: "athens" }));
+    expect(isUntouched(app.vault.text("note.md"))).toBe(false);
   });
 
   it("drops an override it wrote when the block never had a zoom", async () => {

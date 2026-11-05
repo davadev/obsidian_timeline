@@ -1,4 +1,4 @@
-import { Notice, type App, type Plugin } from "obsidian";
+import { Notice, type App, type Plugin, type TFile } from "obsidian";
 import {
   EVENT_NOTE_SCHEMA_VERSION,
   resolveBackupFolder,
@@ -264,6 +264,17 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   if (!ctx.vault.exists(s.sourceXmlPath)) {
     throw new Error(`XML not found: ${s.sourceXmlPath}`);
   }
+  // Read the XML BEFORE anything is deleted. An unreadable file (half-synced,
+  // hand-broken) would otherwise throw from the import below, after the notes
+  // were already gone. An XML with no events would wipe the notes and bring
+  // nothing back.
+  ctx.cache.invalidateXml(s.sourceXmlPath);
+  const xmlDoc = await ctx.cache.getXml(s.sourceXmlPath);
+  if (!xmlDoc.events.length) {
+    throw new Error(
+      "The XML has no events — nothing to reimport, so the notes were left alone."
+    );
+  }
   // Long-running on big vaults — let the user know we started so they don't
   // wonder whether the button click did anything.
   new Notice("Starting wipe + reimport…", 4000);
@@ -298,7 +309,21 @@ export async function wipeAndReimport(ctx: CommandsContext): Promise<void> {
   }
   // Not the backups: the snapshot just taken lives under the notes folder by
   // default, and deleting it would defeat the point of taking it.
-  const files = ctx.vault.listMarkdownFiles(s.eventNotesDir, backupRoot);
+  // Only the notes this plugin owns (events, eras, the metadata note): the
+  // folder may also hold the user's own pages, which were never ours to wipe.
+  const files: TFile[] = [];
+  for (const f of ctx.vault.listMarkdownFiles(s.eventNotesDir, backupRoot)) {
+    try {
+      const raw = await ctx.vault.readText(f.path);
+      const ours =
+        parseEventNote(raw, { path: f.path, mirrorNames: s.mirrorNames }).note ||
+        parseEraNote(raw, f.basename) ||
+        parseTimelineMetaNote(raw);
+      if (ours) files.push(f);
+    } catch (e) {
+      logWarn("could not read note for wipe, leaving it", f.path, e);
+    }
+  }
   const filePaths = files.map((f) => f.path);
   let removed = 0;
   await ctx.withSelfWrite(async () => {

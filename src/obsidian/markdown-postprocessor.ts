@@ -10,6 +10,7 @@ import {
 // has been replaced with metadataCache for performance.
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { VaultAdapter } from "./vault-adapter";
+import { resealIfSealed } from "./sync-policy";
 import type { TimelineCache } from "./cache";
 import {
   eventsInViewport,
@@ -396,7 +397,9 @@ function makeBlockPersister(
       await ctx.app.vault.process(file, (raw) => {
         if (!raw.includes(oldFence)) return raw;
         replaced = true;
-        return raw.replace(oldFence, newFence);
+        // A replacer function: a string would have `$&`, `$'`, `$$` in the
+        // block (a search term, say) expanded and the note silently altered.
+        return resealIfSealed(raw, raw.replace(oldFence, () => newFence));
       });
     } catch {
       return false;

@@ -277,13 +277,25 @@ describe("hand-written notes", () => {
     expect(root().querySelector("h3")?.textContent).toBe("(untitled)");
   });
 
-  it("saves over a note that has stopped being an event", async () => {
+  it("does not save over a note that changed since the form was loaded", async () => {
     await load();
     app.vault.seed("Events/min.md", "scribbles, no frontmatter");
     type(rowInput("Title"), "Recovered");
     button("Save changes").click();
-    await vi.waitFor(() => expect(saved).toHaveBeenCalled());
-    expect(app.vault.text("Events/min.md")).toContain("# Recovered");
+    await vi.waitFor(() => expect(Notice.messages().some((m) => m.startsWith("Not saved: the note changed"))).toBe(true));
+    expect(app.vault.text("Events/min.md")).toBe("scribbles, no frontmatter");
+    expect(saved).not.toHaveBeenCalled();
+  });
+
+  it("saves again after the form was saved once (it follows its own write)", async () => {
+    await load();
+    type(rowInput("Title"), "First");
+    button("Save changes").click();
+    await vi.waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+    type(rowInput("Title"), "Second");
+    button("Save changes").click();
+    await vi.waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+    expect(app.vault.text("Events/min.md")).toContain("# Second");
   });
 
   it("shows the stored sync stamp when there is one", async () => {

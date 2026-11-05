@@ -1,3 +1,4 @@
+import { withoutTimelineFrontmatter } from "../timeline/export-md";
 import { Notice, TFile, type App } from "obsidian";
 import type { TimelineXmlSyncSettings } from "../settings";
 import type { TimelineCache } from "./cache";
@@ -106,7 +107,11 @@ export async function exportActiveNoteWithRenderedTimeline(
   }
   const outPath = active.path.replace(/\.md$/i, "") + "-exported.md";
   await ctx.withSelfWrite(async () => {
-    await ctx.vault.writeText(outPath, out.join(""));
+    // Not as an event: see withoutTimelineFrontmatter.
+    await ctx.vault.writeText(
+      outPath,
+      withoutTimelineFrontmatter(out.join(""), settings.mirrorNames)
+    );
   });
   new Notice(`Exported to ${outPath} (${written} block(s) → image + list).`);
 }

@@ -99,6 +99,17 @@ describe("exportActiveNoteWithRenderedTimeline", () => {
     expect(ctx.withSelfWrite).toHaveBeenCalledTimes(3);
   });
 
+  it("exports an event note without its timeline frontmatter, so the copy is not a second event", async () => {
+    const eventNote = "---\ntitle: Trip\ntimeline_event_id: trip\ntimeline:\n  enabled: true\n  event_id: trip\n  start: {year: 1}\n  end: {year: 2}\n---\n\nIntro\n```timeline\nmode: bar\n```\n";
+    app.activeFile = app.vault.seed("Notes/Trip.md", eventNote);
+    await exportActiveNoteWithRenderedTimeline(ctx);
+    const out = app.vault.text("Notes/Trip-exported.md");
+    expect(out).toContain("title: Trip");
+    expect(out).not.toContain("event_id");
+    expect(out).not.toContain("timeline:");
+    expect(app.vault.text("Notes/Trip.md")).toBe(eventNote);
+  });
+
   it("renders a still image: clicking an event in it does nothing", async () => {
     barArgs.length = 0;
     await exportActiveNoteWithRenderedTimeline(ctx);
