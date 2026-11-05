@@ -603,6 +603,22 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
     };
   }
 
+  // An empty notes folder next to a XML full of events is a folder that has
+  // not synced in yet (iCloud, Nextcloud) or was emptied by accident, not an
+  // intention to delete the timeline. Writing now would erase every event.
+  if (doc.events.length > 0 && notes.length === 0) {
+    new Notice(
+      "Timeline: no event notes found — refusing to write an empty XML over a timeline that has events. Check the event notes folder, or run \"import XML\".",
+      10000
+    );
+    void ctx.appendSyncLog(
+      "regen-aborted-no-notes",
+      s.sourceXmlPath,
+      `xmlEvents=${doc.events.length} notes=0`
+    );
+    return;
+  }
+
   // CAS check: did the XML change while we were reading + merging?
   if (ctx.vault.exists(s.sourceXmlPath)) {
     const now = ctx.vault.getMtime(s.sourceXmlPath);

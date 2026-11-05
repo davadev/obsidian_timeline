@@ -118,6 +118,18 @@ describe("backups", () => {
 });
 
 describe("pruning", () => {
+  it("ranks XML backups by the timestamp in their name, not by mtime", async () => {
+    // A sync client re-downloading the backups gives them fresh, shuffled mtimes.
+    app.vault.seed("t.timeline.bak-2026-01-01T00-00-00-000Z", "", 900);
+    app.vault.seed("t.timeline.bak-2026-03-01T00-00-00-000Z", "", 100);
+    app.vault.seed("t.timeline.bak-2026-02-01T00-00-00-000Z", "", 500);
+    expect(await va.pruneXmlBackups("t.timeline", 1)).toBe(2);
+    expect(app.trashed.sort()).toEqual([
+      "t.timeline.bak-2026-01-01T00-00-00-000Z",
+      "t.timeline.bak-2026-02-01T00-00-00-000Z",
+    ]);
+  });
+
   it("keeps only the newest XML backups", async () => {
     app.vault.seed("t.timeline.bak-1", "", 1);
     app.vault.seed("t.timeline.bak-2", "", 2);
