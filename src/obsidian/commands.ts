@@ -13,9 +13,11 @@ import { parseEventNote } from "../timeline/markdown-parser";
 import { logDebug, logDump, logError, logWarn } from "../logger";
 import { contentFingerprint } from "./sync-policy";
 import { safeFileName } from "../timeline/id-utils";
+import { findEraNotePath } from "./era-files";
+import { eventSourceKey } from "../timeline/event-source";
 import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
-import type { EventNote, TimelineCategory } from "../timeline/model";
+import type { EventNote, TimelineCategory, TimelineEvent } from "../timeline/model";
 import {
   classifyExternalXml,
   isUntouched,
@@ -322,15 +324,24 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   if (!s.eventNotesDir)
     throw new Error("Configure event notes directory in settings first.");
 
-  ctx.cache.invalidateXml(s.sourceXmlPath);
-  const doc = await ctx.cache.getXml(s.sourceXmlPath);
-  await ctx.vault.ensureFolder(s.eventNotesDir);
-
+  // Baseline taken BEFORE the XML is read: if a sync client lands a newer
+  // file while the import runs, the recorded baseline is the older one, so the
+  // next regenerate sees the XML as changed and asks for another import, rather
+  // than treating notes built from the old content as current.
   // Source mtime stamped into every newly written note so future imports can
   // detect "this note was edited locally after we wrote it from XML" and skip
   // overwriting. Captured once here so all notes from this import share the
   // same baseline.
   const xmlMtime = ctx.vault.getMtime(s.sourceXmlPath);
+  let baselineFingerprint: string | null;
+  try {
+    baselineFingerprint = contentFingerprint(await ctx.vault.readText(s.sourceXmlPath));
+  } catch {
+    baselineFingerprint = null;
+  }
+  ctx.cache.invalidateXml(s.sourceXmlPath);
+  const doc = await ctx.cache.getXml(s.sourceXmlPath);
+  await ctx.vault.ensureFolder(s.eventNotesDir);
 
   // Auto-populate category palette + knownCategories from the XML.
   ingestCategories(s, doc.categories);
@@ -341,6 +352,8 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
   let created = 0;
   let updated = 0;
   const skipped: string[] = [];
+  const conflicts: string[] = [];
+  const claimedPaths = new Map<string, string>();
   const writtenPaths: string[] = [];
   await ctx.withSelfWrite(async () => {
     for (const ev of doc.events) {
@@ -348,9 +361,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       // up by event id before assuming the default file name, or the import
       // writes a second note with the same id and regenerate then refuses
       // ("duplicate event_id") until one is deleted by hand.
-      const path =
-        ctx.cache.resolvePath(ev.id) ??
-        `${s.eventNotesDir}/${safeFileName(ev.id)}.md`;
+      const path = await pickNotePath(ctx, ev.id, claimedPaths);
       // Skip notes that have local edits made after the last XML-driven write.
       // Stamp check first — if the note never carried a stamp we treat it as
       // unknown and skip too (legacy notes; reset by `Wipe and reimport`).
@@ -368,6 +379,12 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
             shouldSkipImportOverwrite(raw, onDisk.stat.mtime, parsed.note?.lastSyncedXmlMtime)
           ) {
             skipped.push(path);
+            // Edited here AND changed in the XML since the note was written?
+            // The note records the XML content it was copied from.
+            const base = parsed.note?.extraFrontmatter.timeline_src;
+            if (typeof base === "string" && base !== sourceFingerprint(ev)) {
+              conflicts.push(path);
+            }
             continue;
           }
         } catch (e) {
@@ -398,6 +415,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
           mirrorNames: s.mirrorNames,
           sourceMtime: xmlMtime,
           trimDescription: s.trimDescriptionOnWrite,
+          extraFrontmatter: { timeline_src: sourceFingerprint(ev) },
         })
       );
       // Same text as what is there: leave the file alone, so sync clients
@@ -419,7 +437,9 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     await ctx.vault.ensureFolder(erasDir);
     await ctx.withSelfWrite(async () => {
       for (const era of eras) {
-        const path = `${erasDir}/${era.id}.md`;
+        const path =
+          (await findEraNotePath(ctx.vault, s, era.id)) ??
+          `${erasDir}/${era.id}.md`;
         const onDisk = ctx.vault.getFile(path);
         let existingRaw: string | undefined;
         if (onDisk) {
@@ -478,20 +498,36 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     }
   }
 
-  const removed = await removeOrphanNotes(ctx, doc.events.map((e) => e.id));
+  // An event the parser could not read is still in the XML: its note is not an
+  // orphan, whatever is wrong with its dates.
+  const unreadableIds = (doc.unparsedEvents ?? []).flatMap((n) => {
+    const id = (n as { ":@"?: Record<string, string> })[":@"]?.["@_id"];
+    return id ? [id] : [];
+  });
+  const removed = await removeOrphanNotes(ctx, [
+    ...doc.events.map((e) => e.id),
+    ...unreadableIds,
+  ]);
 
   // Persist the XML mtime and fingerprint so external-change detection has a
   // baseline for both "when" and "what".
   if (xmlMtime != null) s.lastWrittenXmlMtime = xmlMtime;
-  try {
-    s.lastSeenXmlFingerprint = contentFingerprint(
-      await ctx.vault.readText(s.sourceXmlPath)
-    );
-  } catch {
-    s.lastSeenXmlFingerprint = null;
-  }
+  s.lastSeenXmlFingerprint = baselineFingerprint;
   await ctx.saveSettings();
   ctx.cache.resetIndex();
+  if (conflicts.length) {
+    ctx.setDiagnostics(
+      conflicts.map(
+        (p) =>
+          `${p}: edited here and changed in the XML since — the next "Regenerate XML" keeps this note's version and drops the XML's`
+      )
+    );
+    void ctx.appendSyncLog(
+      "import-conflict",
+      s.sourceXmlPath,
+      `${conflicts.length} note(s): ${conflicts.slice(0, 10).join(", ")}${conflicts.length > 10 ? " …" : ""}`
+    );
+  }
   if (skipped.length) {
     void ctx.appendSyncLog(
       "import-skipped",
@@ -501,7 +537,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       }`
     );
     new Notice(
-      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits)${removedNote(removed)}. Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See the sync log.`,
+      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits)${conflictNote(conflicts.length)}${removedNote(removed)}. Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See the sync log.`,
       10000
     );
   } else {
@@ -510,6 +546,54 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
         eras.length ? `, ${eras.length} era(s)` : ""
       }${removedNote(removed)}.`
     );
+  }
+}
+
+function conflictNote(n: number): string {
+  return n
+    ? `, ${n} of them also changed in the XML (conflict: see "Open diagnostics")`
+    : "";
+}
+
+function sourceFingerprint(ev: TimelineEvent): string {
+  return contentFingerprint(eventSourceKey(ev));
+}
+
+/**
+ * Where an event's note goes. A note already indexed under the event id wins
+ * (it may have been renamed). Otherwise the default file name, moving to
+ * `-2`, `-3` ... when that name already belongs to a different event, or was
+ * just taken by another event in this very import (two XML ids can sanitise to
+ * the same name), so one never overwrites the other.
+ */
+async function pickNotePath(
+  ctx: CommandsContext,
+  id: string,
+  claimed: Map<string, string>
+): Promise<string> {
+  const known = ctx.cache.resolvePath(id);
+  if (known) {
+    claimed.set(known, id);
+    return known;
+  }
+  const base = `${ctx.getSettings().eventNotesDir}/${safeFileName(id)}`;
+  for (let n = 1; ; n++) {
+    const path = n === 1 ? `${base}.md` : `${base}-${n}.md`;
+    const owner = claimed.get(path);
+    if (owner !== undefined && owner !== id) continue;
+    if (owner === undefined && ctx.vault.getFile(path)) {
+      try {
+        const other = parseEventNote(await ctx.vault.readText(path), {
+          path,
+          mirrorNames: ctx.getSettings().mirrorNames,
+        }).note;
+        if (other && other.event.id !== id) continue;
+      } catch {
+        // unreadable: leave it to the skip logic in the caller
+      }
+    }
+    claimed.set(path, id);
+    return path;
   }
 }
 

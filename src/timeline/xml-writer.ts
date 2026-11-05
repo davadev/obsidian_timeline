@@ -470,11 +470,14 @@ export function writeTimelineXml(doc: TimelineDoc): string {
   timelineChildren.push(
     elem(
       "events",
-      doc.events.map(buildEventNode)
+      [...doc.events.map(buildEventNode), ...((doc.unparsedEvents ?? []) as RawNode[])]
     )
   );
-  if (doc.eras && doc.eras.length) {
-    timelineChildren.push(elem("eras", doc.eras.map(buildEraNode)));
+  const unparsedEras = (doc.unparsedEras ?? []) as RawNode[];
+  if ((doc.eras && doc.eras.length) || unparsedEras.length) {
+    timelineChildren.push(
+      elem("eras", [...(doc.eras ?? []).map(buildEraNode), ...unparsedEras])
+    );
   }
   if (doc.view) timelineChildren.push(buildViewNode(doc.view));
 

@@ -9,8 +9,11 @@ import { VaultAdapter } from "../src/obsidian/vault-adapter";
 import { DEFAULT_SETTINGS, isBackupPath, isInsideFolder, type TimelineXmlSyncSettings } from "../src/settings";
 import { setLogLevel } from "../src/logger";
 import { safeFileName, slugify } from "../src/timeline/id-utils";
-import { isUntouched, shouldSkipImportOverwrite, withContentHash } from "../src/obsidian/sync-policy";
+import { contentFingerprint, isUntouched, shouldSkipImportOverwrite, withContentHash } from "../src/obsidian/sync-policy";
+import { findEraNotePath } from "../src/obsidian/era-files";
+import { eventSourceKey } from "../src/timeline/event-source";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
+import { writeTimelineXml } from "../src/timeline/xml-writer";
 import { parseEventNote } from "../src/timeline/markdown-parser";
 import { parseEraNote, renderEraMarkdown } from "../src/timeline/era-md";
 import { validateEventNote } from "../src/timeline/validator";
@@ -652,5 +655,206 @@ describe("notes and XML disagreeing", () => {
     await importXml(ctx);
     read.mockRestore();
     expect(app.vault.files.has("Events/stuck.md")).toBe(true);
+  });
+});
+
+describe("events the parser cannot read", () => {
+  const bad = `<event id="broken"><start>someday</start><end>0200-01-01</end><text>Broken</text><custom>keep me</custom></event>`;
+  const good = `<event id="ok"><start>0100-01-01</start><end>0200-01-01</end><text>Fine</text></event>`;
+  const badEra = `<era><name>Odd era</name><start>never</start><end>0500-01-01</end></era>`;
+  const X = `<?xml version="1.0" encoding="utf-8"?><timeline><version>2.11.0</version><categories/><events>${bad}${good}</events><eras>${badEra}</eras></timeline>`;
+
+  it("keeps them out of the model and in the file", () => {
+    const doc = parseTimelineXml(X);
+    expect(doc.events.map((e) => e.id)).toEqual(["ok"]);
+    expect(doc.unparsedEvents).toHaveLength(1);
+    expect(doc.unparsedEras).toHaveLength(1);
+    expect(parseTimelineXml(xml(good)).unparsedEvents).toBeUndefined();
+    const out = writeTimelineXml(doc);
+    expect(out).toContain("someday");
+    expect(out).toContain("keep me");
+    expect(out).toContain("Odd era");
+    // and they survive a second round trip
+    expect(parseTimelineXml(out).unparsedEvents).toHaveLength(1);
+  });
+
+  it("survive regenerate, and their notes are not treated as orphans", async () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const ctx = {
+      app: app as never, plugin: new Plugin(app) as never, vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings, saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {}, getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}), appendSyncLog: async () => {},
+    } as unknown as CommandsContext;
+    app.vault.seed("t.timeline", X, 50);
+    await importXml(ctx);
+    // A note that used to belong to the event that is now unreadable in the XML.
+    app.vault.seed("Events/broken.md", withContentHash(note("broken")));
+    app.vault.seed("t.timeline", X, 60);
+    await importXml(ctx);
+    expect(app.vault.files.has("Events/broken.md")).toBe(true);
+    await regenerateXml(ctx);
+    const out = app.vault.text("t.timeline");
+    expect(out).toContain("keep me");
+    expect(out).toContain("Odd era");
+  });
+
+  it("copes with an unreadable node that has no id", () => {
+    const doc = parseTimelineXml(`<timeline><events><event><start>x</start></event></events></timeline>`);
+    expect(doc.unparsedEvents).toHaveLength(1);
+  });
+});
+
+describe("sync leftovers", () => {
+  const ev = (id: string, text = id) => `<event id="${id}"><start>0100-01-01</start><end>0200-01-01</end><text>${text}</text></event>`;
+  const setup = () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const cache = new TimelineCache(app as never, () => settings);
+    let diagnostics: string[] = [];
+    const log: string[] = [];
+    const ctx = {
+      app: app as never, plugin: new Plugin(app) as never, vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache, getSettings: () => settings, saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: (l: string[]) => { diagnostics = l; }, getDiagnostics: () => diagnostics,
+      createEventInteractive: vi.fn(async () => {}), appendSyncLog: async (e: string) => { log.push(e); },
+    } as unknown as CommandsContext;
+    return { app, ctx, cache, settings, log, diagnostics: () => diagnostics };
+  };
+
+  it("keeps two ids that sanitise to the same file name apart", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev("a/b", "Slash") + ev("a-b", "Dash") + ev("a:b", "Colon")), 50);
+    await importXml(ctx);
+    const texts = Object.fromEntries(
+      ["Events/a-b.md", "Events/a-b-2.md", "Events/a-b-3.md"].map((p) => [p, parseEventNote(app.vault.text(p), { path: p }).note?.event.id])
+    );
+    expect(texts).toEqual({ "Events/a-b.md": "a/b", "Events/a-b-2.md": "a-b", "Events/a-b-3.md": "a:b" });
+    // and a second import finds each where it went
+    app.vault.seed("t.timeline", xml(ev("a/b", "Slash") + ev("a-b", "Dash") + ev("a:b", "Colon")), 60);
+    await importXml(ctx);
+    expect(app.vault.getFiles().filter((f) => f.path.startsWith("Events/a-b")).length).toBe(3);
+  });
+
+  it("does not overwrite a different event's note that already has the default name", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("Events/a-b.md", note("someone-else"));
+    app.vault.seed("Events/plain-b.md", "not an event");
+    app.vault.seed("t.timeline", xml(ev("a-b", "Mine") + ev("plain-b", "Plain")), 50);
+    await importXml(ctx);
+    expect(app.vault.text("Events/a-b.md")).toContain("someone-else");
+    expect(app.vault.text("Events/a-b-2.md")).toContain("Mine");
+    // a file that is not an event note stays the caller's problem: skipped, not overwritten
+    expect(app.vault.text("Events/plain-b.md")).toBe("not an event");
+  });
+
+  it("flags a note edited here whose event also changed in the XML", async () => {
+    const { app, ctx, log, diagnostics } = setup();
+    app.vault.seed("t.timeline", xml(ev("a", "Alpha") + ev("b", "Beta")), 50);
+    await importXml(ctx);
+    for (const id of ["a", "b"]) app.vault.seed(`Events/${id}.md`, app.vault.text(`Events/${id}.md`) + "\nmy own words\n");
+    app.vault.seed("t.timeline", xml(ev("a", "Alpha, changed in the XML") + ev("b", "Beta")), 60);
+    Notice.reset();
+    await importXml(ctx);
+    // both were edited here; only a also changed in the XML
+    expect(Notice.messages().pop()).toContain("2 skipped (local edits), 1 of them also changed in the XML");
+    expect(diagnostics()).toEqual([expect.stringContaining("Events/a.md: edited here and changed in the XML")]);
+    expect(log).toContain("import-conflict");
+  });
+
+  it("cannot call a conflict when the note does not say what it was copied from", async () => {
+    const { app, ctx, log } = setup();
+    app.vault.seed("t.timeline", xml(ev("a", "Alpha")), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/a.md", app.vault.text("Events/a.md").replace(/^timeline_src: .*\n/m, "") + "\nedited\n");
+    app.vault.seed("t.timeline", xml(ev("a", "Alpha, changed")), 60);
+    await importXml(ctx);
+    expect(log).not.toContain("import-conflict");
+  });
+
+  it("records the XML as it was before the import began", async () => {
+    const { app, ctx, settings } = setup();
+    app.vault.seed("t.timeline", xml(ev("a")), 50);
+    const before = contentFingerprint(app.vault.text("t.timeline"));
+    await importXml(ctx);
+    expect(settings.lastSeenXmlFingerprint).toBe(before);
+    app.vault.failNext.set("read", new Error("mid-sync"));
+    await importXml(ctx);
+    expect(settings.lastSeenXmlFingerprint).toBeNull();
+  });
+
+  it("finds an era note that was renamed, for import and for the inspector's lookup", async () => {
+    const { app, ctx, settings } = setup();
+    const X = `<?xml version="1.0" encoding="utf-8"?><timeline><version>2.11.0</version><categories/><events>${ev("a")}</events><eras><era><name>Old era</name><start>0001-01-01 00:00:00</start><end>0500-01-01 00:00:00</end></era></eras></timeline>`;
+    app.vault.seed("t.timeline", X, 50);
+    await importXml(ctx);
+    expect(await findEraNotePath(ctx.vault, settings, "old-era")).toBe("Events/_eras/old-era.md");
+    app.vault.seed("Events/_eras/The Old Era.md", app.vault.text("Events/_eras/old-era.md"));
+    app.vault.remove("Events/_eras/old-era.md");
+    expect(await findEraNotePath(ctx.vault, settings, "old-era")).toBe("Events/_eras/The Old Era.md");
+    expect(await findEraNotePath(ctx.vault, settings, "nope")).toBeNull();
+    app.vault.seed("Events/_eras/old-era.md", "garbage"); // default name taken by something unreadable as an era
+    expect(await findEraNotePath(ctx.vault, settings, "old-era")).toBe("Events/_eras/The Old Era.md");
+    app.vault.remove("Events/_eras/The Old Era.md");
+    expect(await findEraNotePath(ctx.vault, settings, "old-era")).toBe("Events/_eras/old-era.md");
+    // a read failure on one candidate does not hide the others
+    app.vault.seed("Events/_eras/other.md", "x");
+    app.vault.failNext.set("read", new Error("mid-sync"));
+    expect(await findEraNotePath(ctx.vault, settings, "old-era")).toBe("Events/_eras/old-era.md");
+    // import updates the renamed note in place instead of writing a twin
+    app.vault.remove("Events/_eras/old-era.md");
+    app.vault.remove("Events/_eras/other.md");
+    app.vault.seed("Events/_eras/Renamed.md", withContentHash(renderEraMarkdown({ id: "old-era", name: "Old era", start: { year: 1 }, end: { year: 400 } }, "main", "t.timeline", 5)));
+    app.vault.seed("t.timeline", X, 60);
+    await importXml(ctx);
+    expect(app.vault.files.has("Events/_eras/old-era.md")).toBe(false);
+    expect(app.vault.text("Events/_eras/Renamed.md")).toContain("year: 500");
+  });
+});
+
+describe("remaining branches of the sync leftovers", () => {
+  it("writes a doc that has unreadable eras but no readable ones", () => {
+    const era = parseTimelineXml(`<timeline><eras><era><name>x</name><start>?</start><end>0500-01-01</end></era></eras></timeline>`).unparsedEras;
+    const out = writeTimelineXml({ categories: [], events: [], unparsedEras: era });
+    expect(out).toContain("<eras>");
+    expect(out).toContain("<name>x</name>");
+  });
+
+  it("fingerprints an event with links", () => {
+    const base = { id: "a", text: " A ", start: { year: 1 }, end: { year: 2 }, isPoint: false };
+    expect(eventSourceKey({ ...base, hyperlinks: [" http://x "] })).toContain("http://x");
+    expect(eventSourceKey(base)).toContain('"hyperlinks":[]');
+  });
+
+  it("imports around an unreadable event that has no id, and truncates a long conflict list", async () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const logs: string[][] = [];
+    const ctx = {
+      app: app as never, plugin: new Plugin(app) as never, vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings, saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {}, getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}), appendSyncLog: async (e: string, _p: string, d: string) => { logs.push([e, d]); },
+    } as unknown as CommandsContext;
+    const ids = Array.from({ length: 12 }, (_, i) => `e${i}`);
+    const events = (suffix: string) => ids.map((id) => `<event id="${id}"><start>0100-01-01</start><end>0200-01-01</end><text>${id}${suffix}</text></event>`).join("") + `<event><start>nope</start></event>`;
+    app.vault.seed("t.timeline", xml(events("")), 50);
+    await importXml(ctx);
+    for (const id of ids) app.vault.seed(`Events/${id}.md`, app.vault.text(`Events/${id}.md`) + "\nedited\n");
+    app.vault.seed("t.timeline", xml(events(" changed")), 60);
+    await importXml(ctx);
+    expect(logs.find(([e]) => e === "import-conflict")?.[1]).toMatch(/…$/);
   });
 });

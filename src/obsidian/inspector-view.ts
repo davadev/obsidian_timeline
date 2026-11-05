@@ -11,6 +11,7 @@ import type { TimelineCache } from "./cache";
 import type { VaultAdapter } from "./vault-adapter";
 import { parseEventNote } from "../timeline/markdown-parser";
 import { safeFileName } from "../timeline/id-utils";
+import { findEraNotePath } from "./era-files";
 import { renderEventMarkdown } from "../timeline/markdown-writer";
 import type { TimelineEra, TimelineEvent } from "../timeline/model";
 import {
@@ -85,10 +86,9 @@ export class InspectorView extends ItemView {
       // A copy: the form edits it in place, and the original belongs to the
       // shared cache, where unsaved edits would show up everywhere.
       this.currentEra = { ...era, start: { ...era.start }, end: { ...era.end } };
-      const eraPath = `${this.args.getSettings().eventNotesDir}/_eras/${eraId}.md`;
-      this.currentPath = this.app.vault.getAbstractFileByPath(eraPath)
-        ? eraPath
-        : undefined;
+      this.currentPath =
+        (await findEraNotePath(this.args.vault, this.args.getSettings(), eraId)) ??
+        undefined;
       this.dirty = false;
       this.renderEraForm();
     } catch (e) {
@@ -237,7 +237,9 @@ export class InspectorView extends ItemView {
     try {
       const { renderEraMarkdown } = await import("../timeline/era-md");
       const md = renderEraMarkdown(era, settings.timelineId, settings.sourceXmlPath);
-      const path = `${settings.eventNotesDir}/_eras/${era.id}.md`;
+      const path =
+        (await findEraNotePath(this.args.vault, settings, era.id)) ??
+        `${settings.eventNotesDir}/_eras/${era.id}.md`;
       await this.args.vault.ensureFolder(`${settings.eventNotesDir}/_eras`);
       await this.args.withSelfWrite(async () => {
         await this.args.vault.writeText(path, md);

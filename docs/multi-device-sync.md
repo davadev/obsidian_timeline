@@ -13,6 +13,10 @@ For a vault synced across devices (Obsidian Sync, [Nextcloud + Remotely Save](ht
 | `regenerateXml` and the XML changed externally since the cache read | **Abort** + Notice + sync-log entry. User runs `Import XML` to pull, then retries. |
 | `importXml` and a note has been edited since the plugin wrote it | **Skip** that note. Every note the import writes starts with a `timeline_hash:` line, a fingerprint of its own text: if the text still matches, the note is untouched and is updated in place (or left alone when nothing changed); if it does not, someone edited it. Notes without the line (older versions, or after an inspector save) fall back to the old rule (`file.mtime > last_synced_xml_mtime + 2s`). The Notice counts skipped notes. Run **Regenerate XML** to push them, or **Wipe and reimport** to overwrite. A note renamed or moved inside the events folder is found by its `event_id`. |
 | `wipeAndReimport` | Backs up XML to `<path>.bak-<ts>`. Backs up every event + era MD into `_backups/wipe-<ts>/`. Prunes old backups per the retention setting. Only then deletes + reimports. Snapshots are never touched by the wipe, and notes under the backup folder are ignored by sync, the id index and the renderer. |
+| `importXml` skips an edited note whose event also changed in the XML since the note was written (the note records what it was copied from in `timeline_src:`) | **Conflict**: counted in the Notice, listed under **Open diagnostics**, logged as `import-conflict`. Nothing is overwritten; the next **Regenerate XML** keeps the note's version and drops the XML's, so resolve it by hand first if the XML's change matters. |
+| An event in the XML has dates the plugin cannot read (a hand edit) | The node is kept and written back untouched by every regenerate; it just does not appear as a note or in the chart. Its existing note is not treated as an orphan. |
+| Two XML ids would share a note file name (`a/b` and `a-b`), or the name belongs to another event | The later one gets `-2`, `-3`, ... and is found there by `event_id` on the next import. |
+| An era note was renamed or moved inside `_eras/` | Found by its `era_id` for import, the inspector and click-to-open; no twin is written. |
 | `regenerateXml` and the XML has changed since the last import or write (saved in Timeline Project, or landed from another device; same bytes with a new timestamp do not count) | **Abort** + Notice + `regen-aborted-xml-newer` log entry, so stale notes cannot undo that edit. Run **Import XML** first: it updates untouched notes and keeps edited ones, then regenerate. |
 | `importXml` and an event is gone from the XML | Its note is moved to the trash if it still carries an intact `timeline_hash` (nobody edited it). Edited, unsealed and hand-written notes are kept, and a XML with no events removes nothing. Logged as `import-removed`. Without this the next regenerate would write the event back. |
 | `regenerateXml` finds no event notes but the XML has events (folder not synced in yet, or emptied by accident) | **Abort** + Notice + `regen-aborted-no-notes` log entry. The XML is left alone. |
@@ -53,7 +57,7 @@ The 30-second window after plugin load defers all auto-sync triggers. This lets 
 2026-05-26T08:00:00.000Z<TAB>regen-aborted-external-change<TAB>timelines/Rome.timeline<TAB>base=1234 now=5678 lastWritten=1234
 ```
 
-Events recorded: `import-skipped`, `import-removed`, `regen-aborted-xml-newer`, `regen-aborted-no-notes`, `regen-aborted-external-change`, `external-xml-change`, `wipe-backup`, `filter-persist-failed`. Turn off via the **Sync log enabled** toggle.
+Events recorded: `import-skipped`, `import-removed`, `import-conflict`, `regen-aborted-xml-newer`, `regen-aborted-no-notes`, `regen-aborted-external-change`, `external-xml-change`, `wipe-backup`, `filter-persist-failed`. Turn off via the **Sync log enabled** toggle.
 
 ## After upgrading from a version without stamps
 

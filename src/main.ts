@@ -18,6 +18,7 @@ import {
 } from "./settings";
 import { TimelineXmlSyncSettingTab } from "./settings-tab";
 import { VaultAdapter } from "./obsidian/vault-adapter";
+import { findEraNotePath } from "./obsidian/era-files";
 import { TemplateService } from "./obsidian/template-service";
 import { TimelineCache } from "./obsidian/cache";
 import { TimelineView, VIEW_TYPE_TIMELINE } from "./obsidian/timeline-view";
@@ -216,11 +217,10 @@ export default class TimelineXmlSyncPlugin extends Plugin {
    * inspector by default (now with a dedicated era form), open-note fallback.
    */
   onEraClick(eraId: string): void {
-    const eraNotePath = `${this.settings.eventNotesDir}/_eras/${eraId}.md`;
     const openFile = () => {
-      if (this.app.vault.getAbstractFileByPath(eraNotePath)) {
-        void this.app.workspace.openLinkText(eraNotePath, "", false);
-      }
+      void findEraNotePath(this.vault, this.settings, eraId).then((path) => {
+        if (path) void this.app.workspace.openLinkText(path, "", false);
+      });
     };
     if (this.settings.clickBehavior === "open-note") {
       openFile();
@@ -647,6 +647,16 @@ export default class TimelineXmlSyncPlugin extends Plugin {
   /** Append a line to the sync log (best-effort, rotated at ~200KB). */
   async appendSyncLog(event: string, path: string, detail: string): Promise<void> {
     if (!this.settings.syncLogEnabled) return;
+    // One append at a time: each is read-modify-write of the whole file, so two
+    // at once (an import logs several events back to back) lose a line.
+    const run = this.logQueue.then(() => this.writeSyncLogLine(event, path, detail));
+    this.logQueue = run;
+    await run;
+  }
+
+  private logQueue: Promise<void> = Promise.resolve();
+
+  private async writeSyncLogLine(event: string, path: string, detail: string): Promise<void> {
     try {
       const logFolder = resolveLogFolder(this.settings);
       const logPath = `${logFolder}/timeline-sync.log`;
