@@ -530,3 +530,127 @@ describe("import finds a note that was renamed", () => {
     expect(app.vault.text("Events/Alpha, renamed.md")).toContain("Alpha two");
   });
 });
+
+describe("notes and XML disagreeing", () => {
+  const ev = (id: string, text = id) => `<event id="${id}"><start>0100-01-01</start><end>0200-01-01</end><text>${text}</text></event>`;
+  const setup = () => {
+    const app = new FakeApp();
+    const settings: TimelineXmlSyncSettings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", eventNotesDir: "Events", timelineId: "main", backupEnabled: false };
+    const vault = new VaultAdapter(app as never);
+    const log: string[] = [];
+    const ctx = {
+      app: app as never,
+      plugin: new Plugin(app) as never,
+      vault,
+      templates: new TemplateService(app as never, vault, () => settings),
+      cache: new TimelineCache(app as never, () => settings),
+      getSettings: () => settings,
+      saveSettings: async () => {},
+      withSelfWrite: async (fn: () => Promise<unknown>) => fn(),
+      setDiagnostics: () => {},
+      getDiagnostics: () => [],
+      createEventInteractive: vi.fn(async () => {}),
+      appendSyncLog: async (e: string) => { log.push(e); },
+    } as unknown as CommandsContext;
+    return { app, ctx, log, settings };
+  };
+  const setMtime = (app: FakeApp, p: string, m: number) => { (app.vault.files.get(p) as TFile).stat.mtime = m; };
+
+  it("will not write stale notes over a XML that was edited since the import", async () => {
+    const { app, ctx, log } = setup();
+    app.vault.clock = 100_000;
+    app.vault.seed("t.timeline", xml(ev("a") + ev("b")), 50);
+    await importXml(ctx);
+    // Saved in Timeline Project: event b deleted, a retitled.
+    const edited = xml(ev("a", "A, retitled"));
+    app.vault.seed("t.timeline", edited, 200_000);
+    Notice.reset();
+    await regenerateXml(ctx);
+    expect(app.vault.text("t.timeline")).toBe(edited);
+    expect(Notice.messages()[0]).toContain("changed since the last import");
+    expect(log).toEqual(["regen-aborted-xml-newer"]);
+    // After importing, the notes follow the XML and regenerate goes through.
+    await importXml(ctx);
+    Notice.reset();
+    await regenerateXml(ctx);
+    const out = parseTimelineXml(app.vault.text("t.timeline"));
+    expect(out.events.map((e) => [e.id, e.text])).toEqual([["a", "A, retitled"]]);
+  });
+
+  it("does not mistake a sync client re-touching the file for an edit", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev("a")), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/new.md", note("new"));
+    setMtime(app, "t.timeline", 900_000); // same bytes, new timestamp
+    Notice.reset();
+    await regenerateXml(ctx);
+    expect(parseTimelineXml(app.vault.text("t.timeline")).events.map((e) => e.id).sort()).toEqual(["a", "new"]);
+  });
+
+  it("does not overwrite a XML it cannot read to compare", async () => {
+    const { app, ctx, log } = setup();
+    app.vault.seed("t.timeline", xml(ev("a")), 50);
+    await importXml(ctx);
+    setMtime(app, "t.timeline", 900_000);
+    app.vault.failNext.set("read", new Error("mid-sync"));
+    await regenerateXml(ctx);
+    expect(log).toEqual(["regen-aborted-xml-newer"]);
+  });
+
+  it("removes untouched notes whose event was deleted in the XML, and only those", async () => {
+    const { app, ctx, log } = setup();
+    app.vault.seed("t.timeline", xml(ev("a") + ev("b") + ev("c") + ev("d")), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/b.md", app.vault.text("Events/b.md") + "\nmy own words\n"); // edited
+    app.vault.seed("Events/d.md", app.vault.text("Events/d.md").replace(/^timeline_hash: .*\n/m, "")); // no seal
+    app.vault.seed("Events/mine.md", note("mine")); // written by hand
+    app.vault.seed("Events/plain.md", "just text");
+    app.vault.seed("t.timeline", xml(ev("a")), 60);
+    Notice.reset();
+    await importXml(ctx);
+    const left = app.vault.getFiles().map((f) => f.path).filter((p) => p.startsWith("Events/") && !p.includes("/_"));
+    expect(left.sort()).toEqual(["Events/a.md", "Events/b.md", "Events/d.md", "Events/mine.md", "Events/plain.md"]);
+    expect(app.trashed).toEqual(["Events/c.md"]);
+    expect(Notice.messages().pop()).toContain("1 removed (deleted in the XML)");
+    expect(log).toContain("import-removed");
+  });
+
+  it("reports removals in the skip summary too, and truncates the log list", async () => {
+    const { app, ctx } = setup();
+    const many = Array.from({ length: 12 }, (_, i) => ev(`e${i}`)).join("");
+    app.vault.seed("t.timeline", xml(ev("a") + many), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/a.md", app.vault.text("Events/a.md") + "\nedited\n");
+    app.vault.seed("t.timeline", xml(ev("a")), 60);
+    Notice.reset();
+    await importXml(ctx);
+    const msg = Notice.messages().pop()!;
+    expect(msg).toContain("1 skipped (local edits), 12 removed (deleted in the XML)");
+  });
+
+  it("never empties the notes folder because the XML has no events", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev("a") + ev("b")), 50);
+    await importXml(ctx);
+    app.vault.seed("t.timeline", xml(""), 60);
+    await importXml(ctx);
+    expect(app.vault.files.has("Events/a.md")).toBe(true);
+    expect(app.vault.files.has("Events/b.md")).toBe(true);
+  });
+
+  it("copes with a note it cannot read while looking for removals", async () => {
+    const { app, ctx } = setup();
+    app.vault.seed("t.timeline", xml(ev("a")), 50);
+    await importXml(ctx);
+    app.vault.seed("Events/stuck.md", note("stuck"));
+    setLogLevel("silent" as never);
+    const read = vi.spyOn(VaultAdapter.prototype, "readText").mockImplementation(async function (this: VaultAdapter, p: string) {
+      if (p === "Events/stuck.md") throw new Error("not downloaded");
+      return app.vault.text(p);
+    });
+    await importXml(ctx);
+    read.mockRestore();
+    expect(app.vault.files.has("Events/stuck.md")).toBe(true);
+  });
+});

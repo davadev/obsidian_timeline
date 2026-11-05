@@ -17,6 +17,8 @@ import { validateAll } from "../timeline/validator";
 import { mergeNotesIntoDoc } from "../timeline/sync-engine";
 import type { EventNote, TimelineCategory } from "../timeline/model";
 import {
+  classifyExternalXml,
+  isUntouched,
   shouldSkipImportOverwrite,
   withContentHash,
   shouldAbortXmlWrite,
@@ -476,6 +478,7 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
     }
   }
 
+  const removed = await removeOrphanNotes(ctx, doc.events.map((e) => e.id));
 
   // Persist the XML mtime and fingerprint so external-change detection has a
   // baseline for both "when" and "what".
@@ -498,16 +501,58 @@ export async function importXml(ctx: CommandsContext): Promise<void> {
       }`
     );
     new Notice(
-      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits). Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See the sync log.`,
+      `Timeline import: ${created} created, ${updated} updated, ${skipped.length} skipped (local edits)${removedNote(removed)}. Use "Regenerate XML" to push, or "Wipe and reimport" to overwrite. See the sync log.`,
       10000
     );
   } else {
     new Notice(
       `Timeline import done — ${created} created, ${updated} updated, ${doc.events.length} total${
         eras.length ? `, ${eras.length} era(s)` : ""
-      }.`
+      }${removedNote(removed)}.`
     );
   }
+}
+
+function removedNote(removed: number): string {
+  return removed ? `, ${removed} removed (deleted in the XML)` : "";
+}
+
+/**
+ * Event notes whose event is gone from the XML. Left alone, the next
+ * regenerate would write them straight back and an event deleted in Timeline
+ * Project would reappear. Only notes that still carry the plugin's seal intact
+ * are removed (nobody has edited them, so nothing is lost), and they go through
+ * the trash. A XML with no events at all removes nothing: an empty or
+ * half-synced file must not empty the notes folder.
+ */
+async function removeOrphanNotes(
+  ctx: CommandsContext,
+  xmlIds: string[]
+): Promise<number> {
+  if (!xmlIds.length) return 0;
+  const s = ctx.getSettings();
+  const ids = new Set(xmlIds);
+  const orphans: string[] = [];
+  for (const f of ctx.vault.listMarkdownFiles(s.eventNotesDir, resolveBackupFolder(s))) {
+    try {
+      const raw = await ctx.vault.readText(f.path);
+      if (isUntouched(raw) !== true) continue;
+      const note = parseEventNote(raw, { path: f.path, mirrorNames: s.mirrorNames }).note;
+      if (note && !ids.has(note.event.id)) orphans.push(f.path);
+    } catch (e) {
+      logWarn("could not check note for removal", f.path, e);
+    }
+  }
+  if (!orphans.length) return 0;
+  await ctx.withSelfWrite(async () => {
+    for (const p of orphans) await ctx.vault.deleteFile(p);
+  }, orphans);
+  void ctx.appendSyncLog(
+    "import-removed",
+    s.sourceXmlPath,
+    `${orphans.length} note(s): ${orphans.slice(0, 10).join(", ")}${orphans.length > 10 ? " …" : ""}`
+  );
+  return orphans.length;
 }
 
 
@@ -602,6 +647,23 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   const baseMtime = ctx.vault.exists(s.sourceXmlPath)
     ? ctx.vault.getMtime(s.sourceXmlPath)
     : null;
+
+  // The XML moved on since our last import or write (saved in Timeline
+  // Project, or landed from another device): the notes are then older than it,
+  // and writing them over it would silently undo that edit. Import first; that
+  // updates the untouched notes and keeps the edited ones.
+  if (baseMtime != null && (await xmlChangedSinceLastSync(ctx, baseMtime))) {
+    new Notice(
+      "Timeline XML changed since the last import — refusing to overwrite it. Run \"import XML\" to pull those changes, then \"regenerate XML\" again.",
+      10000
+    );
+    void ctx.appendSyncLog(
+      "regen-aborted-xml-newer",
+      s.sourceXmlPath,
+      `mtime=${baseMtime} lastWritten=${s.lastWrittenXmlMtime}`
+    );
+    return;
+  }
 
   const { notes, metaPatch, metaStamp, errors: parseErrors } = await loadAllNotes(ctx);
   const result = validateAll(notes);
@@ -741,6 +803,29 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   if (writtenMtime != null) s.lastWrittenXmlMtime = writtenMtime;
   await ctx.saveSettings();
   new Notice(`Timeline XML regenerated — ${notes.length} events.`);
+}
+
+async function xmlChangedSinceLastSync(
+  ctx: CommandsContext,
+  mtime: number
+): Promise<boolean> {
+  const s = ctx.getSettings();
+  const first = classifyExternalXml({ mtime, lastWrittenMtime: s.lastWrittenXmlMtime });
+  if (first.kind !== "changed") return false;
+  // The timestamp moved: only different bytes count (sync clients touch files).
+  let fingerprint: string | null = null;
+  try {
+    fingerprint = contentFingerprint(await ctx.vault.readText(s.sourceXmlPath));
+  } catch {
+    return true; // cannot tell; do not overwrite
+  }
+  const verdict = classifyExternalXml({
+    mtime,
+    lastWrittenMtime: s.lastWrittenXmlMtime,
+    fingerprint,
+    lastFingerprint: s.lastSeenXmlFingerprint,
+  });
+  return verdict.kind === "changed";
 }
 
 export function openDiagnostics(ctx: CommandsContext): void {
