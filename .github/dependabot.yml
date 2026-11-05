@@ -47,6 +47,12 @@ updates:
         update-types:
           - "version-update:semver-minor"
           - "version-update:semver-major"
+      # obsidian publishes its CodeMirror peers at EXACT versions; bumping either
+      # alone breaks `npm ci` with ERESOLVE. They move by hand, with `obsidian`,
+      # re-pinned to its new peers. (A bare dependency-name ignore also mutes
+      # security updates; accepted here because they cannot be bumped alone.)
+      - dependency-name: "@codemirror/state"
+      - dependency-name: "@codemirror/view"
       # typescript-eslint declares a `typescript` ceiling, so a TypeScript major
       # can break the lint toolchain outright. Revisit when it lifts.
       - dependency-name: "typescript"

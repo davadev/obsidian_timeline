@@ -14,5 +14,5 @@ for (const [f, d] of Object.entries(c)) {
   const all = [...new Set([...un, ...br])].sort((a, b) => a - b);
   if (!all.length) continue;
   console.log(f.split("/src/")[1], "stmts:", [...un].length, "branch-lines:", [...br].length);
-  if (src) for (const l of all) console.log(`  ${l}${un.has(l) ? "S" : "B"}: ${lines[l - 1].trim().slice(0, 110)}`);
+  if (src) for (const l of all) console.log(`  ${l}${un.has(l) ? "S" : "B"}: ${(lines[l - 1] ?? "(line out of range)").trim().slice(0, 110)}`);
 }

@@ -572,12 +572,8 @@ export class InspectorView extends ItemView {
     progressInput.value = ev.progress != null ? String(ev.progress) : "";
     progressInput.addEventListener("input", () => {
       const raw = progressInput.value.trim();
-      if (!raw) {
-        ev.progress = undefined;
-      } else {
-        const n = Number(raw);
-        if (Number.isFinite(n)) ev.progress = n;
-      }
+      // A number input only ever holds a valid number, or nothing.
+      ev.progress = raw ? Number(raw) : undefined;
       this.markDirty();
     });
 
@@ -587,12 +583,7 @@ export class InspectorView extends ItemView {
     stampInput.value = ev.lastSyncedXmlMtime != null ? String(ev.lastSyncedXmlMtime) : "";
     stampInput.addEventListener("input", () => {
       const raw = stampInput.value.trim();
-      if (!raw) {
-        ev.lastSyncedXmlMtime = undefined;
-      } else {
-        const n = Number(raw);
-        if (Number.isFinite(n)) ev.lastSyncedXmlMtime = Math.trunc(n);
-      }
+      ev.lastSyncedXmlMtime = raw ? Math.trunc(Number(raw)) : undefined;
       this.markDirty();
     });
 

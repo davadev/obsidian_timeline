@@ -131,8 +131,9 @@ function nodeChildren(n: RawNode): RawNode[] {
 function textOf(children: RawNode[]): string {
   let out = "";
   for (const c of children) {
-    const t = (c as Record<string, unknown>)[TEXT_KEY];
-    if (typeof t === "string") out += t;
+    // Other child nodes (comments, elements) carry no #text of their own.
+    const t = (c as Record<string, unknown>)[TEXT_KEY] as string | undefined;
+    if (t !== undefined) out += t;
   }
   return decodeEntities(out);
 }
@@ -147,16 +148,14 @@ function deepTextOf(children: RawNode[]): string {
   for (const c of children) {
     const name = nodeName(c);
     if (name === "#text") {
-      const t = (c as Record<string, unknown>)[TEXT_KEY];
-      if (typeof t === "string") out += decodeEntities(t);
+      out += decodeEntities((c as Record<string, unknown>)[TEXT_KEY] as string);
       continue;
     }
     if (name === "#comment") continue; // comments are not text content
     if (name === "#cdata") {
       // CDATA content is verbatim, no entity decode.
       for (const item of (c as Record<string, unknown>)["#cdata"] as RawNode[]) {
-        const t = (item as Record<string, unknown>)[TEXT_KEY];
-        if (typeof t === "string") out += t;
+        out += (item as Record<string, unknown>)[TEXT_KEY] as string;
       }
       continue;
     }

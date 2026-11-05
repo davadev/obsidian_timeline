@@ -391,6 +391,15 @@ describe("regenerateXml", () => {
     expect(parseTimelineXml(app.vault.text("t.timeline")).eras?.length).toBe(1);
   });
 
+  it("applies era notes on their own, leaving the XML's categories and view alone", async () => {
+    await prime();
+    app.vault.remove("Events/_timeline/timeline-metadata.md");
+    await regenerateXml(ctx);
+    const out = parseTimelineXml(app.vault.text("t.timeline"));
+    expect(out.categories.map((c) => c.name)).toContain("War");
+    expect(out.eras?.map((e) => e.name)).toEqual(["Old era"]);
+  });
+
   it("handles a metadata note that lacks parts", async () => {
     await prime();
     const meta = "Events/_timeline/timeline-metadata.md";

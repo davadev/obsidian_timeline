@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "../testUtils/setup-obsidian-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { MarkdownView, Modal, Notice, Platform, Setting, SuggestModal, TFile, WorkspaceLeaf } from "../testUtils/obsidian";
 import TimelineXmlSyncPlugin from "../src/main";
 import { InspectorView, VIEW_TYPE_INSPECTOR } from "../src/obsidian/inspector-view";
@@ -440,11 +440,11 @@ describe("action picker and block insertion", () => {
 });
 
 describe("vault events and auto-sync", () => {
-  let regen: ReturnType<typeof vi.fn>;
+  let regen: Mock<() => void>;
   beforeEach(async () => {
     create({ firstRunCompleted: true, autoSyncDebounceMs: 100, autoSyncStartupDelayMs: 1000, sourceXmlPath: "t.timeline", eventNotesDir: "Events" });
     await plugin.onload();
-    regen = vi.fn();
+    regen = vi.fn<() => void>();
     priv.debouncedSync = regen;
     priv.loadedAt = Date.now() - 5000;
     app.vault.seed("Events/a.md", note("a"));
@@ -502,6 +502,14 @@ describe("vault events and auto-sync", () => {
     expect(priv.isSelfWrite("Events/a.md")).toBe(false);
     await plugin.withSelfWrite(async () => {});
     await settle(6000);
+    expect(priv.recentSelfWrites.size).toBe(0);
+    // An entry refreshed by a later write survives the earlier write's clean-up.
+    await plugin.withSelfWrite(async () => {}, ["Events/a.md"]);
+    await settle(3000);
+    await plugin.withSelfWrite(async () => {}, ["Events/a.md"]);
+    await settle(2200); // first clean-up fires here; the entry now expires 2.8s later
+    expect(priv.recentSelfWrites.has("Events/a.md")).toBe(true);
+    await settle(4000);
     expect(priv.recentSelfWrites.size).toBe(0);
     plugin.settings.selfWriteTtlMs = undefined as never;
     await plugin.withSelfWrite(async () => {});
@@ -572,6 +580,15 @@ describe("external XML changes", () => {
     expect(plugin.settings.lastSeenXmlFingerprint).toBeTruthy(); // baseline recorded for next time
     await vi.waitFor(() => expect(app.vault.files.has("Timeline events/_logs/timeline-sync.log")).toBe(true));
     expect(app.vault.text("Timeline events/_logs/timeline-sync.log")).toContain("external-xml-change");
+  });
+
+  it("stays quiet about a change it has already announced", async () => {
+    app.vault.seed("t.timeline", XML, 9000);
+    plugin.settings.lastSeenXmlFingerprint = "different";
+    await priv.checkExternalXml();
+    Notice.reset();
+    await priv.checkExternalXml(); // still changed, already announced
+    expect(Notice.messages()).toEqual([]);
   });
 
   it("recognises a touched-but-identical file and adopts the new mtime quietly", async () => {

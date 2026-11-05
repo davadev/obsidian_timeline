@@ -1,4 +1,4 @@
-import { XMLBuilder } from "fast-xml-parser";
+import XMLBuilder from "fast-xml-builder";
 import { toXmlString, type TimelineDate } from "./date";
 import type {
   TimelineCategory,
@@ -480,19 +480,18 @@ export function writeTimelineXml(doc: TimelineDoc): string {
 
   // Preserve top-level unknown children (anything that wasn't version/timetype/categories/events/view)
   if (doc.raw && Array.isArray(doc.raw)) {
-    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
-    if (rawRoot) {
-      const known = new Set([
-        "version",
-        "timetype",
-        "categories",
-        "events",
-        "eras",
-        "view",
-      ]);
-      for (const u of unknownChildren(rawRoot, known)) {
-        timelineChildren.push(u);
-      }
+    // A parsed tree always contains its <timeline> root.
+    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline") as RawNode;
+    const known = new Set([
+      "version",
+      "timetype",
+      "categories",
+      "events",
+      "eras",
+      "view",
+    ]);
+    for (const u of unknownChildren(rawRoot, known)) {
+      timelineChildren.push(u);
     }
   }
   if (!(doc.raw && Array.isArray(doc.raw))) {
@@ -516,11 +515,9 @@ export function writeTimelineXml(doc: TimelineDoc): string {
   }
   const timelineAttrs: Record<string, string> = {};
   if (doc.raw && Array.isArray(doc.raw)) {
-    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline");
-    if (rawRoot) {
-      const rawAttrs = ((rawRoot)[":@"] || {});
-      for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
-    }
+    const rawRoot = (doc.raw as RawNode[]).find((n) => nodeName(n) === "timeline") as RawNode;
+    const rawAttrs = rawRoot[":@"] || {};
+    for (const [k, v] of Object.entries(rawAttrs)) timelineAttrs[k] = v;
   }
   for (const [k, v] of Object.entries(doc.xmlAttrs ?? {})) timelineAttrs[k] = v;
   tree.push(elem("timeline", timelineChildren, timelineAttrs));

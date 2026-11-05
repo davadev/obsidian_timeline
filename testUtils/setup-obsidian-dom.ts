@@ -148,20 +148,27 @@ if (typeof document !== "undefined") {
   if (!globalScope.createSpan) globalScope.createSpan = make("span");
 }
 
-// Newer Node versions ship their own (experimental) localStorage global, which
-// hides jsdom's, leaving `window.localStorage` undefined. Install a minimal
-// in-memory one so storage code can be exercised the same way everywhere.
+// Some Node/jsdom combinations leave `window.localStorage` undefined (Node's
+// own experimental localStorage global hides jsdom's). Install a minimal
+// in-memory Storage so storage code runs the same way everywhere. Methods live
+// on the prototype, like the real Storage, so tests can spy on them there.
 if (typeof window !== "undefined" && !window.localStorage) {
-  const data = new Map<string, string>();
-  Object.defineProperty(window, "localStorage", {
-    configurable: true,
-    value: {
-      getItem: (k: string) => (data.has(k) ? (data.get(k) as string) : null),
-      setItem: (k: string, v: string) => void data.set(k, String(v)),
-      removeItem: (k: string) => void data.delete(k),
-      clear: () => data.clear(),
-    },
-  });
+  class MemoryStorage {
+    private data = new Map<string, string>();
+    getItem(k: string): string | null {
+      return this.data.has(k) ? (this.data.get(k) as string) : null;
+    }
+    setItem(k: string, v: string): void {
+      this.data.set(k, String(v));
+    }
+    removeItem(k: string): void {
+      this.data.delete(k);
+    }
+    clear(): void {
+      this.data.clear();
+    }
+  }
+  Object.defineProperty(window, "localStorage", { configurable: true, value: new MemoryStorage() });
 }
 
 // DocumentFragment helpers Obsidian adds (settings descriptions are built in one).

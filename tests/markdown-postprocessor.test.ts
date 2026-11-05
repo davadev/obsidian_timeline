@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "../testUtils/setup-obsidian-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { Platform } from "../testUtils/obsidian";
 import type { RenderArgs } from "../src/renderer";
 import type { RichFilterState } from "../src/renderer/filter-bar";
@@ -32,8 +32,8 @@ const doc = (events: TimelineEvent[], extra: Partial<TimelineDoc> = {}): Timelin
 let app: FakeApp;
 let settings: TimelineXmlSyncSettings;
 let cache: { getRenderDoc: ReturnType<typeof vi.fn>; getXml: ReturnType<typeof vi.fn> };
-let onEventClick: ReturnType<typeof vi.fn>;
-let onEraClick: ReturnType<typeof vi.fn>;
+let onEventClick: Mock<(id: string) => void>;
+let onEraClick: Mock<(id: string) => void>;
 let appendSyncLog: ReturnType<typeof vi.fn>;
 
 const run = async (source = "", sourcePath = "note.md") => {
@@ -56,8 +56,8 @@ beforeEach(() => {
   app = new FakeApp();
   settings = { ...DEFAULT_SETTINGS, sourceXmlPath: "t.timeline", categoryColors: { War: "red" } };
   cache = { getRenderDoc: vi.fn(async () => doc([ev("a", 0, 10, { category: "War" }), ev("b", 100, 200, { category: "Peace", labels: ["x"] })])), getXml: vi.fn(async () => doc([ev("x", 1, 2)])) };
-  onEventClick = vi.fn();
-  onEraClick = vi.fn();
+  onEventClick = vi.fn<(id: string) => void>();
+  onEraClick = vi.fn<(id: string) => void>();
   appendSyncLog = vi.fn(async () => {});
   Platform.isMobile = false;
 });
@@ -117,6 +117,9 @@ describe("rendering", () => {
     expect(el.textContent).toBe("Timeline loading…");
     observed[0].cb([{ isIntersecting: false }, { isIntersecting: true }]);
     await vi.waitFor(() => expect(el.querySelector(".fake-render")).not.toBeNull());
+    expect(observed[0].disconnect).toHaveBeenCalled();
+    observed[0].disconnect.mockClear();
+    registered.forEach((fn) => fn()); // the render child's clean-up
     expect(observed[0].disconnect).toHaveBeenCalled();
   });
 
@@ -350,6 +353,15 @@ describe("persisting filter changes into the block", () => {
     expect(app.vault.text("note.md")).toContain("mode: list");
     expect(app.vault.text("note.md")).toContain("search: q");
     expect(appendSyncLog).not.toHaveBeenCalled();
+  });
+
+  it("gives up (and logs) when the retried write is lost too", async () => {
+    await run("mode: bar");
+    app.vault.seed("note.md", fence("mode: list"));
+    vi.useFakeTimers();
+    vi.spyOn(app.vault, "process").mockRejectedValue(new Error("busy"));
+    await change(state({ search: "q" }));
+    expect(appendSyncLog).toHaveBeenCalledWith("filter-persist-failed", "note.md", expect.any(String));
   });
 
   it("accepts a block that already says what we wanted", async () => {

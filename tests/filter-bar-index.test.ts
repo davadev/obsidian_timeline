@@ -76,7 +76,7 @@ describe("app-storage with an App", () => {
   it("returns null when there is no legacy value or it cannot be read", () => {
     expect(readDevice("new", "missing")).toBeNull();
     expect(readDevice("new")).toBeNull();
-    const spy = vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+    const spy = vi.spyOn(Object.getPrototypeOf(window.localStorage), "getItem").mockImplementation(() => {
       throw new Error("denied");
     });
     expect(readDevice("new", "old")).toBeNull();
@@ -89,7 +89,7 @@ describe("app-storage with an App", () => {
     expect(app.saveLocalStorage).toHaveBeenCalledWith("k", null);
     expect(window.localStorage.getItem("old")).toBeNull();
     clearDevice("k");
-    const spy = vi.spyOn(window.localStorage, "removeItem").mockImplementation(() => {
+    const spy = vi.spyOn(Object.getPrototypeOf(window.localStorage), "removeItem").mockImplementation(() => {
       throw new Error("denied");
     });
     expect(() => clearDevice("k", "old")).not.toThrow();

@@ -1,4 +1,5 @@
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import XMLBuilder from "fast-xml-builder";
+import { XMLParser } from "fast-xml-parser";
 import { PARSER_OPTIONS, decodeEntities } from "../src/timeline/xml-parser";
 
 type RawNode = Record<string, unknown> & { ":@"?: Record<string, string> };

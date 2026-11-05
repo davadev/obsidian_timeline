@@ -615,15 +615,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
   }
 
   if (s.backupEnabled && ctx.vault.exists(s.sourceXmlPath)) {
-    const bak = await ctx.vault.backup(s.sourceXmlPath);
-    if (bak) {
-      logDebug("backup:", bak);
-      const pruned = await ctx.vault.pruneXmlBackups(
-        s.sourceXmlPath,
-        s.backupRetention
-      );
-      if (pruned > 0) logDebug(`pruned ${pruned} XML backup(s)`);
-    }
+    // The XML exists (checked above), so a backup path always comes back.
+    logDebug("backup:", await ctx.vault.backup(s.sourceXmlPath));
+    const pruned = await ctx.vault.pruneXmlBackups(
+      s.sourceXmlPath,
+      s.backupRetention
+    );
+    if (pruned > 0) logDebug(`pruned ${pruned} XML backup(s)`);
   }
 
   // Picture sync (MD → XML): for any event whose note carries an
@@ -661,12 +659,13 @@ export async function regenerateXml(ctx: CommandsContext): Promise<void> {
         `${s.eventNotesDir}/_timeline/timeline-metadata.md`,
         `metaStamp=${metaStamp} xmlMtime=${xmlNow}`
       );
-      if (metaPatch.eras) merged.eras = metaPatch.eras;
+      // A metadata patch always carries an era list (possibly empty).
+      merged.eras = metaPatch.eras;
     } else {
       merged.version = metaPatch.version ?? merged.version;
       merged.timetype = metaPatch.timetype ?? merged.timetype;
       if (metaPatch.categories) merged.categories = metaPatch.categories;
-      if (metaPatch.eras) merged.eras = metaPatch.eras;
+      merged.eras = metaPatch.eras;
       if (metaPatch.view) merged.view = metaPatch.view;
     }
   }

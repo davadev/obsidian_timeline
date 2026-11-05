@@ -336,6 +336,25 @@ describe("date behaviour", () => {
     expect(ev.isPoint).toBe(true);
   });
 
+  it("turning Show time on reveals the clock fields", async () => {
+    seedEvent();
+    await build();
+    await view.loadEvent("e1");
+    expect(dateInputs("Date")).toHaveLength(3);
+    toggle("Show time", true);
+    expect(dateInputs("Date")).toHaveLength(6);
+  });
+
+  it("toggling Fuzzy start on a period event leaves the end alone", async () => {
+    seedEvent(baseEvent({ end: { year: 1100 }, isPoint: false, period: true }));
+    await build();
+    await view.loadEvent("e1");
+    toggle("Fuzzy start", true);
+    toggle("Fuzzy end", false);
+    const ev = await saveAndRead();
+    expect(ev).toMatchObject({ fuzzyStart: true, fuzzyEnd: false });
+  });
+
   it("Show time reveals the clock fields; turning it off zeroes them", async () => {
     seedEvent(baseEvent({ start: { year: 1, month: 1, day: 1, hour: 5, minute: 6, second: 7 }, end: { year: 1, month: 1, day: 1, hour: 5, minute: 6, second: 7 } }));
     await build();
@@ -569,6 +588,7 @@ describe("era form", () => {
     const input = (label: string, n = 0) => rows.filter((r) => r.querySelector("label")?.textContent === label)[n];
     type(input("Name").querySelector("input")!, "Renamed era");
     const [sy, sm, sd] = [...input("Start").querySelectorAll<HTMLInputElement>("input")];
+    expect([sy.value, sm.value, sd.value]).toEqual(["1", "1", "1"]);
     type(sy, "5"); type(sy, ""); type(sm, "6"); type(sm, ""); type(sd, "7"); type(sd, "x");
     const [ey] = [...input("End").querySelectorAll<HTMLInputElement>("input")];
     type(ey, "600");
@@ -617,5 +637,16 @@ describe("era form", () => {
     const row = [...root().querySelectorAll(".txs-inspector-row")].find((r) => r.querySelector("label")?.textContent === "Color")!;
     expect((row.querySelectorAll("input")[0] as HTMLInputElement).value).toBe("#888888");
     expect((row.querySelectorAll("input")[1] as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("era notes without a month or day", () => {
+  it("shows empty month and day fields for an era dated by year only", async () => {
+    app.vault.seed("Events/_eras/bronze.md", "---\ntitle: Bronze\ntimeline:\n  enabled: true\n  role: era\n  era_id: bronze\n  start: {year: -3000}\n  end: {year: -1200}\n---\n");
+    settings.eventSource = "md";
+    await build();
+    await view.loadEra("bronze");
+    const row = [...root().querySelectorAll(".txs-inspector-row")].find((r) => r.querySelector("label")?.textContent === "Start")!;
+    expect([...row.querySelectorAll("input")].map((i) => i.value)).toEqual(["-3000", "", ""]);
   });
 });

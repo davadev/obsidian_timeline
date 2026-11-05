@@ -160,6 +160,10 @@ describe("parseTimelineXml: events", () => {
     expect(ev.xmlExtraNodes).toHaveLength(1);
   });
 
+  it("ignores child elements and comments when reading a simple text field", () => {
+    expect(first(events(event("<category>a<b>x</b><!--c-->d</category>"))).category).toBe("ad");
+  });
+
   it("falls back to the first hyperlink's raw text, and gives no labels for an empty element", () => {
     const ev = first(events(event("<hyperlink> </hyperlink><labels></labels>")));
     expect(ev.hyperlinks).toBeUndefined();

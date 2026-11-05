@@ -192,7 +192,7 @@ export class WindowedChart {
       ? windowFor(clampZoomFor(initialZoom ?? 1, next), midpoint(next), next)
       : clampWindow(this.window, next);
 
-    this.rebuild(true);
+    this.rebuild();
   }
 
   /** Current zoom, for the caller's readout. */
@@ -239,7 +239,7 @@ export class WindowedChart {
       const centre = dateUnderPointer + (0.5 - at / this.paneW) * days;
 
       this.window = windowFor(next.zoom, centre, this.span);
-      this.rebuild(true);
+      this.rebuild();
     });
   }
 
@@ -250,7 +250,7 @@ export class WindowedChart {
       midpoint(this.span),
       this.span
     );
-    this.rebuild(true);
+    this.rebuild();
   }
 
   destroy(): void {
@@ -263,7 +263,7 @@ export class WindowedChart {
   // ---------------------------------------------------------------- internals
 
   /** Recompute the page and spacer, then draw the tiles the viewport needs. */
-  private rebuild(syncScroll: boolean): void {
+  private rebuild(): void {
     this.paneW = this.measurePane();
     this.page = pageFor(this.window, this.span, this.paneW);
 
@@ -275,16 +275,14 @@ export class WindowedChart {
     if (this.vertical) this.spacer.setCssProps({ height: along, width: across });
     else this.spacer.setCssProps({ width: along, height: across });
 
-    if (syncScroll) {
-      const at = windowToScroll(this.window, this.page, this.paneW);
-      this.syncing = true;
-      if (this.vertical) this.scroller.scrollTop = at;
-      else this.scroller.scrollLeft = at;
-      // The scroll event this triggers must not be read as the user panning.
-      window.setTimeout(() => (this.syncing = false), 0);
-      // Tiles are indexed against the page, so a new page invalidates them.
-      this.dropAllTiles();
-    }
+    const at = windowToScroll(this.window, this.page, this.paneW);
+    this.syncing = true;
+    if (this.vertical) this.scroller.scrollTop = at;
+    else this.scroller.scrollLeft = at;
+    // The scroll event this triggers must not be read as the user panning.
+    window.setTimeout(() => (this.syncing = false), 0);
+    // Tiles are indexed against the page, so a new page invalidates them.
+    this.dropAllTiles();
 
     this.paintTiles();
     this.paintEdgeLabels();
@@ -403,7 +401,7 @@ export class WindowedChart {
         // Ran off the end of a paged scroller: re-anchor around what is on
         // screen. The dates under the viewport stay put; only the scrollbar
         // jumps, which is the price of an hour-deep zoom on a long timeline.
-        this.rebuild(true);
+        this.rebuild();
         return;
       }
 
@@ -422,7 +420,7 @@ export class WindowedChart {
     const zoom = this.zoom;
     this.paneW = next;
     this.window = windowFor(zoom, midpoint(this.window), this.span);
-    this.rebuild(true);
+    this.rebuild();
   }
 
   /**

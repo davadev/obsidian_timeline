@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "../testUtils/setup-obsidian-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { Platform, WorkspaceLeaf } from "../testUtils/obsidian";
 import { TimelineView, VIEW_TYPE_TIMELINE } from "../src/obsidian/timeline-view";
 import { DEFAULT_SETTINGS, type TimelineXmlSyncSettings } from "../src/settings";
@@ -21,8 +21,8 @@ const DOC: TimelineDoc = {
 let settings: TimelineXmlSyncSettings;
 let doc: TimelineDoc | Error;
 let cache: { getRenderDoc: ReturnType<typeof vi.fn>; invalidateXml: ReturnType<typeof vi.fn>; invalidateMdDoc: ReturnType<typeof vi.fn> };
-let onEventClick: ReturnType<typeof vi.fn>;
-let onEraClick: ReturnType<typeof vi.fn>;
+let onEventClick: Mock<(id: string) => void>;
+let onEraClick: Mock<(id: string) => void>;
 
 const open = async () => {
   const view = new TimelineView(new WorkspaceLeaf() as never, {
@@ -52,8 +52,8 @@ beforeEach(() => {
     invalidateXml: vi.fn(),
     invalidateMdDoc: vi.fn(),
   };
-  onEventClick = vi.fn();
-  onEraClick = vi.fn();
+  onEventClick = vi.fn<(id: string) => void>();
+  onEraClick = vi.fn<(id: string) => void>();
   Platform.isMobile = false;
 });
 afterEach(() => {
