@@ -12,7 +12,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc -noEmit -skipLibCheck",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "check:dead-code": "knip --production && knip --no-config-hints --include dependencies,unlisted,binaries,unresolved",
+    "lint:css": "stylelint styles.css",
+    "lint:deps": "eslint -c eslint.deps.config.mjs package.json --max-warnings=0",
+    "lint:cloud-parity": "node scripts/lint-cloud-parity.mjs"
   },
   "allowScripts": {
     "esbuild": false,
@@ -32,10 +36,15 @@
     "@vitest/coverage-v8": "1.6.1",
     "esbuild": "^0.20.0",
     "eslint": "^9.39.5",
+    "eslint-plugin-depend": "1.5.0",
     "eslint-plugin-obsidianmd": "^0.4.2",
     "fast-xml-parser": "4.5.6",
     "jsdom": "^29.1.1",
+    "jsonc-eslint-parser": "3.3.0",
+    "knip": "6.42.1",
     "obsidian": "^1.13.1",
+    "stylelint": "17.16.0",
+    "stylelint-no-unsupported-browser-features": "8.1.2",
     "tslib": "^2.6.0",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.70.0",

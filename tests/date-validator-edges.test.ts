@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   compare,
-  equals,
   fractionalPosition,
   parseFrontmatterDate,
   parseXmlDate,
@@ -20,7 +19,6 @@ describe("date compare", () => {
     expect(compare({ ...base, hour: 13 }, base)).toBeGreaterThan(0);
     expect(compare({ ...base, minute: 29 }, base)).toBeLessThan(0);
     expect(compare({ ...base, second: 31 }, base)).toBeGreaterThan(0);
-    expect(equals({ year: 5 }, { year: 5, month: 1, day: 1 })).toBe(true);
   });
 });
 

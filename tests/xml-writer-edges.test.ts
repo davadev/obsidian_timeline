@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineDoc, TimelineEvent } from "../src/timeline/model";
 import { parseTimelineXml } from "../src/timeline/xml-parser";
-import { canonicalizeXml, writeTimelineXml } from "../src/timeline/xml-writer";
+import { writeTimelineXml } from "../src/timeline/xml-writer";
+import { canonicalizeXml } from "../testUtils/canonical-xml";
 
 const d = (year: number, month = 1, day = 1) => ({ year, month, day });
 const ev = (extra: Partial<TimelineEvent> = {}): TimelineEvent => ({

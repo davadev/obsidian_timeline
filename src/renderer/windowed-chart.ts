@@ -13,7 +13,6 @@ import { labelFontSpec, measurerFor, type Measure } from "./text-metrics";
 import type { Orientation } from "./render-options";
 import {
   PinchTracker,
-  ZOOM_STEP,
   wheelZoomFactor,
   type PinchPoint,
 } from "./zoom-math";
@@ -684,6 +683,3 @@ export class WindowedChart {
 function midpoint(range: { from: number; to: number }): number {
   return (range.from + range.to) / 2;
 }
-
-/** One press of +/-, exported so the caller's buttons agree with the pinch. */
-export const CHART_ZOOM_STEP = ZOOM_STEP;

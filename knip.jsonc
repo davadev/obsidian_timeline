@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Dead-code gate (`npm run check:dead-code`). The `!` suffix marks what
+  // ships: `knip --production` walks from src/main.ts and does NOT count tests
+  // as users, so code that only a test still calls is reported. Delete it; do
+  // not add an ignore to make this pass (a deliberate test seam gets a
+  // `@public` JSDoc tag instead).
+  "entry": ["src/main.ts!"],
+  "project": ["src/**/*.ts!"],
+  // An export that is only used inside its own file is not "unused".
+  "ignoreExportsUsedInFile": true
+}

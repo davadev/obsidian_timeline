@@ -14,8 +14,6 @@ import {
   filterErasToViewport,
 } from "../timeline/era-utils";
 
-export { DEFAULT_RENDER_OPTIONS, type RenderOptions } from "./render-options";
-
 export interface RenderArgs {
   container: HTMLElement;
   events: TimelineEvent[];

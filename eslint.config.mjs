@@ -37,12 +37,33 @@ export default tseslint.config(
       },
     },
   },
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
   ...obsidianmd.configs.recommended,
   {
     files: ["src/**/*.ts"],
     rules: {
+      // The auto-review marks bare `any` as an Error.
       "@typescript-eslint/no-explicit-any": "error",
+
+      // The auto-review surfaces these as Warnings (non-blocking there, blocking
+      // here via --max-warnings 0). Declaring them as `warn` is what keeps
+      // `npm run lint:cloud-parity` at zero ERRORS in the review's type-blind view.
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-member-access": "warn",
+      "@typescript-eslint/no-unsafe-argument": "warn",
+      "@typescript-eslint/no-unsafe-return": "warn",
+      "@typescript-eslint/no-unsafe-call": "warn",
+      "@typescript-eslint/no-floating-promises": "warn",
+      "@typescript-eslint/no-misused-promises": "warn",
+      "@typescript-eslint/no-deprecated": "warn",
+      // The rule behind the "'X' is an 'error' type that acts as 'any'" rows
+      // that head the review's report (the scanner could not resolve a type).
+      "@typescript-eslint/no-redundant-type-constituents": "warn",
+      "@typescript-eslint/no-base-to-string": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
+      "@typescript-eslint/unbound-method": "off",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
       // Custom arrays REPLACE the plugin's defaults (see
       // sentenceCaseUtil.js: `options?.acronyms ?? DEFAULT_ACRONYMS`), so this
       // is the full list, not an addition to one.

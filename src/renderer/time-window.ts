@@ -1,4 +1,4 @@
-import { fromJulian, toJulian, type TimelineDate } from "../timeline/date";
+import { toJulian, type TimelineDate } from "../timeline/date";
 
 /**
  * Maps between a time window, a scroll position and the tiles that get drawn.
@@ -228,9 +228,4 @@ export function tileRange(
     if (i >= 0 && i <= last) out.push(i);
   }
   return out;
-}
-
-/** Dates for a window, for callers that need them (axis, era filtering). */
-export function windowDates(w: TimeWindow): { start: TimelineDate; end: TimelineDate } {
-  return { start: fromJulian(w.from), end: fromJulian(w.to) };
 }

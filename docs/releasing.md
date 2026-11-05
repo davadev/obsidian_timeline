@@ -25,11 +25,13 @@ Consequences:
 
 | File | Role |
 |---|---|
-| `.github/workflows/ci.yml` | Every push to `main` and every PR: lint → typecheck → build → test → release guard (no tag). |
+| `.github/workflows/ci.yml` | Every push to `main` and every PR: lint, stylelint, dependency lint, typecheck, build, tests at 100 % coverage, dead-code check, release guard (`--strict`, no tag), the review's type-blind lint. A separate `store-listing` job checks `main` never advertises a version without a published release. Make `check` and `store-listing` required status checks. |
 | `.github/workflows/release.yml` | Fires on a SemVer tag: checks the tag is on `main` (stable: or a `release/*` branch), stamps prereleases, runs the same gate, validates artifacts, attests provenance, publishes. Serialised by a static concurrency group. |
 | `.github/dependabot.yml`, `.npmrc` | Supply-chain policy, see below. `check-release` fails if either loses its 14-day age setting. |
+| `scripts/check-store-listing.mjs` | CI job `store-listing`: when `manifest.version` changes it needs a published, non-prerelease release with all three assets and a `versions.json` entry. Red on the stable release PR until the tag has published; re-run after. |
+| `scripts/lib/*.mjs` | The guard's pure predicates (`releaseChecks`, `supplyChainChecks`), unit-tested. |
 | `scripts/stamp-prerelease.mjs` | For suffixed tags only: rewrites version metadata in the **working tree** so assets carry the beta version while the committed manifest stays on the current stable. Nothing is committed. |
-| `scripts/check-release.mjs` | The guard. With `--tag`, manifest must equal the tag **exactly** (suffix included). Without one, the committed manifest must be plain `X.Y.Z`. Also checks manifest/package/lock/`versions.json` agreement, that the three assets are non-empty, and the supply-chain policy (`scripts/lib/supplyChainChecks.mjs`). |
+| `scripts/check-release.mjs` | The guard. With `--tag`, manifest must equal the tag **exactly** (suffix included). Without one, the committed manifest must be plain `X.Y.Z`. Also checks manifest/package/lock/`versions.json` agreement, the community-store manifest rules (see `docs/community-plugin-submission.md`), mobile-safe imports, that the three assets are non-empty, that `release.yml` still attests them, and the supply-chain policy. `--strict` turns warnings into failures (the release workflow uses it). |
 | `eslint.config.mjs` | `eslint-plugin-obsidianmd` at the severities used by the community-plugin review. `npm run lint` runs with `--max-warnings 0`, so a release is blocked by any error **or** warning. |
 
 Tags are **bare** — `0.10.0`, not `v0.10.0`. (Tags up to `v0.8.11` predate this
@@ -129,6 +131,22 @@ never touched:
 ```bash
 git push origin :0.10.0 && git tag -d 0.10.0
 ```
+
+## Gate
+
+All of these must pass before a tag; CI runs them on every PR and the release
+workflow runs them again on a clean runner:
+
+```bash
+npm run lint && npm run lint:css && npm run lint:deps && npm run typecheck \
+  && npm run build && npm run test:cov && npm run check:dead-code \
+  && npm run check-release -- --strict && npm run lint:cloud-parity
+```
+
+`test:cov` fails under 100 % on statements, branches, functions and lines.
+Unreachable code is deleted, never ignored (`tests/coverage-gate.test.ts` pins
+this). `lint:cloud-parity` renames `node_modules/obsidian` while it runs; if a
+run is ever killed, `npm ci` repairs it.
 
 ## Supply chain
 

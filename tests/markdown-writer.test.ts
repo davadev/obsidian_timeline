@@ -1,8 +1,8 @@
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import { parseEventNote } from "../src/timeline/markdown-parser";
-import { renderEventMarkdown, renderExistingEventNote } from "../src/timeline/markdown-writer";
-import type { EventNote, TimelineEvent } from "../src/timeline/model";
+import { renderEventMarkdown } from "../src/timeline/markdown-writer";
+import type { TimelineEvent } from "../src/timeline/model";
 
 const base: TimelineEvent = { id: "e1", text: "Event", start: { year: 1 }, end: { year: 2 }, isPoint: false };
 const opts = { sourceXmlPath: "t.timeline", timelineId: "tl" };
@@ -88,37 +88,5 @@ describe("renderEventMarkdown", () => {
     const ev: TimelineEvent = { ...base, category: "War", description: "desc", labels: ["a"], progress: 30 };
     const parsed = parseEventNote(renderEventMarkdown(ev, opts), { path: "e.md" }).note!.event;
     expect(parsed).toMatchObject({ id: "e1", text: "Event", category: "War", description: "desc", labels: ["a"], progress: 30 });
-  });
-});
-
-describe("renderExistingEventNote", () => {
-  const note: EventNote = {
-    event: { ...base, lastSyncedXmlMtime: undefined },
-    location: { path: "e.md" },
-    extraFrontmatter: { custom: "keep" },
-    body: "existing body",
-    mirrors: {},
-    lastSyncedXmlMtime: 11,
-  };
-
-  it("preserves body and extra frontmatter and stamps the note's own mtime by default", () => {
-    const text = renderExistingEventNote(note, "t.timeline", "tl");
-    expect(text.endsWith("\n\nexisting body")).toBe(true);
-    const fm = frontOf(text);
-    expect(fm.custom).toBe("keep");
-    expect(fm.timeline.last_synced_xml_mtime).toBe(11);
-  });
-
-  it("prefers an explicit source mtime and honours custom mirror names", () => {
-    const fm = frontOf(
-      renderExistingEventNote(note, "t.timeline", "tl", { start: "s", end: "e", category: "c", eventId: "i", render: "r", role: "ro" }, 22),
-    );
-    expect(fm.timeline.last_synced_xml_mtime).toBe(22);
-    expect(fm.s).toBe("0001-01-01");
-  });
-
-  it("stamps nothing when neither the call nor the note has an mtime", () => {
-    const fm = frontOf(renderExistingEventNote({ ...note, lastSyncedXmlMtime: undefined }, "t.timeline", "tl"));
-    expect(fm.timeline.last_synced_xml_mtime).toBeUndefined();
   });
 });

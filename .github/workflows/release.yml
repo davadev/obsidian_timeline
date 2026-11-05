@@ -109,6 +109,10 @@ jobs:
 
       - name: Run lint (Obsidian-parity)
         run: npm run lint
+      - name: Lint styles.css (stylelint, as Obsidian's review does)
+        run: npm run lint:css
+      - name: Lint package.json for dependencies the review wants replaced
+        run: npm run lint:deps
       - name: Typecheck
         run: npm run typecheck
 
@@ -117,9 +121,12 @@ jobs:
 
       - name: Run tests with coverage
         run: npm run test:cov
+      - name: Check for dead code (knip)
+        run: npm run check:dead-code
 
       - name: Run release guard
-        run: npm run check-release -- --tag "${GITHUB_REF_NAME}"
+        # --strict: any WARN finding blocks the release.
+        run: npm run check-release -- --tag "${GITHUB_REF_NAME}" --strict
 
       # Last gate before anything becomes externally visible. `check-release`
       # already asserts manifest.version === tag, but this re-checks the three

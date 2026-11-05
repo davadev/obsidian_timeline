@@ -9,7 +9,8 @@ import {
   renderRichFilterBar,
   type RichFilterState,
 } from "../src/renderer/filter-bar";
-import { DEFAULT_RENDER_OPTIONS, renderTimeline } from "../src/renderer";
+import { renderTimeline } from "../src/renderer";
+import { DEFAULT_RENDER_OPTIONS } from "../src/renderer/render-options";
 import { clearDevice, initDeviceStore, readDevice, writeDevice } from "../src/obsidian/app-storage";
 import { effectiveAutoSync, getDeviceSyncMode, setDeviceSyncMode } from "../src/obsidian/device-prefs";
 import type { TimelineEvent } from "../src/timeline/model";

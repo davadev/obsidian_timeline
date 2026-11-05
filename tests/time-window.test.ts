@@ -12,7 +12,6 @@ import {
   spanOf,
   tileAt,
   tileRange,
-  windowDates,
   windowDays,
   windowFor,
   windowToScroll,
@@ -57,14 +56,6 @@ describe("zoom and window", () => {
     const clamped = clampWindow(w, narrow);
     expect(clamped.from).toBeGreaterThanOrEqual(narrow.from);
     expect(clamped.to).toBeLessThanOrEqual(narrow.to + 1e-6);
-  });
-
-  it("reports dates for the window, including time of day at depth", () => {
-    const day = windowFor(maxZoomFor(SPAN) / 24, toJulian({ year: 1969, month: 7, day: 20 }), SPAN);
-    const { start } = windowDates(day);
-    expect(start.year).toBe(1969);
-    expect(start.month).toBe(7);
-    expect(typeof start.hour).toBe("number");
   });
 });
 

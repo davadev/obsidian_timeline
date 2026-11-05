@@ -7,7 +7,7 @@
 //   node scripts/check-release.mjs --tag 0.10.0     # stable release
 //   node scripts/check-release.mjs --tag 0.10.0-beta.1 --artifacts
 import { spawnSync } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -18,6 +18,13 @@ import {
   checkNpmrc,
   npmSupportsMinReleaseAge,
 } from "./lib/supplyChainChecks.mjs";
+import {
+  attestStepProblem,
+  lintScriptIsStrict,
+  manifestFindings,
+  nodeOnlyImports,
+  usesCssPrefix,
+} from "./lib/releaseChecks.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = async (f) => JSON.parse(await readFile(join(ROOT, f), "utf8"));
@@ -169,7 +176,56 @@ check(
   "dependency tree is internally consistent",
 );
 
+// Community-store submission rules (manifest id/name/description, mobile-safe
+// imports, assets) live in scripts/lib/releaseChecks.mjs so they are tested.
+const warnings = [];
+for (const f of manifestFindings(manifest)) {
+  if (f.level === "fail") errors.push(`${f.name}${f.detail ? `: ${f.detail}` : ""}`);
+  else if (f.level === "warn") warnings.push(`${f.name}${f.detail ? `: ${f.detail}` : ""}`);
+  else ok.push(f.name);
+}
+
+const sourceFiles = async (dir) => {
+  const out = [];
+  for (const e of await readdir(join(ROOT, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) out.push(...(await sourceFiles(rel)));
+    else if (rel.endsWith(".ts")) out.push(rel);
+  }
+  return out;
+};
+const sources = await sourceFiles("src");
+const sourceText = (await Promise.all(sources.map((f) => readFile(join(ROOT, f), "utf8")))).join("\n");
+const nodeOnly = [...new Set(nodeOnlyImports(sourceText))];
+check(
+  manifest.isDesktopOnly === true || nodeOnly.length === 0,
+  `source imports Node-only modules (${nodeOnly.join(", ")}) but manifest.isDesktopOnly is not true; they crash on Obsidian mobile`,
+  "no Node-only imports (works on mobile)",
+);
+check(
+  !/\/(?:Users|home)\/[a-zA-Z][\w.-]*|[A-Za-z]:\\Users\\[a-zA-Z]/.test(sourceText),
+  "source contains a hardcoded user path",
+  "no hardcoded user paths",
+);
+for (const f of ["README.md", "LICENSE", "versions.json"]) {
+  check((await stat(join(ROOT, f)).catch(() => null))?.size > 0, `${f} is missing or empty`, `${f} present`);
+}
+check(
+  !usesCssPrefix(sourceText, "txs") || (await stat(join(ROOT, "styles.css")).catch(() => null))?.size > 0,
+  "source uses txs- classes but styles.css is missing",
+  "styles.css present where the source needs it",
+);
+check(lintScriptIsStrict(pkg.scripts?.lint), "`npm run lint` must pass --max-warnings 0", "lint fails on any warning");
+const releaseYml = await readFile(join(ROOT, ".github/workflows/release.yml"), "utf8").catch(() => "");
+const attest = attestStepProblem(releaseYml);
+check(attest.ok, `release.yml: ${attest.problem}`, "release.yml signs main.js, manifest.json and styles.css");
+
 for (const line of ok) console.log(`  ok  ${line}`);
+const strict = args.includes("--strict");
+for (const line of warnings) {
+  if (strict) errors.push(`${line} (warning, blocking under --strict)`);
+  else console.log(`WARN  ${line}`);
+}
 if (errors.length) {
   for (const line of errors) console.error(`FAIL  ${line}`);
   console.error(`\ncheck-release: ${errors.length} problem(s)`);

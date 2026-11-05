@@ -1,11 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   compare,
-  equals,
   parseXmlDate,
   parseFrontmatterDate,
-  pointInRange,
-  rangesOverlap,
   toFrontmatterString,
   toXmlString,
 } from "../src/timeline/date";
@@ -40,7 +37,6 @@ describe("TimelineDate", () => {
     expect(compare(b, c)).toBeLessThan(0);
     expect(compare(a, c)).toBeLessThan(0);
     expect(compare(c, a)).toBeGreaterThan(0);
-    expect(equals(a, a)).toBe(true);
   });
 
   it("round-trips XML date strings", () => {
@@ -57,14 +53,6 @@ describe("TimelineDate", () => {
     expect(toFrontmatterString({ year: 36, month: 7, day: 30 })).toBe(
       "0036-07-30"
     );
-  });
-
-  it("detects overlaps for ranges and points", () => {
-    const vp = { start: { year: 0 }, end: { year: 100 } };
-    expect(rangesOverlap({ year: -50 }, { year: 50 }, vp.start, vp.end)).toBe(true);
-    expect(rangesOverlap({ year: 200 }, { year: 300 }, vp.start, vp.end)).toBe(false);
-    expect(pointInRange({ year: 33 }, vp.start, vp.end)).toBe(true);
-    expect(pointInRange({ year: 500 }, vp.start, vp.end)).toBe(false);
   });
 
   it("parses date-only frontmatter strings", () => {
