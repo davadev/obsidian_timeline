@@ -438,13 +438,10 @@ function inlineDateInputs(
   const fire = () => {
     const yv = yIn.value.trim();
     if (yv === "") return onChange(null);
+    // The inputs are type="number", so a non-blank value is always numeric.
     const year = parseInt(yv, 10);
-    if (!Number.isFinite(year)) return onChange(null);
-    const intOf = (el: HTMLInputElement | null) => {
-      if (!el || el.value.trim() === "") return undefined;
-      const n = parseInt(el.value, 10);
-      return Number.isFinite(n) ? n : undefined;
-    };
+    const intOf = (el: HTMLInputElement | null) =>
+      !el || el.value.trim() === "" ? undefined : parseInt(el.value, 10);
     onChange({
       year,
       month: intOf(moIn),

@@ -94,7 +94,6 @@ export function windowFor(
   let from = centre - half;
   if (from < span.from) from = span.from;
   if (from + days > span.to) from = span.to - days;
-  if (from < span.from) from = span.from; // window wider than the span
   return { from, to: from + days };
 }
 
@@ -130,7 +129,6 @@ export function pageFor(
   let from = centre - pageDays / 2;
   if (from < span.from) from = span.from;
   if (from + pageDays > span.to) from = span.to - pageDays;
-  if (from < span.from) from = span.from;
   return { from, to: from + pageDays, px: maxPx };
 }
 

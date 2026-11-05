@@ -113,9 +113,6 @@ export function renderTimeline(args: RenderArgs): void {
         shortEventLabels: args.options.shortEventLabels,
       });
       if (effViewport) chart.setData(events, effEras ?? [], effViewport, effectiveZoom);
-    } else if (chart) {
-      chart.destroy();
-      chart = null;
     }
 
     listHost.empty();

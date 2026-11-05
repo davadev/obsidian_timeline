@@ -10,8 +10,26 @@ type CreateOpts = {
   text?: string;
   cls?: string;
   href?: string;
+  type?: string;
+  placeholder?: string;
+  value?: string;
   attr?: Record<string, string>;
 };
+
+/** The DomElementInfo properties Obsidian copies onto the new element. */
+function applyOpts(el: HTMLElement, opts?: CreateOpts): void {
+  if (!opts) return;
+  if (opts.text != null) el.textContent = opts.text;
+  if (opts.cls) el.className = opts.cls;
+  if (opts.href) el.setAttribute("href", opts.href);
+  const input = el as HTMLInputElement;
+  if (opts.type) input.type = opts.type;
+  if (opts.placeholder) input.placeholder = opts.placeholder;
+  if (opts.value != null) input.value = opts.value;
+  if (opts.attr) {
+    for (const k of Object.keys(opts.attr)) el.setAttribute(k, opts.attr[k]);
+  }
+}
 
 const proto = (typeof HTMLElement !== "undefined" ? HTMLElement.prototype : null) as any;
 const elProto = (typeof Element !== "undefined" ? Element.prototype : null) as any;
@@ -25,12 +43,7 @@ if (proto) {
   if (!proto.createEl) {
     proto.createEl = function (tag: string, opts?: CreateOpts): HTMLElement {
       const el = document.createElement(tag);
-      if (opts?.text != null) el.textContent = opts.text;
-      if (opts?.cls) el.className = opts.cls;
-      if (opts?.href) el.setAttribute("href", opts.href);
-      if (opts?.attr) {
-        for (const k of Object.keys(opts.attr)) el.setAttribute(k, opts.attr[k]);
-      }
+      applyOpts(el, opts);
       this.appendChild(el);
       return el;
     };
@@ -123,8 +136,30 @@ if (typeof document !== "undefined" && !globalScope.createEl) {
     // getContext instead: `text-metrics` treats that as "cannot measure" and
     // falls back to its character estimate, which is what jsdom can support.
     const el = document.createElement(tag === "canvas" ? "div" : tag);
-    if (opts?.text != null) el.textContent = opts.text;
-    if (opts?.cls) el.className = opts.cls;
+    applyOpts(el, opts);
     return el;
   };
+}
+
+if (typeof document !== "undefined") {
+  const make = (tag: string) => (opts?: CreateOpts): HTMLElement =>
+    (globalScope.createEl as (t: string, o?: CreateOpts) => HTMLElement)(tag, opts);
+  if (!globalScope.createDiv) globalScope.createDiv = make("div");
+  if (!globalScope.createSpan) globalScope.createSpan = make("span");
+}
+
+// Newer Node versions ship their own (experimental) localStorage global, which
+// hides jsdom's, leaving `window.localStorage` undefined. Install a minimal
+// in-memory one so storage code can be exercised the same way everywhere.
+if (typeof window !== "undefined" && !window.localStorage) {
+  const data = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (k: string) => (data.has(k) ? (data.get(k) as string) : null),
+      setItem: (k: string, v: string) => void data.set(k, String(v)),
+      removeItem: (k: string) => void data.delete(k),
+      clear: () => data.clear(),
+    },
+  });
 }

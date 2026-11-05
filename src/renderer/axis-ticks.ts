@@ -141,12 +141,12 @@ function* boundaries(
 
   if (step.unit === "year") {
     const first = alignDown(start.year, step.count);
-    for (let y = first; ; y += step.count) {
+    const startJ = toJulian(start);
+    for (let y = first; toJulian({ year: y, month: 1, day: 1 }) <= endJ; y += step.count) {
       const d: TimelineDate = { year: y, month: 1, day: 1 };
-      const j = toJulian(d);
-      if (j > endJ) return;
-      if (j >= toJulian(start)) yield d;
+      if (toJulian(d) >= startJ) yield d;
     }
+    return;
   }
 
   if (step.unit === "month") {
@@ -172,13 +172,14 @@ function* boundaries(
     const stepDay = step.count / 24;
     // Align to midnight so the marks land on 00:00, 06:00, 12:00 ...
     const midnight = Math.floor(startJ + 0.5) - 0.5;
-    for (let j = midnight; ; j += stepDay) {
-      if (j > endJ) return;
+    for (let j = midnight; j <= endJ; j += stepDay) {
       if (j >= startJ) yield fromJulian(j);
     }
+    return;
   }
 
-  if (step.unit === "day") {
+  // The remaining unit is "day".
+  {
     // Walk real days so month lengths and leap years look after themselves.
     let y = start.year;
     let m = start.month ?? 1;
