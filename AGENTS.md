@@ -47,6 +47,7 @@ Typical flow: `feature-done` (before the PR) -> merge -> `release-beta` -> later
 - **Every release starts as a prerelease** (`X.Y.Z-beta.N`, bare SemVer, no `v`). Stable only on explicit instruction. `main`'s `manifest.json` must never advertise a version with no published release.
 - Releases are tag-driven (`.github/workflows/release.yml`); never `gh release create` by hand. Manual: `docs/releasing.md`.
 - No dependency younger than 14 days (`.npmrc` + Dependabot cooldown); Actions pinned to SHAs; bundled packages pinned exactly. See `dependency-update`.
+- **Dependabot gate.** Before every beta and every stable run the Dependabot gate in `dependency-update`: fold every open Dependabot PR into the next beta; stable needs 0 open alerts (turn alerts on if the API says they are disabled).
 
 ## Reference
 

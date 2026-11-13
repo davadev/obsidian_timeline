@@ -7,6 +7,8 @@ description: Promote a tested beta to stable X.Y.Z. ONLY on the user's explicit 
 
 Only run after the user explicitly says so. The stable release must be **published before `main` advertises it**.
 
+**Alert gate.** Run the Dependabot gate in `dependency-update` before tagging: **0 open alerts**, or the user has been told which remain and why. Dependabot PRs that opened after the tested beta go into the next beta, not into this stable.
+
 ## Steps
 1. `git checkout -b release/X.Y.Z main`.
 2. Bump `manifest.json`, `package.json`, `versions.json` (`"X.Y.Z": "1.13.0"`) to `X.Y.Z`; `npm install --package-lock-only` (else CI's version-skew check fails).
