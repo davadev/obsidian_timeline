@@ -1,0 +1,22 @@
+{
+  "dryRun": true,
+  "enforcement": "workflow",
+  "ciWorkflow": "ci.yml",
+  "requiredChecks": [
+    "check",
+    "store-listing"
+  ],
+  "buildCommand": "npm run build",
+  "artifacts": [
+    "main.js"
+  ],
+  "nodeVersionFile": null,
+  "nodeVersion": 24,
+  "denylist": [
+    "esbuild",
+    "@codemirror/*",
+    "obsidian",
+    "typescript",
+    "@types/node"
+  ]
+}
