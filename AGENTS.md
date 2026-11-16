@@ -13,6 +13,7 @@ npm run lint:css            # stylelint on styles.css (chrome 138 target, no :ha
 npm run lint:deps           # package.json: no dependency the review wants replaced
 npm run lint:cloud-parity   # the review's type-blind view: must report 0 errors
 npm run check:dead-code     # knip --production: unused code (tests do not count as users)
+npm run sync                # fetch, fast-forward a clean main, `npm ci` when package-lock.json moved, report what the lane did
 npm run check-release       # release validator, REQUIRED before tagging
                             #   -- --tag X.Y.Z | --with-build | --with-lint | --strict
 ```
@@ -47,7 +48,8 @@ Typical flow: `feature-done` (before the PR) -> merge -> `release-beta` -> later
 - **Every release starts as a prerelease** (`X.Y.Z-beta.N`, bare SemVer, no `v`). Stable only on explicit instruction. `main`'s `manifest.json` must never advertise a version with no published release.
 - Releases are tag-driven (`.github/workflows/release.yml`); never `gh release create` by hand. Manual: `docs/releasing.md`.
 - No dependency younger than 14 days (`.npmrc` + Dependabot cooldown); Actions pinned to SHAs; bundled packages pinned exactly. See `dependency-update`.
-- **Dependabot gate.** Before every beta and every stable run the Dependabot gate in `dependency-update`: fold every open Dependabot PR into the next beta; stable needs 0 open alerts (turn alerts on if the API says they are disabled).
+- **GitHub changes main without you.** The Dependabot auto-merge lane merges dependency bumps that leave `main.js` byte-identical (see `dependency-update`, "Auto-merge lane"), so a checkout is stale by default. A SessionStart hook runs `npm run sync`; run it yourself before creating a branch, before a PR and before a tag, and act on every `NEEDS A HUMAN` line. Never work from a `node_modules` that does not match `package-lock.json`.
+- **Dependabot gate.** Before every beta and every stable run the Dependabot gate in `dependency-update`. An open Dependabot PR now means the lane left it for a human: fold it into the next beta. A `needs-beta` issue is a security fix that changes shipped bytes: cut a beta. Stable needs 0 open alerts (turn alerts on if the API says they are disabled).
 
 ## Reference
 

@@ -8,6 +8,7 @@
 //   node scripts/check-release.mjs --tag 0.10.0-beta.1 --artifacts
 //   node scripts/check-release.mjs --with-lint | --with-build | --strict
 import { spawnSync } from "node:child_process";
+import { checkAutomergeLane } from "./lib/automergeLane.mjs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,6 +149,10 @@ for (const file of ARTIFACTS) {
 // Supply chain: a version younger than MIN_AGE_DAYS is never adopted, and no
 // dependency runs install scripts. docs/releasing.md and the playbook explain why.
 const readText = async (f) => readFile(join(ROOT, f), "utf8").catch(() => undefined);
+// The auto-merge lane (.github/workflows/dependabot-automerge.yml) holds a write token: its config must parse and its
+// workflow must start from no permissions at all.
+const lane = checkAutomergeLane(await readText(".github/automerge.json"), await readText(".github/workflows/dependabot-automerge.yml"));
+check(lane.ok, `auto-merge lane: ${lane.problems.join("; ")}`, `auto-merge lane configured (${lane.dryRun ? "dry run, never merges" : "live"})`);
 const rc = checkNpmrc(await readText(".npmrc"));
 check(rc.ok, `.npmrc: ${rc.problem}`, `.npmrc min-release-age is ${rc.days} days`);
 const dep = checkDependabotCooldown(await readText(".github/dependabot.yml"));
