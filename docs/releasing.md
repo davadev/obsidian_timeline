@@ -163,7 +163,7 @@ run is ever killed, `npm ci` repairs it.
 - **Install scripts denied**: `allowScripts` in `package.json` approves nothing.
 - **No runtime `dependencies`**: esbuild bundles everything, so everything is a
   devDependency. `npm ls --all` must exit 0 (`npm ci` does not notice).
-- **Dependabot is PR-only.** Groups: `vitest` + `@vitest/*` together (coverage
+- **Dependabot never merges itself; the auto-merge lane does, under strict rules** (see the `dependency-update` skill and playbook SUPPLY-CHAIN 6.5). Groups: `vitest` + `@vitest/*` together (coverage
   peer-pins vitest exactly), other minor/patch together, majors alone. Ignores
   live only in `dependabot.yml`; never reply `@dependabot ignore` on a PR.
 - A Dependabot PR is visibility, not an obligation. Tag a beta only if

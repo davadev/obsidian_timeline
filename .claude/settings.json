@@ -10,6 +10,16 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npm run --silent sync"
+          }
+        ]
+      }
     ]
   },
   "permissions": {
@@ -25,7 +35,8 @@
       "Bash(npm run check-release -- --with-build)",
       "Bash(npm run lint:deps)",
       "Bash(npm run lint:cloud-parity)",
-      "Bash(npm run typecheck)"
+      "Bash(npm run typecheck)",
+      "Bash(npm run sync)"
     ]
   }
 }
