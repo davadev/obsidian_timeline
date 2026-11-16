@@ -1,5 +1,8 @@
-# Dependency update feed (npm + github-actions). PR-only: nothing here
-# auto-merges, so Dependabot can never publish or affect a release on its own.
+# Dependency update feed (npm + github-actions). Dependabot never merges anything itself. The auto-merge lane
+# (.github/workflows/dependabot-automerge.yml, rules in scripts/lib/automergePolicy.mjs, knobs in .github/automerge.json)
+# merges a PR only when it is a plain dependency bump, CI is green on the exact head commit, and the built main.js is
+# byte-identical to main's. A PR that would change the shipped bytes is never merged unattended: a security fix gets the
+# `needs-beta` label and an issue, everything else waits for a human.
 #
 # Never reply `@dependabot ignore ...` on a PR. That stores the ignore in
 # Dependabot's server-side state, invisible to review. Every ignore belongs in
@@ -11,6 +14,8 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    labels:
+      - dependencies
     # A malicious release is usually live for hours to days before it is
     # pulled, so do not adopt a version younger than 14 days (majors: 30). This
     # matches `min-release-age` in .npmrc; scripts/check-release.mjs fails if
