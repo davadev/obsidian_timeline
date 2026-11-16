@@ -56,6 +56,12 @@ updates:
       # alone breaks `npm ci` with ERESOLVE. They move by hand, with `obsidian`,
       # re-pinned to its new peers. (A bare dependency-name ignore also mutes
       # security updates; accepted here because they cannot be bumped alone.)
+      # obsidian 1.14 moves the CodeMirror peers and failed the group PR's checks; it moves by hand, on a release of its own.
+      # Scoped to version updates so a SECURITY update for it would still arrive.
+      - dependency-name: "obsidian"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
       - dependency-name: "@codemirror/state"
       - dependency-name: "@codemirror/view"
       # typescript-eslint declares a `typescript` ceiling, so a TypeScript major
