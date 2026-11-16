@@ -9,6 +9,8 @@ description: Cut a prerelease (X.Y.Z-beta.N) of the plugin for BRAT testing. Use
 
 **Dependabot gate first.** Before tagging, run the Dependabot gate in `dependency-update`: every open Dependabot PR is folded into this beta (merged or superseded), not left behind.
 
+**Sync first.** `npm run sync`, then `git merge-base --is-ancestor origin/main HEAD` must succeed: dependency updates the auto-merge lane merged since you branched must be inside the beta. Act on every `NEEDS A HUMAN` line (a `needs-beta` issue is a security fix waiting for exactly this beta).
+
 ## Steps
 1. Change is merged to `main` via PR with CI green (`feature-done` checklist passed). Wait with `gh pr checks <N> --watch --fail-fast` (never a `sleep` loop). Merge with `gh pr merge <N> --merge` (a merge commit, not squash); add `--admin` only when the owner has said "merge and tag" / authorised bypassing the review requirement. Run merge, tag and issue-close as **separate** commands (a chained one is rejected by permission classifiers). Then `git checkout main && git pull`.
 2. Refresh the demo vault copy (`npm run build && cp main.js manifest.json styles.css demo-vault/.obsidian/plugins/timeline-xml-sync/`). If images, screenshots, or generated assets changed: **stop and show the user the result**, get approval before tagging. Docs/asset-only changes still go through this full pipeline.
