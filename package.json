@@ -54,5 +54,16 @@
     "typescript-eslint": "8.72.0",
     "vitest": "5.0.5",
     "yaml": "2.9.1"
+  },
+  "overrides": {
+    "obsidian": {
+      "moment": "2.31.0"
+    },
+    "eslint-plugin-obsidianmd": {
+      "moment": "2.31.0"
+    },
+    "minimatch@^8": "11.0.3",
+    "minimatch@^9": "11.0.3",
+    "minimatch@^10": "11.0.3"
   }
 }
